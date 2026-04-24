@@ -1,6 +1,8 @@
 'use client';
 
-import { Workbook, Worksheet } from 'exceljs';
+// exceljs is imported dynamically inside generatePayrollExcel to reduce initial bundle size
+import type { Workbook, Worksheet } from 'exceljs';
+
 import { PayrollRun, PayrollItem, Employee, Company } from '@/types';
 
 export interface PayrollReportData {
@@ -29,6 +31,7 @@ export async function generatePayrollExcel(
     includeDeductionsBreakdown: true
   }
 ): Promise<Blob> {
+  const { Workbook } = await import('exceljs');
   const workbook = new Workbook();
 
   // Define professional color palette
