@@ -1,0 +1,43 @@
+
+> hrsoftware@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.100.36:3000
+- Environments: .env
+✓ Ready in 279ms
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+ GET /dashboard/payroll/payouts 200 in 2.4s (next.js: 167ms, proxy.ts: 1789ms, application-code: 402ms)
+ GET /dashboard/payroll/payouts 200 in 330ms (next.js: 1786µs, proxy.ts: 293ms, application-code: 36ms)
+⨯ Error: Missing Supabase URL or service role key
+    at module evaluation (src/lib/supabase/admin.ts:12:9)
+    at module evaluation (src/app/api/payouts/route.ts:3:1)
+    at Object.<anonymous> (.next/dev/server/app/api/payouts/route.js:7:3)
+  10 |
+  11 | if (!url || !key) {
+> 12 |   throw new Error('Missing Supabase URL or service role key');
+     |         ^
+  13 | }
+  14 |
+  15 | export const supabaseAdmin = createClient(url, key, { {
+  page: '/api/payouts'
+}
+ POST /api/payouts 500 in 1500ms (next.js: 209ms, proxy.ts: 1199ms, application-code: 92ms)
+✓ Compiled in 1648ms
+⨯ Error: Missing Supabase URL or service role key
+    at module evaluation (src/lib/supabase/admin.ts:12:9)
+    at module evaluation (src/app/api/payouts/route.ts:3:1)
+    at Object.<anonymous> (.next/dev/server/app/api/payouts/route.js:7:3)
+  10 |
+  11 | if (!url || !key) {
+> 12 |   throw new Error('Missing Supabase URL or service role key');
+     |         ^
+  13 | }
+  14 |
+  15 | export const supabaseAdmin = createClient(url, key, { {
+  page: '/api/payouts'
+}
+ POST /api/payouts 500 in 1358ms (next.js: 88ms, proxy.ts: 1260ms, application-code: 10ms)
+[?25h
