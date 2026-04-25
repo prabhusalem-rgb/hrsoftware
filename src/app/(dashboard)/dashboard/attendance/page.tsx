@@ -26,8 +26,10 @@ import { useEffect } from 'react';
 
 export default function AttendancePage() {
   const { activeCompanyId } = useCompany();
-  const { data: employeesData = [] } = useEmployees({ companyId: activeCompanyId });
-  const { data: attendanceData = [], isLoading: attendanceLoading } = useAttendance(activeCompanyId);
+  const employees = useEmployees({ companyId: activeCompanyId }).data ?? [];
+  const attendanceQuery = useAttendance(activeCompanyId);
+  const attendanceData = (attendanceQuery.data ?? []) as Attendance[];
+  const attendanceLoading = attendanceQuery.isLoading;
   const { saveAttendance, deleteAttendance } = useAttendanceMutations(activeCompanyId);
 
   const [search, setSearch] = useState('');
@@ -38,7 +40,6 @@ export default function AttendancePage() {
   const [form, setForm] = useState({ employee_id: '', date: '', status: 'absent' as AttendanceStatus, overtime_hours: 0, overtime_type: 'none' as OvertimeType, notes: '' });
 
   const records = attendanceData;
-  const employees = employeesData;
 
   const filtered = records.filter(r => {
     const emp = employees.find(e => (e.id || '').trim() === (r.employee_id || '').trim());

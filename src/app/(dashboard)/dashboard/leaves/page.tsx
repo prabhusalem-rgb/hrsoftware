@@ -115,6 +115,11 @@ export default function LeavesPage() {
       setBalanceLoading(true);
       setCurrentBalance(null); // Clear previous
       const supabase = createClient();
+      if (!supabase) {
+        toast.error('Database connection failed');
+        setBalanceLoading(false);
+        return;
+      }
 
       // First try allBalances cache
       const cached = allBalances.find(

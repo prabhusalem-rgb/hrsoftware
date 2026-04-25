@@ -62,6 +62,9 @@ export function calculateEOSB(input: EOSBInput): EOSBResult {
   const joinDate = new Date(input.joinDate);
   const terminationDate = new Date(input.terminationDate);
 
+  // Guard against invalid basic salary
+  const lastBasicSalary = isNaN(Number(input.lastBasicSalary)) ? 0 : Number(input.lastBasicSalary);
+
   // Total service in days
   const totalDays = differenceInDays(terminationDate, joinDate);
   const totalYears = totalDays / 365;
@@ -71,7 +74,7 @@ export function calculateEOSB(input: EOSBInput): EOSBResult {
   const remainingDays = totalDays % 365;
 
   // Daily rate = basic salary / 30
-  const dailyRate = input.lastBasicSalary / 30;
+  const dailyRate = lastBasicSalary / 30;
 
   // Determine which rule applies based on join date
   const joinsBeforeCutoff = isBefore(joinDate, NEW_EOSB_CUTOFF);

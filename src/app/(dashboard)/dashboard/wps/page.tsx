@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileSpreadsheet, Download, Eye, CheckCircle } from 'lucide-react';
 import { useCompany } from '@/components/providers/CompanyProvider';
-import { useCompanies } from '@/hooks/queries/useCompanies';
 import { useEmployees } from '@/hooks/queries/useEmployees';
 import { usePayrollRuns } from '@/hooks/queries/usePayrollRuns';
 import { usePayrollItems } from '@/hooks/queries/usePayrollItems';
@@ -26,28 +25,32 @@ import {
   calculateExportAmounts,
   isValidEmployee,
 } from '@/lib/calculations/wps';
-import { WPSExport, PayrollRunType, PayrollItem, Employee } from '@/types';
+import { WPSExport, PayrollRunType, PayrollItem, Employee, Company, PayrollRun } from '@/types';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function WPSPage() {
-  const { activeCompanyId, userId } = useCompany();
-  const { data: companiesData } = useCompanies();
-  const { data: employeesData } = useEmployees({ companyId: activeCompanyId });
-  const { data: payrollRunsData, isLoading: payrollLoading } = usePayrollRuns(activeCompanyId);
-  const { data: wpsExportsData, isLoading: exportsLoading, refetch: refetchExports } = useWPSExports(activeCompanyId);
+  const { activeCompanyId, activeCompany, userId } = useCompany();
+  const employeesQuery = useEmployees({ companyId: activeCompanyId });
+  const employees: Employee[] = (employeesQuery.data ?? []) as Employee[];
+  const payrollRunsQuery = usePayrollRuns(activeCompanyId);
+  const payrollRuns: PayrollRun[] = (payrollRunsQuery.data ?? []) as PayrollRun[];
+  const { isLoading: payrollLoading } = payrollRunsQuery;
+  const wpsExportsQuery = useWPSExports(activeCompanyId);
+  const wpsExports: WPSExport[] = (wpsExportsQuery.data ?? []) as WPSExport[];
+  const { isLoading: exportsLoading, refetch: refetchExports } = wpsExportsQuery;
   const { createWPSExport } = useWPSMutations(activeCompanyId);
 
   const [selectedRunId, setSelectedRunId] = useState('');
   const [preview, setPreview] = useState('');
 
   // Conditional fetch for payroll items when a run is selected
-  const { data: runItemsData } = usePayrollItems(selectedRunId);
+  const payrollItemsQuery = usePayrollItems(selectedRunId || '');
+  const runItems: PayrollItem[] = (payrollItemsQuery.data ?? []) as PayrollItem[];
 
-  const exports = wpsExportsData || [];
-  const completedRuns = (payrollRunsData || []).filter(r => r.status === 'completed' || r.status === 'exported');
-  const filteredExports = exports;
+  const completedRuns = payrollRuns.filter(r => r.status === 'completed' || r.status === 'exported');
+  const filteredExports = wpsExports;
 
   const handleGenerate = async () => {
     if (!selectedRunId) return;
@@ -58,18 +61,15 @@ export default function WPSPage() {
 
     // Refetch to get the latest exports (avoid stale count)
     const { data: freshExports } = await refetchExports();
-    const currentExports = freshExports || [];
+    const currentExports = (freshExports ?? []) as WPSExport[];
 
     const run = completedRuns.find(r => r.id === selectedRunId);
     if (!run) { toast.error('Payroll run not found'); return; }
 
-    const company = companiesData?.find(c => c.id === run.company_id);
-    if (!company) { toast.error('Company profile not found'); return; }
+    if (!activeCompany) { toast.error('Company profile not found'); return; }
 
-    const runItems = runItemsData || [];
     if (runItems.length === 0) { toast.error('No payroll records found for this run'); return; }
 
-    const employees = employeesData || [];
     const employeeMap = new Map(employees.map(e => [e.id, e]));
 
     // Determine exportable items with partial payment support
@@ -99,8 +99,8 @@ export default function WPSPage() {
     }
 
     // Validation for Bank Muscat WPS requirements
-    if (!company.cr_number) { toast.error('Company CR Number is missing'); return; }
-    if (!company.iban) { toast.error('Company Payment IBAN is missing'); return; }
+    if (!activeCompany.cr_number) { toast.error('Company CR Number is missing'); return; }
+    if (!activeCompany.iban) { toast.error('Company Payment IBAN is missing'); return; }
 
     const runEmployees = employees.filter(e => itemsToExport.some(i => i.employee_id === e.id));
 
@@ -117,7 +117,7 @@ export default function WPSPage() {
     }
 
     // Generate SIF using only the exportable items
-    const result = generateWPSSIF(company, employees, itemsToExport, run.year, run.month, run.type as PayrollRunType);
+    const result = generateWPSSIF(activeCompany, employees, itemsToExport, run.year, run.month, run.type as PayrollRunType);
     const sifContent = result.sifContent;
     const exportedAmounts = result.exportedAmounts;
 
@@ -135,7 +135,7 @@ export default function WPSPage() {
     const maxSequence = sequences.length > 0 ? Math.max(...sequences) : 0;
     const nextSequence = maxSequence + 1;
 
-    const fileName = generateWPSFileName(company.cr_number, 'BMCT', new Date(), nextSequence);
+    const fileName = generateWPSFileName(activeCompany.cr_number, 'BMCT', new Date(), nextSequence);
 
     setPreview(sifContent);
 
@@ -158,7 +158,7 @@ export default function WPSPage() {
     toast.success(`WPS file generated: ${fileName}`);
   };
 
-  if ((payrollLoading || exportsLoading) && !payrollRunsData) {
+  if ((payrollLoading || exportsLoading) && payrollRuns.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />

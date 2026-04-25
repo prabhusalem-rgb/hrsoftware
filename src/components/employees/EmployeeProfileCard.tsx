@@ -8,7 +8,7 @@ import { Calendar, User, Briefcase, Building, CreditCard, ArrowUpRight, Plane, T
 import { Employee, EmployeeStatus } from '@/types';
 import { differenceInMonths, format } from 'date-fns';
 import { AirTicketDashboard } from '@/components/payroll/AirTicketDashboard';
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 // Format IBAN with spaces for readability: OMXXBMCTXXXXXXXXXX -> OMXX BMCT XXXXXXXX XXXX
@@ -55,7 +55,7 @@ const categoryLabels: Record<string, string> = {
   INDIRECT_STAFF: 'In-Direct Staff',
 };
 
-export function EmployeeProfileCard({
+function EmployeeProfileCardImpl({
   employee,
   onEdit,
   onHistory,
@@ -195,16 +195,25 @@ export function EmployeeProfileCard({
                   </p>
                   {currentLeaveBalance === 0 && (
                     <p className="text-[9px] font-black text-amber-600 uppercase tracking-tighter italic leading-none">
-                      {differenceInMonths(new Date(), new Date(employee.join_date)) < 6 
-                        ? '6-Month eligibility pending' 
+                      {differenceInMonths(new Date(), new Date(employee.join_date)) < 6
+                        ? '6-Month eligibility pending'
                         : 'No balance remaining'}
                     </p>
                   )}
                 </div>
               ) : (
-                <p className="text-sm font-bold text-emerald-600">
-                  {employee.opening_leave_balance || 0} days
-                </p>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-bold text-emerald-600">
+                    {employee.opening_leave_balance || 0} days
+                  </p>
+                  {(employee.opening_leave_balance || 0) === 0 && (
+                    <p className="text-[9px] font-black text-amber-600 uppercase tracking-tighter italic leading-none">
+                      {differenceInMonths(new Date(), new Date(employee.join_date)) < 6
+                        ? '6-Month eligibility pending'
+                        : 'No balance remaining'}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -295,3 +304,6 @@ export function EmployeeProfileCard({
     </Card>
   );
 }
+
+const MemoizedEmployeeProfileCard = memo(EmployeeProfileCardImpl);
+export { MemoizedEmployeeProfileCard as EmployeeProfileCard };

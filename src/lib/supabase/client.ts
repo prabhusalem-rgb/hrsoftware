@@ -1,30 +1,24 @@
 // ============================================================
 // Supabase browser client — used in React client components.
-// Creates a singleton Supabase client for browser-side usage.
+// Creates a fresh Supabase client for each call to avoid session caching issues.
 // ============================================================
 
 import { createBrowserClient } from '@supabase/ssr';
 
-let client: ReturnType<typeof createBrowserClient> | null = null;
-
-export function createClient() {
+// Creates a fresh Supabase client. Throws if environment variables are missing.
+// Non-singleton pattern ensures each call gets current auth state from cookies.
+export function createClient(): ReturnType<typeof createBrowserClient> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
-    console.error('Supabase credentials missing from environment');
-    return null;
+    throw new Error('Supabase credentials missing from environment variables');
   }
 
-  // Validate format
   if (url.includes('your-supabase-project-url') || url === '') {
-    console.error('Supabase URL is placeholder value. Update NEXT_PUBLIC_SUPABASE_URL in .env');
-    return null;
+    throw new Error('Supabase URL is placeholder. Update NEXT_PUBLIC_SUPABASE_URL in .env');
   }
 
-  if (!client) {
-    client = createBrowserClient(url, key);
-  }
-
-  return client;
+  // Create a fresh client every time — avoids stale session cache when switching users
+  return createBrowserClient(url, key);
 }

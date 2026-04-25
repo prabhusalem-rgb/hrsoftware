@@ -5,7 +5,7 @@
 // with all Oman-required fields.
 // ============================================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,44 +59,193 @@ const categoryLabels: Record<EmployeeCategory, string> = {
   INDIRECT_STAFF: 'In-Direct Staff',
 };
 
+interface EmployeeTableRowProps {
+  emp: Employee;
+  expandedRowId: string | null;
+  onToggleExpand: (id: string) => void;
+  onOpenEdit: (emp: Employee) => void;
+  onOpenHistory: (emp: Employee) => void;
+  onOpenJoiningReport: (emp: Employee) => void;
+  onOpenRejoin?: (emp: Employee) => void;
+  onHoldSalary: (emp: Employee) => void;
+  onReleaseHold: (emp: Employee) => void;
+  currentLeaveBalance?: number | undefined;
+  balancesData?: LeaveBalance[] | undefined;
+}
+
+const EmployeeTableRow = memo(function EmployeeTableRow({
+  emp,
+  expandedRowId,
+  onToggleExpand,
+  onOpenEdit,
+  onOpenHistory,
+  onOpenJoiningReport,
+  onOpenRejoin,
+  onHoldSalary,
+  onReleaseHold,
+  currentLeaveBalance,
+  balancesData
+}: EmployeeTableRowProps) {
+  const isExpanded = expandedRowId === emp.id;
+
+  return (
+    <React.Fragment key={emp.id}>
+      <TableRow
+        className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+        onClick={() => onToggleExpand(emp.id)}
+      >
+        <TableCell className="py-4">
+          <div className="flex items-center gap-4">
+            <div className="h-10 w-10 shrink-0 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
+               {emp.name_en.charAt(0)}
+            </div>
+            <div>
+              <p className="font-bold text-sm text-slate-900 leading-tight">{emp.name_en}</p>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{emp.designation}</p>
+              {emp.join_date && differenceInMonths(new Date(), new Date(emp.join_date)) < 6 && (
+                <p className="text-[9px] font-black text-amber-600 uppercase tracking-tighter italic mt-0.5">
+                  6-Month eligibility pending
+                </p>
+              )}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell><Badge variant="outline" className="font-mono text-[10px] font-black tracking-widest bg-white">{emp.emp_code}</Badge></TableCell>
+        <TableCell className="hidden md:table-cell">
+          <p className="text-xs font-bold text-slate-600">{emp.department}</p>
+          <p className="text-[10px] text-slate-400 font-medium">{categoryLabels[emp.category]}</p>
+        </TableCell>
+        <TableCell className="hidden xl:table-cell">
+          <p className="text-xs font-bold text-slate-900">{emp.bank_name}</p>
+          <p className="text-[10px] text-slate-400 font-mono tracking-tighter truncate max-w-[120px]">{emp.bank_iban || 'IBAN NOT SET'}</p>
+        </TableCell>
+        <TableCell>
+          <Badge className={`${statusColors[emp.status]} border-0 rounded-full px-3 py-0.5 text-[10px] font-black uppercase tracking-tight`}>
+            {emp.status.replace('_', ' ')}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-right">
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 rounded-xl ${emp.is_salary_held ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (emp.is_salary_held) {
+                  onReleaseHold(emp);
+                } else {
+                  onHoldSalary(emp);
+                }
+              }}
+              title={emp.is_salary_held ? 'Release Salary Hold' : 'Hold Salary Payout'}
+            >
+              {emp.is_salary_held ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+            </Button>
+            <div className="w-px h-4 bg-slate-100 mx-1" />
+            {(emp.status === 'on_leave' || emp.status === 'leave_settled') && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenRejoin?.(emp);
+                }}
+                title="Record Rejoining"
+              >
+                <UserCheck className="w-4 h-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenHistory(emp);
+              }}
+              title="Compensation History"
+            >
+              <History className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenJoiningReport(emp);
+              }}
+              title="Onboarding Report"
+            >
+              <FileText className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
+              onClick={(e) => {
+                e.stopPropagation();
+                // Open Joining Report (simple)
+                // This button opens the simple joining report
+                onOpenJoiningReport(emp);
+              }}
+              title="Joining Report"
+            >
+              <FileCheck className="w-4 h-4" />
+            </Button>
+            {emp.rejoin_date && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-xl"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenRejoin?.(emp);
+                }}
+                title="Re-joining Report"
+              >
+                <UserCheck className="w-4 h-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 hover:bg-slate-100 rounded-xl"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenEdit(emp);
+              }}
+              title="Edit Profile"
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+      {isExpanded && (
+        <TableRow>
+          <TableCell colSpan={7} className="p-0 border-0">
+            <div className="mx-4 my-2">
+              <EmployeeProfileCard
+                employee={emp}
+                onEdit={() => onOpenEdit(emp)}
+                onHistory={() => onOpenHistory(emp)}
+                onJoiningReport={() => onOpenJoiningReport(emp)}
+                onRejoin={onOpenRejoin ? () => onOpenRejoin(emp) : undefined}
+                currentLeaveBalance={currentLeaveBalance}
+              />
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </React.Fragment>
+  );
+});
+
 export default function EmployeesPage() {
   const { activeCompanyId, activeCompany } = useCompany();
-
-  // Debug helper: check emp codes for current company (call from console: window.debugEmpCodes())
-  useEffect(() => {
-    (window as any).debugEmpCodes = async () => {
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-      // Note: REST API doesn't support ordering by expression, so we order by emp_code as text
-      const { data: emps, error: empErr } = await supabase
-        .from('employees')
-        .select('emp_code, name_en, company_id')
-        .eq('company_id', activeCompanyId);
-      const { data: next, error: rpcErr } = await supabase.rpc('preview_next_employee_code', { p_company_id: activeCompanyId });
-
-      // Also check function definition
-      const { data: funcDef } = await supabase.rpc('pg_get_functiondef', {
-        function_oid: (await supabase.from('pg_proc').select('oid').eq('proname', 'preview_next_employee_code').single())?.oid
-      }).catch(() => null);
-
-      console.log('[DEBUG] Company:', activeCompany?.name_en, '| ID:', activeCompanyId);
-      console.log('[DEBUG] Employees query error:', empErr);
-      console.log('[DEBUG] Employees:', emps);
-      console.log('[DEBUG] RPC result:', { next, error: rpcErr });
-      console.log('[DEBUG] Function definition:', funcDef);
-
-      alert(`Company: ${activeCompany?.name_en}\nNext code: ${next}\n\nEmployees:\n${JSON.stringify(emps || [], null, 2)}\n\nRPC error: ${rpcErr?.message || 'none'}`);
-    };
-  }, [activeCompanyId, activeCompany]);
-
-  // Debug: log company context changes
-  useEffect(() => {
-    console.log('[EmployeesPage] company context changed:', {
-      activeCompanyId,
-      activeCompanyName: activeCompany?.name_en,
-      timestamp: new Date().toISOString()
-    });
-  }, [activeCompanyId, activeCompany]);
 
   const { data: employeesData, isLoading } = useEmployees({ companyId: activeCompanyId });
   const { data: balancesData } = useLeaveBalances(activeCompanyId);
@@ -131,9 +280,9 @@ export default function EmployeesPage() {
   const [holdReason, setHoldReason] = useState('');
   const [isHolding, setIsHolding] = useState(false);
 
-  const employees = employeesData || [];
+  const employees: Employee[] = (employeesData ?? []) as Employee[];
 
-  const filtered = employees.filter(e => {
+  const filtered = useMemo(() => employees.filter(e => {
     const matchSearch = e.name_en.toLowerCase().includes(search.toLowerCase()) || e.emp_code.toLowerCase().includes(search.toLowerCase());
     const matchCompany = e.company_id === activeCompanyId;
 
@@ -144,7 +293,7 @@ export default function EmployeesPage() {
     const matchTab = tab === 'current' ? !isPast : isPast;
 
     return matchSearch && matchCompany && matchTab;
-  });
+  }), [employees, search, activeCompanyId, tab]);
 
   // Generate PDF blob URL for Rejoining Report preview
   useEffect(() => {
@@ -259,7 +408,7 @@ export default function EmployeesPage() {
     }
   };
 
-  const releaseHold = async (emp: Employee) => {
+  const releaseHold = useCallback(async (emp: Employee) => {
     try {
       await updateEmployee.mutateAsync({
         id: emp.id,
@@ -273,7 +422,38 @@ export default function EmployeesPage() {
     } catch (err: any) {
       toast.error(err.message || 'Failed to release salary');
     }
-  };
+  }, [updateEmployee]);
+
+  // Memoized callbacks for table rows
+  const handleToggleExpand = useCallback((id: string) => {
+    setExpandedRow(prev => prev === id ? null : id);
+  }, []);
+
+  const handleOpenEdit = useCallback((emp: Employee) => {
+    setEditEmployee(emp);
+  }, []);
+
+  const handleOpenHistory = useCallback((emp: Employee) => {
+    setHistoryEmployee(emp);
+  }, []);
+
+  const handleOpenJoiningReport = useCallback((emp: Employee) => {
+    setJoiningReportEmployee(emp);
+  }, []);
+
+  const handleOpenRejoin = useCallback((emp: Employee) => {
+    setRejoiningEmployee(emp);
+  }, []);
+
+  const handleHoldSalary = useCallback((emp: Employee) => {
+    setHoldEmployee(emp);
+  }, []);
+
+  const handleReleaseHold = useCallback(async (emp: Employee) => {
+    if (confirm(`Release salary hold for ${emp.name_en}?`)) {
+      await releaseHold(emp);
+    }
+  }, [releaseHold]);
 
   if (isLoading && !employeesData) {
     return (
@@ -291,29 +471,6 @@ export default function EmployeesPage() {
           <p className="text-muted-foreground text-sm font-medium tracking-tight">Managing {filtered.length} talent profiles</p>
         </div>
         <div className="flex gap-3">
-          {/* Debug button - only in development */}
-          {process.env.NODE_ENV === 'development' && (
-            <Button
-              variant="outline"
-              onClick={async () => {
-                const { createClient } = await import('@/lib/supabase/client');
-                const supabase = createClient();
-                const { data: emps } = await supabase
-                  .from('employees')
-                  .select('emp_code, name_en')
-                  .eq('company_id', activeCompanyId)
-                  .order('emp_code::INTEGER');
-                const { data: next } = await supabase.rpc('preview_next_employee_code', { p_company_id: activeCompanyId });
-                console.log('[DEBUG] Company:', activeCompany?.name_en, '| ID:', activeCompanyId);
-                console.log('[DEBUG] Employees:', emps);
-                console.log('[DEBUG] Next code:', next);
-                alert(`Company: ${activeCompany?.name_en}\nNext emp_code: ${next}\n\nExisting employees:\n${(emps || []).map((e: any) => `${e.emp_code} - ${e.name_en}`).join('\n')}`);
-              }}
-              className="gap-2 rounded-2xl px-4 font-black h-12 border-2 text-xs bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-            >
-              🐛 Debug Emp Codes
-            </Button>
-          )}
           <Button variant="outline" onClick={handleExport} className="gap-2 rounded-2xl px-6 font-black h-12 border-2">
             <Download className="w-4 h-4" /> Export
           </Button>
@@ -352,152 +509,19 @@ export default function EmployeesPage() {
             </TableHeader>
             <TableBody>
               {filtered.map((emp) => (
-                <React.Fragment key={emp.id}>
-                  <TableRow
-                    className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
-                    onClick={() => setExpandedRow(expandedRow === emp.id ? null : emp.id)}
-                  >
-                    <TableCell className="py-4">
-                      <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 shrink-0 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
-                           {emp.name_en.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm text-slate-900 leading-tight">{emp.name_en}</p>
-                          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{emp.designation}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell><Badge variant="outline" className="font-mono text-[10px] font-black tracking-widest bg-white">{emp.emp_code}</Badge></TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <p className="text-xs font-bold text-slate-600">{emp.department}</p>
-                      <p className="text-[10px] text-slate-400 font-medium">{categoryLabels[emp.category]}</p>
-                    </TableCell>
-                    <TableCell className="hidden xl:table-cell">
-                      <p className="text-xs font-bold text-slate-900">{emp.bank_name}</p>
-                      <p className="text-[10px] text-slate-400 font-mono tracking-tighter truncate max-w-[120px]">{emp.bank_iban || 'IBAN NOT SET'}</p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={`${statusColors[emp.status]} border-0 rounded-full px-3 py-0.5 text-[10px] font-black uppercase tracking-tight`}>
-                        {emp.status.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-8 w-8 rounded-xl ${emp.is_salary_held ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (emp.is_salary_held) {
-                              if (confirm(`Release salary hold for ${emp.name_en}?`)) releaseHold(emp);
-                            } else {
-                              setHoldEmployee(emp);
-                            }
-                          }}
-                          title={emp.is_salary_held ? 'Release Salary Hold' : 'Hold Salary Payout'}
-                        >
-                          {emp.is_salary_held ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
-                        </Button>
-                        <div className="w-px h-4 bg-slate-100 mx-1" />
-                        {(emp.status === 'on_leave' || emp.status === 'leave_settled') && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRejoiningEmployee(emp);
-                            }}
-                            title="Record Rejoining"
-                          >
-                            <UserCheck className="w-4 h-4" />
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setHistoryEmployee(emp);
-                          }}
-                          title="Compensation History"
-                        >
-                          <History className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Open Onboarding Report (comprehensive)
-                            setOnboardingReportEmployee(emp);
-                          }}
-                          title="Onboarding Report"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setJoiningReportEmployee(emp);
-                          }}
-                          title="Joining Report"
-                        >
-                          <FileCheck className="w-4 h-4" />
-                        </Button>
-                        {emp.rejoin_date && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-xl"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRejoiningReportEmployee(emp);
-                            }}
-                            title="Re-joining Report"
-                          >
-                            <UserCheck className="w-4 h-4" />
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-slate-100 rounded-xl"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(emp);
-                          }}
-                          title="Edit Profile"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                  {expandedRow === emp.id && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="p-0 border-0">
-                        <div className="mx-4 my-2">
-                          <EmployeeProfileCard
-                            employee={emp}
-                            onEdit={() => openEdit(emp)}
-                            onHistory={() => setHistoryEmployee(emp)}
-                            onJoiningReport={() => setJoiningReportEmployee(emp)}
-                            onRejoin={() => setRejoiningEmployee(emp)}
-                            currentLeaveBalance={balancesData?.find((b: LeaveBalance) => b.employee_id === emp.id && b.leave_type?.name?.toLowerCase().includes('annual'))?.balance}
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </React.Fragment>
+                <EmployeeTableRow
+                  key={emp.id}
+                  emp={emp}
+                  expandedRowId={expandedRow}
+                  onToggleExpand={handleToggleExpand}
+                  onOpenEdit={handleOpenEdit}
+                  onOpenHistory={handleOpenHistory}
+                  onOpenJoiningReport={handleOpenJoiningReport}
+                  onOpenRejoin={handleOpenRejoin}
+                  onHoldSalary={handleHoldSalary}
+                  onReleaseHold={handleReleaseHold}
+                  currentLeaveBalance={balancesData?.find((b: LeaveBalance) => b.employee_id === emp.id && b.leave_type?.name?.toLowerCase().includes('annual'))?.balance}
+                />
               ))}
               {filtered.length === 0 && (
                 <TableRow><TableCell colSpan={7} className="text-center py-20 text-muted-foreground font-medium italic">No personnel found in {tab === 'current' ? 'active roster' : 'archived records'}</TableCell></TableRow>

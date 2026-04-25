@@ -123,6 +123,7 @@ export async function generateLeaveSettlementPDF({
   primaryColor = '#000000'
 }: LeaveSettlementPDFOptions): Promise<Blob> {
   const { LeaveSettlementPDF } = await import('@/components/payroll/LeaveSettlementPDF');
+  const { pdf } = await import('@react-pdf/renderer');
 
   const doc = (
     <LeaveSettlementPDF
@@ -406,6 +407,7 @@ export async function generateSettlementPDF({
 }: SettlementPDFOptions): Promise<Blob> {
   // Use dynamic import to avoid potential circular dependencies or large bundle issues
   const { SettlementStatementPDF } = await import('@/components/payroll/settlement/SettlementStatementPDF');
+  const { pdf } = await import('@react-pdf/renderer');
 
   const doc = (
     <SettlementStatementPDF

@@ -12,9 +12,11 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Flower, LogIn, Loader2 } from 'lucide-react';
+import { useCompany } from '@/components/providers/CompanyProvider';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { reinitAuth } = useCompany();
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -38,7 +40,10 @@ export default function LoginPage() {
         setError(result.error || 'Login failed');
         setLoading(false);
       } else {
-        router.push('/dashboard');
+        // Use a hard redirect instead of router.push to ensure the browser 
+        // fully commits cookies and the entire application state is fresh.
+        // This resolves issues where soft navigation skips auth state updates.
+        window.location.href = '/dashboard';
       }
     } catch (err: any) {
       setError(`Connection failed: ${err.message}`);
@@ -81,6 +86,7 @@ export default function LoginPage() {
                   value={userId}
                   onChange={(e) => setUserId(e.target.value)}
                   className="h-11 rounded-xl"
+                  autoComplete="username"
                 />
               </div>
               <div className="space-y-1.5">

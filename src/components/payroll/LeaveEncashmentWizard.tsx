@@ -76,13 +76,13 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
     const encashmentData = {
       employee_id: employee.id,
       company_id: employee.company_id,
-      basic_salary: Number(employee.basic_salary),
-      gross_salary: Number(employee.gross_salary),
+      basic_salary: Number(employee.basic_salary) || 0,
+      gross_salary: Number(employee.gross_salary) || 0,
       days: daysToEncash,
       leave_encashment: encashmentValue,
       net_salary: encashmentValue,
       final_total: encashmentValue,
-      date: encashmentDate,
+      settlement_date: encashmentDate,
       notes,
       type: 'leave_encashment'
     };

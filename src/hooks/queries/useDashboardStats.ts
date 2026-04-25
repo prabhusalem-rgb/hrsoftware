@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { DashboardStats, Employee } from '@/types';
 
-export function useDashboardStats(companyId: string) {
+export function useDashboardStats(companyId: string): UseQueryResult<DashboardStats, Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<DashboardStats>({
     queryKey: ['dashboard-stats', companyId],
     queryFn: async (): Promise<DashboardStats> => {
       if (!supabase || !companyId) {
@@ -34,7 +34,11 @@ export function useDashboardStats(companyId: string) {
         supabase.from('payroll_runs').select('id, month, year, type, status, total_amount, total_employees, created_at').eq('company_id', companyId).order('created_at', { ascending: false }).limit(5),
         supabase.from('leaves').select('id, employee:employee_id!inner(company_id)').eq('status', 'pending').eq('employee.company_id', companyId),
         supabase.from('loans').select('id, employee:employee_id!inner(company_id)').eq('status', 'active').eq('employee.company_id', companyId),
-        supabase.from('air_tickets').select('id').eq('status', 'requested')
+        // Air tickets: join through employee to filter by company (same pattern as leaves/loans)
+        supabase.from('air_tickets')
+          .select('id, employee:employee_id!inner(company_id)')
+          .eq('status', 'requested')
+          .eq('employee.company_id', companyId)
       ]);
 
       const today = new Date();
@@ -84,5 +88,7 @@ export function useDashboardStats(companyId: string) {
       };
     },
     enabled: !!companyId,
+    staleTime: 2 * 60 * 1000, // 2 minutes - dashboard data changes frequently
+    gcTime: 5 * 60 * 1000,
   });
 }

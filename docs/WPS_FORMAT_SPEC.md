@@ -112,7 +112,7 @@ C,75620501,1,PINTU KUBER,BMUSOMRX,0222012606280037,M,28,49,49,0,0,0,0,
 | Col | Field | Value | Expected Format | Status |
 |-----|-------|-------|-----------------|--------|
 | 1 | Employee ID Type | C | C or P | ✅ |
-| 2 | Employee ID | 75620501 | **8 digits** (Civil ID) | ✅ |
+| 2 | Employee ID | 75620501 | **Numeric, no leading zero** | ✅ |
 | 3 | Reference Number | 1 | Text/number | ✅ |
 | 4 | Employee Name | PINTU KUBER | Uppercase | ✅ |
 | 5 | Employee BIC Code | BMUSOMRX | From allowed list | ✅ |
@@ -138,7 +138,7 @@ C,9624797,2,MUNA,BMUSOMRX,0371008156760017,M,28,0.1,0.1,0,0,0,0,
 | Col | Field | Value | Expected Format | Status |
 |-----|-------|-------|-----------------|--------|
 | 1 | Employee ID Type | C | C or P | ✅ |
-| 2 | Employee ID | **9624797** | **8 digits** (Civil ID) | ❌ **ONLY 7 DIGITS!** |
+| 2 | Employee ID | 9624797 | **Numeric, no leading zero** | ✅ |
 | 3 | Reference Number | 2 | Text/number | ✅ |
 | 4 | Employee Name | MUNA | Uppercase | ✅ |
 | 5 | Employee BIC Code | BMUSOMRX | From allowed list | ✅ |
@@ -197,8 +197,8 @@ C,9624797,2,MUNA,BMUSOMRX,0371008156760017,M,28,0.1,0.1,0,0,0,0,
 | Field | Sample Values | Rules |
 |-------|---------------|-------|
 | Employee_ID_Type | C | Only 'C' (Civil ID) or 'P' (Passport) |
-| Employee_ID (if C) | 75620501, 9624797 | **Must be exactly 8 digits** |
-| Civil ID check | 9624797 = 7 digits | ❌ **INVALID** in sample |
+| Employee_ID (if C) | 75620501, 2900418 | Numeric only, **must NOT start with 0**, 1-8 digits (truncated if >8) |
+| Civil ID check | 02900418 (starts with 0) | ❌ **INVALID** — leading zero not allowed |
 
 ---
 
@@ -218,7 +218,6 @@ Based on sample and requirements:
 - [ ] Total_Salaries only has 1 decimal (should be 3)
 - [ ] Monetary fields missing 3 decimals
 - [ ] Extra_Hours missing 2 decimals
-- [ ] Civil ID has wrong length (7 instead of 8)
 
 ⚠️ **Potential Issues:**
 - Salary of 0.1 OMR is unusually low (test data?)
@@ -260,7 +259,7 @@ Line 5+: C,75620501,1,"PINTU KUBER",BMUSOMRX,"0222012606280037",M,28,49.000,49.0
 | H8 | Number Of Records | Integer | ≥ 0 | 2 |
 | H9 | Payment Type | Text | Fixed: Salary | Salary |
 | D1 | Employee ID Type | Text | C or P | C |
-| D2 | Employee ID | Text | 8 digits if C, any if P | 75620501 |
+| D2 | Employee ID | Text | Numeric, no leading zero if C; any if P | 75620501 |
 | D3 | Reference Number | Text | Optional | 1 |
 | D4 | Employee Name | Text | Uppercase | PINTU KUBER |
 | D5 | Employee BIC Code | Text | 11-char SWIFT | BMUSOMRX |
@@ -318,7 +317,7 @@ C,09624797,2,MUNA,BMUSOMRX,"0371008156760017",M,28,0.100,0.100,0.00,0.000,0.000,
 5. Extra_Income: 0 → 0.000 (3 decimals)
 6. Deductions: 0 → 0.000 (3 decimals)
 7. Social_Security: 0 → 0.000 (3 decimals)
-8. Civil ID 9624797 (7 digits) → 09624797 (8 digits with leading zero)
+8. Civil ID must be numeric and not start with zero (no padding applied)
 
 ---
 
@@ -339,7 +338,7 @@ Your generator in `src/lib/calculations/wps.ts`:
 ⚠️ **Needs verification:**
 - Account number quoting: Currently uses `"${iban}"` - OK
 - Uppercase names: Uses `.toUpperCase()` - OK
-- Civil ID validation: Not in generator (assumes data already valid)
+- Civil ID validation: Validates numeric and no leading zero in `isValidEmployee()` — OK
 
 ---
 
@@ -349,7 +348,7 @@ Your generator in `src/lib/calculations/wps.ts`:
 |--------|-------------|----------------|--------|
 | Decimal places (money) | ❌ Wrong (0-1 decimals) | ✅ 3 decimals | Generator correct |
 | Decimal places (OT) | ❌ Wrong (0 decimals) | ✅ 2 decimals | Generator correct |
-| Civil ID length | ❌ 7 digits (invalid) | ✅ Should be 8 | Generator expects 8 |
+| Civil ID format | ❌ May have leading zero | ✅ Numeric, no leading zero | Generator validates |
 | Account quoting | ✅ Has quotes | ✅ Has quotes | Match |
 | Uppercase names | ✅ Uppercase | ✅ Uppercase | Match |
 | Header labels | ✅ Exact match | ✅ Exact match | Match |
@@ -367,7 +366,7 @@ To ensure 100% match with Bank Muscat requirements:
 1. ✅ Keep decimal formatting: 3 places for money, 2 for OT
 2. ✅ Keep account number quoting
 3. ✅ Keep uppercase names
-4. ⚠️ Add Civil ID validation upstream (ensure 8 digits in database)
+4. ⚠️ Add Civil ID validation upstream (ensure numeric, no leading zero)
 5. ⚠️ Fix sample file issues when found in production
 6. ✅ Filename format: SIF_CR_BMCT_YYYYMMDD_XXX already correct
 
@@ -383,10 +382,10 @@ Employer CR-NO,Payer CR-NO,Payer Bank Short Name,Payer Account Number,Salary Yea
 
 Employee ID Type,Employee ID,Reference Number,Employee Name,Employee BIC Code,Employee Account,Salary Frequency,Number Of Working days,Net Salary,Basic Salary,Extra Hours,Extra Income,Deductions,Social Security Deductions,Notes / Comments
 C,75620501,1,PINTU KUBER,BMUSOMRX,"0222012606280037",M,28,49.000,49.000,0.00,0.000,0.000,0.000,
-C,09624797,2,MUNA,BMUSOMRX,"0371008156760017",M,28,0.100,0.100,0.00,0.000,0.000,0.000,
+C,9624797,2,MUNA,BMUSOMRX,"0371008156760017",M,28,0.100,0.100,0.00,0.000,0.000,0.000,
 ```
 
-**Note:** Civil ID for MUNA is fixed to 09624797 (8 digits). If your database has 7-digit IDs, they need correction.
+**Note:** Civil IDs must be numeric without leading zeros. MUNA's correct ID is 9624797 (7 digits, no leading zero). If your database has IDs with leading zeros (e.g., 09624797), remove the leading zero.
 
 ---
 
@@ -401,7 +400,7 @@ Before uploading to Bank Muscat, verify:
 - [ ] All other monetary fields have 3 decimals
 - [ ] Account numbers with leading zeros are quoted
 - [ ] Employee names are uppercase
-- [ ] All Civil IDs are exactly 8 digits
+- [ ] All Civil IDs are numeric and don't start with zero
 - [ ] Header Total = sum(Net_Salary) + tolerance 0.001
 - [ ] Number_Of_Records = employee count
 - [ ] Filename format: SIF_XXXXXXXXX_BMCT_YYYYMMDD_XXX.csv

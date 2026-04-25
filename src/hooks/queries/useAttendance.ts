@@ -5,7 +5,7 @@ import { Attendance } from '@/types';
 export function useAttendance(companyId: string) {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<Attendance[]>({
     queryKey: ['attendance', companyId],
     queryFn: async (): Promise<Attendance[]> => {
       if (!supabase || !companyId) {
@@ -21,5 +21,7 @@ export function useAttendance(companyId: string) {
       return data as Attendance[];
     },
     enabled: !!companyId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
   });
 }

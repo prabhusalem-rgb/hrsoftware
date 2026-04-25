@@ -210,9 +210,9 @@ export async function POST(request: NextRequest) {
 
     // 6. Create payroll item
     const grossSalary = Number(employee.gross_salary) || 1;
-    const basicSalary = Number(employee.basic_salary);
-    const housingAllowance = Number(employee.housing_allowance);
-    const transportAllowance = Number(employee.transport_allowance);
+    const basicSalary = Number(employee.basic_salary) || 0;
+    const housingAllowance = Number(employee.housing_allowance) || 0;
+    const transportAllowance = Number(employee.transport_allowance) || 0;
 
     const payrollItemPayload = {
       payroll_run_id: payrollRun.id,

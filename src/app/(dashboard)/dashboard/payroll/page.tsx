@@ -37,19 +37,18 @@ import { PayrollRun, PayrollItem, PayrollRunStatus, PayrollRunType, Employee } f
 import { calculateEmployeePayroll, getWorkingDaysInMonth } from '@/lib/calculations/payroll';
 import { calculateEOSB } from '@/lib/calculations/eosb';
 import { calculateLeaveEncashment } from '@/lib/calculations/leave';
-import { PayslipModal } from '@/components/payroll/PayslipModal';
+import dynamic from 'next/dynamic';
+const PayslipModal = dynamic(() => import('@/components/payroll/PayslipModal').then(mod => mod.PayslipModal), { ssr: false });
+const LeaveSettlementWizard = dynamic(() => import('@/components/payroll/LeaveSettlementWizard').then(mod => mod.LeaveSettlementWizard), { ssr: false });
+const LeaveEncashmentWizard = dynamic(() => import('@/components/payroll/LeaveEncashmentWizard').then(mod => mod.LeaveEncashmentWizard), { ssr: false });
+const FinalSettlementWizard = dynamic(() => import('@/components/payroll/FinalSettlementWizard').then(mod => mod.FinalSettlementWizard), { ssr: false });
 import { generateWPSSIF, generateWPSFileName, calculateExportAmounts, isValidEmployee } from '@/lib/calculations/wps';
-import { LeaveSettlementWizard } from '@/components/payroll/LeaveSettlementWizard';
-import { LeaveEncashmentWizard } from '@/components/payroll/LeaveEncashmentWizard';
-import { FinalSettlementWizard } from '@/components/payroll/FinalSettlementWizard';
 import { EmployeePicker } from '@/components/employees/EmployeePicker';
 import { toast } from 'sonner';
 import { UserCheck } from 'lucide-react';
 import { RejoinDialog } from '@/components/employees/RejoinDialog';
 import { ManualAdjustmentModal } from '@/components/payroll/ManualAdjustmentModal';
-import { useCompanies } from '@/hooks/queries/useCompanies';
 import { generatePayrollExcel, type PayrollReportData } from '@/lib/payroll-reports';
-import { PayrollReportPDF } from '@/components/payroll/PayrollReportPDF';
 import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 
@@ -61,18 +60,23 @@ const statusColors: Record<PayrollRunStatus, string> = {
 export default function PayrollPage() {
   const { activeCompanyId, activeCompany, userId } = useCompany();
   const supabase = createClient();
-  const { data: employeesData } = useEmployees({ companyId: activeCompanyId });
-  const { data: attendanceData } = useAttendance(activeCompanyId);
-  const { data: loansData } = useLoans(activeCompanyId);
-  const { data: repaymentsData } = useLoanRepayments(activeCompanyId);
-  const { data: runsData, isLoading: runsLoading } = usePayrollRuns(activeCompanyId);
-  const { data: leavesData } = useLeaves(activeCompanyId);
-  const { data: leaveTypesData } = useLeaveTypes(activeCompanyId);
+  const employeesQuery = useEmployees({ companyId: activeCompanyId });
+  const employees: Employee[] = (employeesQuery.data ?? []) as Employee[];
+  const attendanceQuery = useAttendance(activeCompanyId);
+  const attendanceData = (attendanceQuery.data ?? []) as any[];
+  const loansQuery = useLoans(activeCompanyId);
+  const loansData = (loansQuery.data ?? []) as any[];
+  const repaymentsQuery = useLoanRepayments(activeCompanyId);
+  const repaymentsData = (repaymentsQuery.data ?? []) as any[];
+  const { data: runsData, isLoading: runsLoading } = usePayrollRuns(activeCompanyId, { limit: 10 });
+  const leavesQuery = useLeaves(activeCompanyId);
+  const leavesData = (leavesQuery.data ?? []) as any[];
+  const leaveTypesQuery = useLeaveTypes(activeCompanyId);
+  const leaveTypesData = (leaveTypesQuery.data ?? []) as any[];
   const { data: wpsExportsData, refetch: refetchWPSExports } = useWPSExports(activeCompanyId);
   const { createWPSExport } = useWPSMutations(activeCompanyId);
   const { processPayroll, deletePayrollRun } = usePayrollMutations(activeCompanyId);
   const { batchProcess, setWpsOverride } = usePayoutMutations(activeCompanyId);
-  const { data: companies = [] } = useCompanies();
 
   const router = useRouter();
 
@@ -93,8 +97,6 @@ export default function PayrollPage() {
   const [sifProgress, setSifProgress] = useState(0);
   const [showSIFProgress, setShowSIFProgress] = useState(false);
   const [processCategory, setProcessCategory] = useState<string | null>('all');
-
-  const employees = employeesData || [];
 
   // Memoize employee IDs to prevent unnecessary query refetches
   const employeeIds = useMemo(() => employees.map(e => e.id), [employees]);
@@ -151,7 +153,7 @@ export default function PayrollPage() {
       try {
         const { data, error } = await supabase
           .from('employees')
-          .select('*')
+          .select('id, emp_code, name_en, basic_salary, housing_allowance, transport_allowance, food_allowance, special_allowance, site_allowance, other_allowance, gross_salary')
           .eq('id', item.employee_id)
           .single();
         if (data && !error) {
@@ -365,10 +367,19 @@ export default function PayrollPage() {
 
       const type = data.type || 'leave_settlement';
       const targetCompanyId = data.company_id || activeCompanyId;
+      // Use the settlement/termination date to determine payroll run month/year
+      const settlementDateStr = data.settlement_date || data.termination_date;
+      if (!settlementDateStr) {
+        throw new Error('Settlement date is required');
+      }
+      const settlementDate = new Date(settlementDateStr);
+      if (isNaN(settlementDate.getTime())) {
+        throw new Error('Invalid settlement date');
+      }
       const run: any = {
         company_id: targetCompanyId,
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear(),
+        month: settlementDate.getMonth() + 1,
+        year: settlementDate.getFullYear(),
         type: type,
         status: 'completed',
         total_amount: Math.round(data.final_total * 1000) / 1000,
@@ -564,8 +575,7 @@ export default function PayrollPage() {
         return;
       }
 
-      const company = companies.find(c => c.id === activeCompanyId);
-      if (!company) {
+      if (!activeCompany) {
         toast.error('Company information not found');
         return;
       }
@@ -579,7 +589,7 @@ export default function PayrollPage() {
       const loadingToast = toast.loading(`Generating Payroll ${exportType === 'summary' ? 'Summary' : 'Register'} Excel...`);
 
       const reportData: PayrollReportData = {
-        company,
+        company: activeCompany,
         payrollRun: run,
         items: selectedItems,
         employees: employees,
@@ -621,8 +631,7 @@ export default function PayrollPage() {
         return;
       }
 
-      const company = companies.find(c => c.id === activeCompanyId);
-      if (!company) {
+      if (!activeCompany) {
         toast.error('Company information not found');
         return;
       }
@@ -635,7 +644,7 @@ export default function PayrollPage() {
       const loadingToast = toast.loading('Generating Payroll Register PDF...');
 
       const reportData: PayrollReportData = {
-        company,
+        company: activeCompany,
         payrollRun: run,
         items: selectedItems,
         employees: employees,
@@ -643,6 +652,7 @@ export default function PayrollPage() {
       };
 
       const { pdf } = await import('@react-pdf/renderer');
+      const { PayrollReportPDF } = await import('@/components/payroll/PayrollReportPDF');
       const doc = (
         <PayrollReportPDF
           data={reportData}

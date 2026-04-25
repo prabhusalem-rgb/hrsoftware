@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { Loan, LoanFormData, LoanStatus } from '@/types';
 import { toast } from 'sonner';
@@ -6,10 +6,10 @@ import { toast } from 'sonner';
 // ============================================================
 // LOAN QUERIES
 // ============================================================
-export function useLoans(companyId: string) {
+export function useLoans(companyId: string): UseQueryResult<Loan[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<Loan[]>({
     queryKey: ['loans', companyId],
     queryFn: async (): Promise<Loan[]> => {
       if (!supabase || !companyId) {
@@ -19,10 +19,10 @@ export function useLoans(companyId: string) {
       const { data, error } = await supabase
         .from('loans')
         .select(`
-          *,
-          employee:employee_id!inner(
-            id, emp_code, name_en, company_id
-          )
+          id, employee_id, company_id, principal_amount, interest_rate, tenure_months,
+          disbursement_date, first_payment_date, monthly_emi, total_interest, total_amount,
+          balance_remaining, status, notes, created_at, updated_at,
+          employee:employee_id!inner(id, emp_code, name_en, company_id)
         `)
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
@@ -31,13 +31,15 @@ export function useLoans(companyId: string) {
       return data as Loan[];
     },
     enabled: !!companyId,
+    staleTime: 5 * 60 * 1000, // 5 minutes - loans don't change frequently
+    gcTime: 15 * 60 * 1000, // 15 minutes
   });
 }
 
-export function useLoan(loanId: string) {
+export function useLoan(loanId: string): UseQueryResult<Loan | null, Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<Loan | null>({
     queryKey: ['loan', loanId],
     queryFn: async (): Promise<Loan | null> => {
       if (!loanId) return null;
@@ -48,11 +50,10 @@ export function useLoan(loanId: string) {
       const { data, error } = await supabase
         .from('loans')
         .select(`
-          *,
-          employee:employee_id!inner(
-            id, emp_code, name_en, company_id
-          ),
-          schedule:loan_schedule(*)
+          id, employee_id, company_id, principal_amount, interest_rate, tenure_months,
+          disbursement_date, first_payment_date, monthly_emi, total_interest, total_amount,
+          balance_remaining, status, notes, created_at, updated_at,
+          employee:employee_id!inner(id, emp_code, name_en, company_id)
         `)
         .eq('id', loanId)
         .single();
@@ -64,16 +65,18 @@ export function useLoan(loanId: string) {
       return data as Loan;
     },
     enabled: !!loanId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
   });
 }
 
 // ============================================================
 // LOAN SCHEDULE QUERIES
 // ============================================================
-export function useLoanSchedule(loanId: string) {
+export function useLoanSchedule(loanId: string): UseQueryResult<any[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['loan_schedule', loanId],
     queryFn: async (): Promise<any[]> => {
       if (!loanId) return [];
@@ -83,7 +86,7 @@ export function useLoanSchedule(loanId: string) {
 
       const { data, error } = await supabase
         .from('loan_schedule')
-        .select('*')
+        .select('id, loan_id, installment_no, due_date, principal_due, interest_due, total_due, paid_amount, status, paid_date')
         .eq('loan_id', loanId)
         .order('installment_no', { ascending: true });
 
@@ -91,16 +94,18 @@ export function useLoanSchedule(loanId: string) {
       return data || [];
     },
     enabled: !!loanId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
   });
 }
 
 // ============================================================
 // LOAN HISTORY/AUDIT QUERIES
 // ============================================================
-export function useLoanHistory(loanId: string) {
+export function useLoanHistory(loanId: string): UseQueryResult<any[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['loan_history', loanId],
     queryFn: async (): Promise<any[]> => {
       if (!loanId) return [];
@@ -111,7 +116,8 @@ export function useLoanHistory(loanId: string) {
       const { data, error } = await supabase
         .from('loan_history')
         .select(`
-          *,
+          id, loan_id, action, field_name, old_value, new_value, change_reason,
+          changed_by, created_at,
           changed_by_profile:changed_by(full_name, email)
         `)
         .eq('loan_id', loanId)
@@ -121,16 +127,18 @@ export function useLoanHistory(loanId: string) {
       return data || [];
     },
     enabled: !!loanId,
+    staleTime: 10 * 60 * 1000, // 10 minutes - history rarely changes
+    gcTime: 30 * 60 * 1000, // 30 minutes
   });
 }
 
 // ============================================================
 // LOAN REPORT QUERIES
 // ============================================================
-export function useLoanReports(companyId: string, filters?: { employee_id?: string; status?: LoanStatus }) {
+export function useLoanReports(companyId: string, filters?: { employee_id?: string; status?: LoanStatus }): UseQueryResult<any[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['loan_reports', companyId, filters],
     queryFn: async () => {
       if (!companyId || !supabase) return null;
@@ -148,10 +156,10 @@ export function useLoanReports(companyId: string, filters?: { employee_id?: stri
   });
 }
 
-export function useLoanDetectionReport(companyId: string, days_ahead: number = 30) {
+export function useLoanDetectionReport(companyId: string, days_ahead: number = 30): UseQueryResult<any[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['loan_detection_report', companyId, days_ahead],
     queryFn: async () => {
       if (!companyId || !supabase) return null;
@@ -168,10 +176,10 @@ export function useLoanDetectionReport(companyId: string, days_ahead: number = 3
   });
 }
 
-export function useLoanHoldReport(companyId: string) {
+export function useLoanHoldReport(companyId: string): UseQueryResult<any[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<any[]>({
     queryKey: ['loan_hold_report', companyId],
     queryFn: async () => {
       if (!companyId || !supabase) return null;

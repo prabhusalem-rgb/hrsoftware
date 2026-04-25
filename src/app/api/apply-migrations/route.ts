@@ -100,6 +100,7 @@ $func$;
     return Response.json({ success: true, results });
   } catch (err) {
     console.error('Error:', err);
-    return Response.json({ error: err.message }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return Response.json({ error: message }, { status: 500 });
   }
 }

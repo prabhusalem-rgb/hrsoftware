@@ -236,9 +236,9 @@ export async function POST(request: NextRequest) {
 
         // Create payroll item
         const grossSalary = Number(employee.gross_salary) || 1; // Avoid division by zero
-        const basicSalary = Number(employee.basic_salary);
-        const housingAllowance = Number(employee.housing_allowance);
-        const transportAllowance = Number(employee.transport_allowance);
+        const basicSalary = Number(employee.basic_salary) || 0;
+        const housingAllowance = Number(employee.housing_allowance) || 0;
+        const transportAllowance = Number(employee.transport_allowance) || 0;
 
         const payrollItemPayload = {
           id: uuidv4(),
@@ -308,9 +308,8 @@ export async function POST(request: NextRequest) {
 
         // Update leave balance
         if (leaveEncashment > 0) {
-          const daysEncashed = Math.round(
-            leaveEncashment / (Number(employee.basic_salary) / 30)
-          );
+          const basicSalary = Number(employee.basic_salary) || 1; // Avoid division by zero
+          const daysEncashed = Math.round(leaveEncashment / (basicSalary / 30));
           const { data: balData } = await supabase
             .from('leave_balances')
             .select('id, used')

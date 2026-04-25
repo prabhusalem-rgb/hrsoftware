@@ -100,25 +100,60 @@ export function usePayrollMutations(companyId: string) {
           }
         }
 
+        // Handle leave balance updates for encashment/final settlement
+        // BUG FIX: Previously queried "most recent" balance without filtering by leave_type,
+        // which could update the WRONG leave type (e.g., Sick Leave instead of Annual Leave).
+        // Now explicitly filters for Annual Leave type.
         if ((run.type === 'final_settlement' || run.type === 'leave_encashment') && item.leave_encashment > 0) {
           const dailyRate = (Number(item.basic_salary) || 0) / 30;
           const daysEncashed = item.days || (dailyRate > 0 ? Math.round(Number(item.leave_encashment) / dailyRate) : 0);
 
           if (!isNaN(daysEncashed) && isFinite(daysEncashed) && daysEncashed > 0) {
-            const { data: balData } = await supabase
-              .from('leave_balances')
-              .select('id, used')
-              .eq('employee_id', item.employee_id)
-              .order('year', { ascending: false })
-              .limit(1);
+            // Determine the year for the balance record from settlement_date
+            const settlementYear = item.settlement_date
+              ? new Date(item.settlement_date).getFullYear()
+              : new Date().getFullYear();
 
-            if (balData && balData.length > 0) {
-              const { error: balError } = await supabase
+            // Get the Annual Leave type ID for this company
+            const { data: annualLeaveType } = await supabase
+              .from('leave_types')
+              .select('id')
+              .eq('company_id', run.company_id)
+              .eq('name', 'Annual Leave')
+              .single();
+
+            if (!annualLeaveType) {
+              console.warn('[Leave Balance Update] Annual Leave type not found for company:', run.company_id);
+            } else {
+              // Get the Annual Leave balance record for the correct year
+              const { data: balData, error: balQueryError } = await supabase
                 .from('leave_balances')
-                .update({ used: Number(balData[0].used) + daysEncashed })
-                .eq('id', balData[0].id);
+                .select('id, used')
+                .eq('employee_id', item.employee_id)
+                .eq('leave_type_id', annualLeaveType.id)
+                .eq('year', settlementYear)
+                .single();
 
-              if (balError) throw new Error(balError.message);
+              if (balQueryError) {
+                console.error('[Leave Balance Update] Failed to fetch Annual Leave balance:', balQueryError.message);
+              }
+
+              if (balData) {
+                const newUsed = Number(balData.used) + daysEncashed;
+                const { error: balError } = await supabase
+                  .from('leave_balances')
+                  .update({ used: newUsed })
+                  .eq('id', balData.id);
+
+                if (balError) {
+                  console.error('[Leave Balance Update] Failed to update balance:', balError.message, '(would have set used to', newUsed, ')');
+                  throw new Error(balError.message);
+                } else {
+                  console.log('[Leave Balance Update] Success: employee=', item.employee_id?.substring(0,8), 'year=', settlementYear, 'old_used=', balData.used, 'added=', daysEncashed, 'new_used=', newUsed);
+                }
+              } else {
+                console.warn('[Leave Balance Update] No Annual Leave balance found for employee:', item.employee_id, 'year:', settlementYear);
+              }
             }
           }
         }
@@ -140,57 +175,186 @@ export function usePayrollMutations(companyId: string) {
 
   const deletePayrollRun = useMutation({
     mutationFn: async (runId: string) => {
+      // Verify user is authenticated
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        throw new Error('Authentication required');
+      }
+
+      // Fetch user profile to check role
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        console.error('[DeletePayrollRun] Failed to fetch profile:', profileError.message);
+      }
+
+      // Step 1: Fetch the payroll run metadata
       const { data: run, error: runFetchError } = await supabase
         .from('payroll_runs')
-        .select('*, items:payroll_items(*)')
+        .select('*')
         .eq('id', runId)
         .single();
 
       if (runFetchError) throw new Error(runFetchError.message || 'Failed to fetch payroll run');
       if (!run) throw new Error('Payroll run not found');
 
-      if (run.type === 'leave_settlement' && run.items && run.items.length > 0) {
-        const typedItems = run.items as PayrollItem[];
-        const employeeIds = Array.from(new Set(typedItems.map(i => i.employee_id).filter(Boolean)));
+      // Step 2: Check if WPS SIF file has been generated for this run
+      // After WPS: only super admins can delete; before WPS: anyone can delete
+      const { data: wpsExports, error: wpsError } = await supabase
+        .from('wps_exports')
+        .select('id')
+        .eq('payroll_run_id', runId)
+        .limit(1);
 
-        for (const empId of employeeIds) {
-          const empItems = typedItems.filter(i => i.employee_id === empId);
+      if (wpsError) {
+        console.error('[DeletePayrollRun] Failed to check WPS exports:', wpsError.message);
+        // Don't block on check error — allow deletion as fallback
+      } else if (wpsExports && wpsExports.length > 0) {
+        // WPS exists — only super admins allowed
+        if (profile?.role !== 'super_admin') {
+          throw new Error("Payroll cant be deleted after WPS generation");
+        }
+        // Super admin continues through
+      }
 
-          for (const item of empItems) {
-            if (item.leave_id) {
-              const { error: leaveError } = await supabase
-                .from('leaves')
-                .update({ settlement_status: 'none' })
-                .eq('id', item.leave_id);
+      // Step 3: Fetch associated payroll items separately (more reliable than reverse-relation join)
+      const { data: items = [], error: itemsError } = await supabase
+        .from('payroll_items')
+        .select('*')
+        .eq('payroll_run_id', runId);
 
-              if (leaveError) console.error('Failed to reset leave settlement_status:', leaveError);
+      if (itemsError) {
+        console.error('[DeletePayrollRun] Failed to fetch items:', itemsError.message);
+        // Continue — items may be empty
+      }
+
+      console.log('[DeletePayrollRun] Run:', run.type, '| Items found:', items.length);
+
+      // Step 3: Revert leave_encashment balance updates (for leave_encashment and final_settlement)
+      if ((run.type === 'final_settlement' || run.type === 'leave_encashment') && items.length > 0) {
+        // Get Annual Leave type ID once
+        const { data: annualLeaveType } = await supabase
+          .from('leave_types')
+          .select('id')
+          .eq('company_id', run.company_id)
+          .eq('name', 'Annual Leave')
+          .single();
+
+        if (!annualLeaveType) {
+          console.warn('[Leave Balance Revert] Annual Leave type not found for company:', run.company_id);
+        }
+
+        for (const item of items) {
+          if (item.leave_encashment > 0 && annualLeaveType) {
+            // Calculate days that were encashed
+            const dailyRate = (Number(item.basic_salary) || 0) / 30;
+            const daysEncashed = item.days || (dailyRate > 0 ? Math.round(Number(item.leave_encashment) / dailyRate) : 0);
+
+            if (daysEncashed > 0) {
+              // Determine year from settlement_date (or current year as fallback)
+              const settlementYear = item.settlement_date
+                ? new Date(item.settlement_date).getFullYear()
+                : new Date().getFullYear();
+
+              // Fetch Annual Leave balance for this employee+year
+              const { data: balData } = await supabase
+                .from('leave_balances')
+                .select('id, used')
+                .eq('employee_id', item.employee_id)
+                .eq('leave_type_id', annualLeaveType.id)
+                .eq('year', settlementYear)
+                .single();
+
+              if (balData) {
+                const newUsed = Math.max(0, Number(balData.used) - daysEncashed);
+                const { error: balError } = await supabase
+                  .from('leave_balances')
+                  .update({ used: newUsed })
+                  .eq('id', balData.id);
+
+                if (balError) {
+                  console.error('[Leave Balance Revert] Failed:', balError.message);
+                } else {
+                  console.log('[Leave Balance Revert] Annual Leave:', balData.used, '→', newUsed, 'for emp', item.employee_id?.substring(0,8));
+                }
+              } else {
+                console.warn('[Leave Balance Revert] No Annual Leave balance: emp', item.employee_id?.substring(0,8), 'year', settlementYear);
+              }
             }
           }
+        }
+      }
 
-          const { data: approvedLeaves } = await supabase
-            .from('leaves')
-            .select('days')
-            .eq('employee_id', empId)
-            .eq('status', 'approved');
+      // Step 4: Revert leave_settlement specific changes
+      if (run.type === 'leave_settlement' && items.length > 0) {
+        // Reset leave settlement_status for any associated leave
+        for (const item of items) {
+          if (item.leave_id) {
+            const { error: leaveError } = await supabase
+              .from('leaves')
+              .update({ settlement_status: 'none' })
+              .eq('id', item.leave_id);
 
-          const totalUsed = (approvedLeaves || []).reduce((sum: number, l: any) => sum + Number(l.days), 0);
-
-          const { data: balData } = await supabase
-            .from('leave_balances')
-            .select('id')
-            .eq('employee_id', empId)
-            .order('year', { ascending: false })
-            .limit(1);
-
-          if (balData && balData.length > 0) {
-            const { error: balError } = await supabase
-              .from('leave_balances')
-              .update({ used: totalUsed })
-              .eq('id', balData[0].id);
-
-            if (balError) console.error('Failed to update leave balance:', balError);
+            if (leaveError) console.error('[LeaveSettlement Revert] Failed to reset leave:', leaveError);
           }
+        }
 
+        // Recalculate Annual Leave used from currently approved leaves
+        const employeeIds = Array.from(new Set((items as any[]).map(i => i.employee_id).filter(Boolean)));
+
+        const { data: annualLeaveType } = await supabase
+          .from('leave_types')
+          .select('id')
+          .eq('company_id', run.company_id)
+          .eq('name', 'Annual Leave')
+          .single();
+
+        if (annualLeaveType) {
+          const currentYear = new Date().getFullYear();
+
+          for (const empId of employeeIds) {
+            // Sum approved Annual Leave days for current year
+            const { data: approvedLeaves } = await supabase
+              .from('leaves')
+              .select('days, start_date')
+              .eq('employee_id', empId)
+              .eq('status', 'approved');
+
+            const currentYearLeaves = (approvedLeaves || []).filter((l: any) => {
+              const startYear = new Date(l.start_date).getFullYear();
+              return startYear === currentYear;
+            });
+
+            const totalUsed = currentYearLeaves.reduce((sum: number, l: any) => sum + Number(l.days), 0);
+
+            // Update Annual Leave balance
+            const { data: balData } = await supabase
+              .from('leave_balances')
+              .select('id')
+              .eq('employee_id', empId)
+              .eq('leave_type_id', annualLeaveType.id)
+              .eq('year', currentYear)
+              .single();
+
+            if (balData) {
+              const { error: balError } = await supabase
+                .from('leave_balances')
+                .update({ used: totalUsed })
+                .eq('id', balData.id);
+
+              if (balError) console.error('[Leave Balance Reset] Failed:', balError);
+              else console.log('[Leave Balance Reset] Annual Leave used set to', totalUsed, 'for emp', empId.substring(0,8));
+            }
+          }
+        }
+
+        // Reset employee status based on remaining approved/pending leaves
+        for (const empId of employeeIds) {
           const { data: activeLeaves } = await supabase
             .from('leaves')
             .select('id')
@@ -204,77 +368,94 @@ export function usePayrollMutations(companyId: string) {
             .update({ status: newStatus })
             .eq('id', empId);
 
-          if (empError) console.error('Failed to reset employee status after final settlement deletion:', empError);
+          if (empError) console.error('[LeaveSettlement Revert] Failed to reset employee status:', empError);
         }
       }
 
-      if (['final_settlement', 'leave_encashment'].includes(run.type) && run.items && run.items.length > 0) {
-        const typedItems = run.items as PayrollItem[];
-        const employeeIds = Array.from(new Set(typedItems.map(i => i.employee_id).filter(Boolean)));
+      // Step 5: Revert final_settlement changes (loan closures + leave balance)
+      if (run.type === 'final_settlement' && items.length > 0) {
+        const employeeIds = Array.from(new Set((items as any[]).map(i => i.employee_id).filter(Boolean)));
 
         for (const empId of employeeIds) {
-          const empItems = typedItems.filter(i => i.employee_id === empId);
+          // Revert loan statuses — mark as active again
+          const { error: loanError } = await supabase
+            .from('loans')
+            .update({ status: 'active', balance_remaining: 0 })
+            .eq('employee_id', empId)
+            .eq('status', 'completed');
 
-          for (const item of empItems) {
+          if (loanError) console.error('[FinalSettlement Revert] Failed to revert loans:', loanError);
+
+          // Reset employee status and termination_date
+          const { error: empError } = await supabase
+            .from('employees')
+            .update({ status: 'active', termination_date: null })
+            .eq('id', empId);
+
+          if (empError) console.error('[FinalSettlement Revert] Failed to reset employee:', empError);
+        }
+
+        // Revert Annual Leave balance for encashed days (same logic as leave_encashment revert)
+        const { data: annualLeaveType } = await supabase
+          .from('leave_types')
+          .select('id')
+          .eq('company_id', run.company_id)
+          .eq('name', 'Annual Leave')
+          .single();
+
+        if (annualLeaveType) {
+          for (const item of items) {
             if (item.leave_encashment > 0) {
-              const itemAny = item as any;
-              const daysEncashed = itemAny.days || (item.basic_salary > 0 ? Math.round(Number(item.leave_encashment) / (Number(item.basic_salary) / 30)) : 0);
+              const dailyRate = (Number(item.basic_salary) || 0) / 30;
+              const daysEncashed = item.days || (dailyRate > 0 ? Math.round(Number(item.leave_encashment) / dailyRate) : 0);
 
               if (daysEncashed > 0) {
+                const settlementYear = item.settlement_date
+                  ? new Date(item.settlement_date).getFullYear()
+                  : new Date().getFullYear();
+
                 const { data: balData } = await supabase
                   .from('leave_balances')
                   .select('id, used')
-                  .eq('employee_id', empId)
-                  .order('year', { ascending: false })
-                  .limit(1);
+                  .eq('employee_id', item.employee_id)
+                  .eq('leave_type_id', annualLeaveType.id)
+                  .eq('year', settlementYear)
+                  .single();
 
-                if (balData && balData.length > 0) {
-                  const newUsed = Math.max(0, Number(balData[0].used) - daysEncashed);
+                if (balData) {
+                  const newUsed = Math.max(0, Number(balData.used) - daysEncashed);
                   const { error: balError } = await supabase
                     .from('leave_balances')
                     .update({ used: newUsed })
-                    .eq('id', balData[0].id);
+                    .eq('id', balData.id);
 
-                  if (balError) console.error('Failed to revert leave balance for settlement:', balError);
+                  if (balError) {
+                    console.error('[FinalSettlement Leave Balance Revert] Failed:', balError.message);
+                  } else {
+                    console.log('[FinalSettlement Leave Balance Revert] Annual Leave:', balData.used, '→', newUsed, 'for emp', item.employee_id?.substring(0,8));
+                  }
                 }
               }
             }
           }
-
-          if (run.type === 'final_settlement') {
-            const { data: activeLeaves } = await supabase
-              .from('leaves')
-              .select('id')
-              .eq('employee_id', empId)
-              .in('status', ['approved', 'pending'])
-              .limit(1);
-
-            const newStatus = activeLeaves && activeLeaves.length > 0 ? 'on_leave' : 'active';
-
-            const { error: empError } = await supabase
-              .from('employees')
-              .update({ status: newStatus, termination_date: null })
-              .eq('id', empId);
-
-            if (empError) {
-              console.error('Failed to reset employee status after final settlement deletion:', empError);
-            }
-          }
         }
       }
 
-      const { error } = await supabase.from('payroll_runs').delete().eq('id', runId);
-      if (error) throw new Error(error.message || 'Failed to delete payroll run');
+      // Step 6: Finally, delete the payroll run itself
+      const { error: deleteError } = await supabase.from('payroll_runs').delete().eq('id', runId);
+      if (deleteError) throw new Error(deleteError.message || 'Failed to delete payroll run');
+
+      return { success: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payroll_runs', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['leaves', companyId] });
       queryClient.invalidateQueries({ queryKey: ['employees', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['leaves', companyId] });
       queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
       queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
-      toast.success('Payroll run deleted and related leave settlements reverted');
+      toast.success('Payroll run deleted and related settlements reverted');
     },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: any) => toast.error(err.message || 'Failed to delete payroll run'),
   });
 
   return { processPayroll, deletePayrollRun };

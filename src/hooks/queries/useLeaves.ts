@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { Leave } from '@/types';
 
-export function useLeaves(companyId: string) {
+export function useLeaves(companyId: string): UseQueryResult<Leave[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<Leave[]>({
     queryKey: ['leaves', companyId],
     queryFn: async (): Promise<Leave[]> => {
       if (!supabase || !companyId) {
@@ -25,5 +25,7 @@ export function useLeaves(companyId: string) {
       return data as Leave[];
     },
     enabled: !!companyId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000,
   });
 }

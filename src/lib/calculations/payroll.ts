@@ -260,9 +260,9 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
   // --- Social Protection Fund (SPF) - Replacing PASI (2024 Law) ---
   let socialSecurityDeduction = 0;
   let pasiCompanyShare = 0;
-  
+
   const nationality = employee.nationality?.toUpperCase();
-  const isOmani = nationality === "OMAN" || nationality === "OMN" || nationality === "OMANI" || 
+  const isOmani = nationality === "OMAN" || nationality === "OMN" || nationality === "OMANI" ||
                   employee.category === 'OMANI_DIRECT_STAFF' || employee.category === 'OMANI_INDIRECT_STAFF';
 
   if (isOmani) {
@@ -279,7 +279,9 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
   const totalDeductions = absenceDeduction + leaveDeduction + loanDeduction + otherDeduction + socialSecurityDeduction;
 
   // --- Net Salary ---
-  const netSalary = Math.round((grossSalary - totalDeductions) * 1000) / 1000;
+  // Guard against NaN from any component (e.g., if employee salary data is incomplete)
+  const rawNet = grossSalary - totalDeductions;
+  const netSalary = isNaN(rawNet) ? 0 : Math.max(0, Math.round(rawNet * 1000) / 1000);
 
   return {
     employeeId: employee.id,

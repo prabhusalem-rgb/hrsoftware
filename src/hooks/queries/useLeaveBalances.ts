@@ -1,12 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { LeaveBalance } from '@/types';
 import { calculateAnnualLeaveEntitlement } from '@/lib/calculations/leave';
 
-export function useLeaveBalances(companyId: string, year?: number, employeeId?: string) {
+export function useLeaveBalances(companyId: string, year?: number, employeeId?: string): UseQueryResult<LeaveBalance[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<LeaveBalance[]>({
     queryKey: ['leave_balances', companyId, year, employeeId],
     queryFn: async (): Promise<LeaveBalance[]> => {
       const targetYear = year || new Date().getFullYear();
@@ -37,5 +37,7 @@ export function useLeaveBalances(companyId: string, year?: number, employeeId?: 
       return data as LeaveBalance[];
     },
     enabled: !!companyId && companyId.length > 0,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000,
   });
 }

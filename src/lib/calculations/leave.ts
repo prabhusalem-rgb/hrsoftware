@@ -123,8 +123,12 @@ export function calculateLeaveEncashment(
   basicSalary: number,
   encashmentDays: number
 ): number {
-  const dailyRate = basicSalary / 30;
-  return Math.round(dailyRate * encashmentDays * 1000) / 1000;
+  const salary = Number(basicSalary) || 0;
+  const days = Number(encashmentDays) || 0;
+  if (salary <= 0 || days <= 0) return 0;
+  const dailyRate = salary / 30;
+  const result = dailyRate * days;
+  return isNaN(result) ? 0 : Math.round(result * 1000) / 1000;
 }
 
 /**
@@ -135,7 +139,7 @@ export function calculateLeaveDays(startDate: string, endDate: string): number {
 }
 /**
  * Calculate the monetary value of unused leave days (Encashment).
- * Rule: 
+ * Rule:
  * - Staff and Nationals (Omani): Gross Salary / 30 * Days
  * - Direct Workers: Basic Salary / 30 * Days
  */
@@ -144,13 +148,16 @@ export function calculateLeaveEncashmentValue(
   days: number
 ): number {
   if (days <= 0 || !employee) return 0;
-  
+
   const nationality = (employee.nationality || '').toUpperCase();
-  const isOmani = nationality === 'OMAN' || nationality === 'OMN' || nationality === 'OMANI' || 
+  const isOmani = nationality === 'OMAN' || nationality === 'OMN' || nationality === 'OMANI' ||
                   employee.category === 'OMANI_DIRECT_STAFF' || employee.category === 'OMANI_INDIRECT_STAFF';
-  
+
   const isGrossSalaryBasis = isOmani || employee.category === 'INDIRECT_STAFF';
-  const salaryBasis = isGrossSalaryBasis ? Number(employee.gross_salary) : Number(employee.basic_salary);
-  
-  return (salaryBasis / 30) * days;
+  const salaryBasis = isGrossSalaryBasis ? Number(employee.gross_salary || 0) : Number(employee.basic_salary || 0);
+
+  if (isNaN(salaryBasis) || salaryBasis <= 0) return 0;
+
+  const result = (salaryBasis / 30) * days;
+  return isNaN(result) ? 0 : Math.round(result * 1000) / 1000;
 }

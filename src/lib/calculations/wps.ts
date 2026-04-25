@@ -7,13 +7,26 @@
 import { Company, Employee, PayrollItem, PayrollRunType } from '@/types';
 
 /**
+ * Sanitize a string to ASCII-only, removing control characters and non-printable bytes.
+ * Bank Muscat requires clean ASCII text in the SIF file.
+ * Keeps: space (32), tab (9), LF (10). Removes CR (13) to avoid line-ending issues.
+ */
+function sanitizeAscii(str: string): string {
+  // Remove control characters (0-31 except tab \t (9) and LF \n (10))
+  // Specifically remove CR (13) to prevent it from being treated as junk
+  return str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x0D]/g, '');
+}
+
+/**
  * Escape a value for CSV inclusion.
  * Quotes the value if it contains commas, quotes, or newlines.
  * Doubles any embedded quotes.
  */
 function escapeCsv(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) return '';
-  const str = value.toString();
+  let str = value.toString();
+  // Sanitize: remove any non-ASCII or control characters that could cause "junk" errors
+  str = sanitizeAscii(str);
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -29,16 +42,18 @@ function formatOMR(amount: number): string {
 }
 
 /**
- * Format Employee ID (Civil ID) to exactly 8 digits
- * Bank Muscat requires 8-digit numeric IDs
+ * Format Employee ID (Civil ID) for WPS export
+ * Bank Muscat requirement: numeric only, no leading zero padding
+ * - If 8 digits already: use as-is
+ * - If < 8 digits: keep original (no padding)
+ * - If > 8 digits: truncate to first 8 digits
  */
 function formatEmployeeId(id: string | number): string {
   const numeric = id.toString().replace(/[^0-9]/g, '');
   if (numeric.length > 8) {
     return numeric.substring(0, 8);
-  } else if (numeric.length < 8) {
-    return numeric.padStart(8, '0');
   }
+  // Return numeric as-is — do NOT pad with leading zeros
   return numeric;
 }
 
@@ -59,8 +74,11 @@ export function isValidEmployee(employee: Employee): boolean {
   if (employee.id_type === 'civil_id') {
     const numericId = employee.civil_id.toString().replace(/[^0-9]/g, '');
     if (numericId.length === 0) return false;
+    // Bank Muscat requirement: Civil ID must NOT start with zero
+    if (numericId[0] === '0') return false;
     const formattedId = formatEmployeeId(employee.civil_id);
-    if (formattedId.length !== 8) return false;
+    // Must have at least 1 digit, max 8 (truncated if longer)
+    if (formattedId.length < 1 || formattedId.length > 8) return false;
   } else if (employee.id_type === 'passport') {
     if (!employee.passport_no || employee.passport_no.trim() === '') return false;
   } else {
@@ -132,33 +150,28 @@ export function calculateExportAmounts(
 
     const ratio = effectiveNet / fullNet;
 
-    // Compute full component values
-    const fullBasic = payrollRunType === 'final_settlement' || payrollRunType === 'leave_settlement' || payrollRunType === 'leave_encashment' ? 0 : Number(item.basic_salary);
-    const fullOvertime = Number(item.overtime_pay || 0);
-    const fullAllowances = Number(item.housing_allowance || 0) +
-                          Number(item.transport_allowance || 0) +
-                          Number(item.food_allowance || 0) +
-                          Number(item.special_allowance || 0) +
-                          Number(item.site_allowance || 0) +
-                          Number(item.other_allowance || 0);
+    // WPS column definitions:
+    // - Basic Salary: base salary + all fixed allowances (housing, transport, food, special, site, other)
+    // - Extra Income: variable earnings (overtime only)
+    // - Deductions: all deductions
+    // - Social Security: SPF contribution
+    const fullBasicSalary = Number(item.basic_salary || 0) +
+                           Number(item.housing_allowance || 0) +
+                           Number(item.transport_allowance || 0) +
+                           Number(item.food_allowance || 0) +
+                           Number(item.special_allowance || 0) +
+                           Number(item.site_allowance || 0) +
+                           Number(item.other_allowance || 0);
+    const fullExtraIncome = Number(item.overtime_pay || 0);
     const fullDeductions = Number(item.total_deductions || 0);
     const fullSocialSecurity = Number(item.social_security_deduction || 0);
     const absentDays = Number(item.absent_days || 0);
     const workingDays = 30 - absentDays;
 
-    let scaledBasic: number;
-    let scaledExtraIncome: number;
-    let scaledOvertime = fullOvertime * ratio;
-    let scaledDeductions = fullDeductions * ratio;
-    let scaledSocialSecurity = fullSocialSecurity * ratio;
-
-    if (payrollRunType === 'final_settlement' || payrollRunType === 'leave_settlement' || payrollRunType === 'leave_encashment') {
-      scaledBasic = effectiveNet + scaledDeductions + scaledSocialSecurity;
-      scaledExtraIncome = 0;
-    } else {
-      scaledBasic = fullBasic * ratio;
-      scaledExtraIncome = fullAllowances * ratio;
-    }
+    const scaledBasic = fullBasicSalary * ratio;
+    const scaledExtraIncome = fullExtraIncome * ratio;
+    const scaledDeductions = fullDeductions * ratio;
+    const scaledSocialSecurity = fullSocialSecurity * ratio;
 
     let notes = '';
     if (payrollRunType === 'final_settlement') {
@@ -175,7 +188,7 @@ export function calculateExportAmounts(
     return {
       effectiveNet,
       scaledBasic,
-      scaledOvertime,
+      scaledOvertime: scaledExtraIncome,
       scaledExtraIncome,
       scaledDeductions,
       scaledSocialSecurity,
@@ -198,15 +211,17 @@ export function calculateExportAmounts(
   // Scaling ratio (proportion of original salary being paid now)
   const ratio = effectiveNet / fullNet;
 
-  // Compute full component values
-  const fullBasic = payrollRunType === 'final_settlement' || payrollRunType === 'leave_settlement' || payrollRunType === 'leave_encashment' ? 0 : Number(item.basic_salary);
-  const fullOvertime = Number(item.overtime_pay || 0);
-  const fullAllowances = Number(item.housing_allowance || 0) +
-                        Number(item.transport_allowance || 0) +
-                        Number(item.food_allowance || 0) +
-                        Number(item.special_allowance || 0) +
-                        Number(item.site_allowance || 0) +
-                        Number(item.other_allowance || 0);
+  // WPS column definitions:
+  // - Basic Salary: base salary + all fixed allowances
+  // - Extra Income: variable earnings (overtime only)
+  const fullBasicSalary = Number(item.basic_salary || 0) +
+                         Number(item.housing_allowance || 0) +
+                         Number(item.transport_allowance || 0) +
+                         Number(item.food_allowance || 0) +
+                         Number(item.special_allowance || 0) +
+                         Number(item.site_allowance || 0) +
+                         Number(item.other_allowance || 0);
+  const fullExtraIncome = Number(item.overtime_pay || 0);
   const fullDeductions = Number(item.total_deductions || 0);
   const fullSocialSecurity = Number(item.social_security_deduction || 0);
   const absentDays = Number(item.absent_days || 0);
@@ -214,17 +229,19 @@ export function calculateExportAmounts(
 
   let scaledBasic: number;
   let scaledExtraIncome: number;
-  let scaledOvertime = fullOvertime * ratio;
+  let scaledOvertime: number;
   let scaledDeductions = fullDeductions * ratio;
   let scaledSocialSecurity = fullSocialSecurity * ratio;
 
   if (payrollRunType === 'final_settlement' || payrollRunType === 'leave_settlement' || payrollRunType === 'leave_encashment') {
-    // For settlements: no allowances, basic derived to satisfy: Net = Basic + 0 - Deductions - SS
+    // For settlements: Basic is derived from net equation since no regular allowances
     scaledBasic = effectiveNet + scaledDeductions + scaledSocialSecurity;
     scaledExtraIncome = 0;
+    scaledOvertime = 0;
   } else {
-    scaledBasic = fullBasic * ratio;
-    scaledExtraIncome = fullAllowances * ratio;
+    scaledBasic = fullBasicSalary * ratio;
+    scaledExtraIncome = fullExtraIncome * ratio;
+    scaledOvertime = scaledExtraIncome;
   }
 
   // Build notes/comments
@@ -267,6 +284,14 @@ export function generateWPSSIF(
   month: number,
   type: PayrollRunType
 ): { sifContent: string; exportedAmounts: Map<string, number> } {
+  // Validate year and month
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+    throw new Error(`Invalid salary year: ${year}. Must be a 4-digit year.`);
+  }
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    throw new Error(`Invalid salary month: ${month}. Must be 01-12.`);
+  }
+
   const employeeMap = new Map(employees.map(e => [e.id, e]));
 
   // Pre-compute export amounts for each item
@@ -294,12 +319,18 @@ export function generateWPSSIF(
 
   // Build map of item_id -> exported amount for later use (e.g., marking paid)
   const exportedAmounts = new Map<string, number>();
+  const rawNetSalaries: number[] = []; // Track raw net salaries before rounding
   for (const entry of itemsWithAmounts) {
     exportedAmounts.set(entry.item.id, entry.amounts.effectiveNet);
+    // Collect raw net salary for total calculation
+    const extraIncome = entry.amounts.scaledExtraIncome;
+    const rawNet = entry.amounts.scaledBasic + extraIncome - entry.amounts.scaledDeductions - entry.amounts.scaledSocialSecurity;
+    rawNetSalaries.push(rawNet);
   }
 
-  // Calculate total amount from effectiveNet values
-  const totalAmount = itemsWithAmounts.reduce((sum, entry) => sum + entry.amounts.effectiveNet, 0);
+  // Calculate total from sum of individual rounded net salaries
+  // This ensures header total exactly matches sum of detail row net salaries
+  const totalAmount = rawNetSalaries.reduce((sum, rawNet) => sum + Math.round(rawNet * 1000) / 1000, 0);
 
   // Row 1: Header Labels
   const row1 = [
@@ -316,13 +347,14 @@ export function generateWPSSIF(
 
   // Row 2: Header Data
   const numericCR = company.cr_number.toString().replace(/[^0-9]/g, '');
-  const companyAccount = formatCompanyAccount(company.bank_account || company.iban || '');
+  const rawCompanyAccount = company.bank_account || company.iban || '';
+  const companyAccount = formatCompanyAccount(rawCompanyAccount);
 
   const row2 = [
     escapeCsv(numericCR),
     escapeCsv(numericCR),
     escapeCsv('BMCT'),
-    escapeCsv(companyAccount),
+    escapeCsv(companyAccount),  // Account as plain text (no quotes)
     escapeCsv(year),
     escapeCsv(month.toString().padStart(2, '0')),
     escapeCsv(formatOMR(totalAmount)),
@@ -330,7 +362,7 @@ export function generateWPSSIF(
     escapeCsv('Salary')
   ].join(',');
 
-  // Row 3: Employee Labels
+  // Row 3: Employee Labels (immediately after header, no blank line)
   const row3 = [
     'Employee ID Type',
     'Employee ID',
@@ -358,28 +390,48 @@ export function generateWPSSIF(
         ? formatEmployeeId(employee.civil_id)
         : employee.passport_no;
 
+      // WPS column definitions:
+      // - Basic Salary: fixed monthly earnings (basic + all regular allowances)
+      // - Extra Income: variable earnings (overtime only — NOT regular allowances)
+      // - Deductions: all deductions (absence, leave, loan, other)
+      // - Social Security: SPF contribution
+      // - Net = Basic + Extra Income - Deductions - Social Security
+      const extraIncome = amounts.scaledExtraIncome;  // Overtime only — allowances are in Basic
+
+      // Recalculate Net Salary to match WPS formula exactly:
+      // Net = Basic + Extra Income - Deductions - Social Security
+      // Pass raw calculated value to formatOMR which handles rounding
+      const rawNetSalary = amounts.scaledBasic + extraIncome - amounts.scaledDeductions - amounts.scaledSocialSecurity;
+
+      // Build fields array for employee row
+      const employeeAccount = formatEmployeeAccount(employee.bank_iban || '');
+
       const fields = [
         idType,
         employeeId,
         employee.emp_code,
         employee.name_en.toUpperCase(),
         employee.bank_bic || 'BMUSOMRX',
-        formatEmployeeAccount(employee.bank_iban || ''),
+        employeeAccount,  // Account as plain text (no quotes)
         'M',
         amounts!.workingDays.toString(),
-        formatOMR(amounts!.effectiveNet),
-        formatOMR(amounts!.scaledBasic),
+        formatOMR(rawNetSalary),       // formatOMR handles rounding to 3 decimals
+        formatOMR(amounts!.scaledBasic), // Basic + all regular allowances
         formatExtraHours(amounts!.scaledOvertime),
-        formatOMR(amounts!.scaledExtraIncome),
+        formatOMR(extraIncome),         // Overtime pay only
         formatOMR(amounts!.scaledDeductions),
         formatOMR(amounts!.scaledSocialSecurity),
         amounts!.notes
       ];
 
-      return fields.map(escapeCsv).join(',');
+      // Escape all fields normally (account won't be quoted unless it contains commas/quotes)
+      const escapedFields = fields.map(escapeCsv);
+      return escapedFields.join(',');
     });
 
-  const sifContent = [row1, row2, row3, ...employeeRows].join('\n');
+  // Use LF line endings (Unix standard). Some banking systems reject CR as junk.
+  const lineEnding = '\n';
+  const sifContent = [row1, row2, row3, ...employeeRows].join(lineEnding);
   return { sifContent, exportedAmounts };
 }
 

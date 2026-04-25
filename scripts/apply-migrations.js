@@ -1,48 +1,76 @@
-import { createClient } from '@supabase/supabase-js';
-import { readFileSync, readdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+const { readFileSync, readdirSync } = require('fs');
+const { join } = require('path');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!url || !key) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+if (!supabaseUrl || !serviceRoleKey) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  console.error('Make sure .env file exists with these variables');
   process.exit(1);
 }
 
-const supabase = createClient(url, key);
+// Extract project ref from URL
+const projectRef = supabaseUrl.replace('https://', '').replace('.supabase.co', '');
 
-async function applyMigrations() {
-  const migrationsDir = join(__dirname, '../supabase/migrations');
-  const files = readdirSync(migrationsDir)
-    .filter(f => f.endsWith('.sql'))
-    .sort();
+// Use the Supabase Management API to execute SQL
+async function runSql(sql) {
+  const response = await fetch(
+    `https://api.supabase.com/v1/projects/${projectRef}/database/query`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: sql }),
+    }
+  );
 
-  console.log('Found migrations:', files.join(', '));
-  console.log('');
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`HTTP ${response.status}: ${error}`);
+  }
 
-  for (const file of files) {
-    const filePath = join(migrationsDir, file);
-    const sql = readFileSync(filePath, 'utf-8');
-    console.log(`Applying ${file}...`);
+  return await response.json();
+}
 
-    try {
-      // Try to execute via a direct query approach
-      // Since supabase-js doesn't support raw SQL directly, we need to use RPC
-      // Let's try using the PostgREST /rpc/exec_sql approach after creating the function
+async function applyMigration(filePath) {
+  const sql = readFileSync(filePath, 'utf-8');
+  const shortName = filePath.split('/').pop();
 
-      // For now, let's just log what we'd execute
-      console.log(`  [DRY RUN] Would execute ${sql.length} characters of SQL`);
-      console.log(`  Skipping actual execution - please apply manually via Supabase dashboard`);
-      console.log(`  URL: ${url.replace('https://', 'https://')}dashboard/project/${url.split('.')[1]}/sql`);
-    } catch (err) {
-      console.error(`  Error: ${err}`);
+  try {
+    await runSql(sql);
+    console.log(`✓ ${shortName}`);
+  } catch (err) {
+    if (err.message.includes('already exists') || err.message.includes('duplicate')) {
+      console.log(`✓ ${shortName} (already exists)`);
+    } else {
+      console.error(`✗ ${shortName}: ${err.message.substring(0, 200)}`);
+      throw err;
     }
   }
 }
 
-applyMigrations();
+async function main() {
+  const migrationsDir = join(__dirname, '../supabase/migrations');
+  const files = readdirSync(migrationsDir)
+    .filter(f => f.match(/^0[7-9][0-9]_.*\.sql$/) || f.match(/^080b_.*\.sql$/))
+    .sort();
+
+  console.log(`Applying ${files.length} migrations to project ${projectRef}...\n`);
+
+  for (const file of files) {
+    const filePath = join(migrationsDir, file);
+    await applyMigration(filePath);
+  }
+
+  console.log('\n✅ All migrations applied successfully!');
+}
+
+main().catch(err => {
+  console.error('\n❌ Migration failed:', err);
+  process.exit(1);
+});

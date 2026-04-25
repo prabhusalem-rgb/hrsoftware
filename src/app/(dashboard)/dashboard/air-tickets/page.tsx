@@ -18,6 +18,7 @@ import { Combobox, ComboboxContent, ComboboxField, ComboboxInput, ComboboxItem, 
 import { Label } from '@/components/ui/label';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
+import type { Employee } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -41,7 +42,8 @@ interface UserProfile {
 
 export default function AirTicketsPage() {
   const { activeCompanyId } = useCompany();
-  const { data: employees = [] } = useEmployees({ companyId: activeCompanyId });
+  const employeesQuery = useEmployees({ companyId: activeCompanyId });
+  const employees: Employee[] = employeesQuery.data || [];
   const { data: tickets = [], isLoading, refetch } = useAirTickets(undefined, activeCompanyId);
   const { issueTicket, markAsUsed, cancelTicket, deleteTicket } = useAirTicketMutations();
 
@@ -56,7 +58,7 @@ export default function AirTicketsPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; ticketNumber: string | null } | null>(null);
   useEffect(() => {
     const fetchProfile = async () => {
-      const supabase = createClient();
+      const supabase = createClient()!;
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data } = await supabase

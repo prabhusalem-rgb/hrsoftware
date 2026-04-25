@@ -89,7 +89,7 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
     return calculateEOSB({
       joinDate: employee.join_date,
       terminationDate,
-      lastBasicSalary: Number(employee.basic_salary)
+      lastBasicSalary: Number(employee.basic_salary) || 0
     });
   }, [employee, terminationDate]);
 
@@ -105,8 +105,9 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
     const firstDayOfTerminationMonth = new Date(terminationDateObj.getFullYear(), terminationDateObj.getMonth(), 1);
     const effectiveStartDate = joinDateObj > firstDayOfTerminationMonth ? joinDateObj : firstDayOfTerminationMonth;
     const daysWorked = Math.max(0, differenceInDays(terminationDateObj, effectiveStartDate) + 1);
-    // Daily rate based on gross salary / 30 days
-    const dailyRate = Number(employee.gross_salary) / 30;
+    // Daily rate based on gross salary / 30 days, guard against missing salary data
+    const grossSalary = Number(employee.gross_salary) || 0;
+    const dailyRate = grossSalary / 30;
     const raw = dailyRate * daysWorked;
     return Math.round(raw * 1000) / 1000;
   }, [employee, terminationDate]);
@@ -129,9 +130,9 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
     if (!employee || !eosb) return;
 
     const grossSalary = Number(employee.gross_salary) || 1;
-    const basicSalary = Number(employee.basic_salary);
-    const housingAllowance = Number(employee.housing_allowance);
-    const transportAllowance = Number(employee.transport_allowance);
+    const basicSalary = Number(employee.basic_salary) || 0;
+    const housingAllowance = Number(employee.housing_allowance) || 0;
+    const transportAllowance = Number(employee.transport_allowance) || 0;
 
     const settlementData = {
       employee_id: employee.id,

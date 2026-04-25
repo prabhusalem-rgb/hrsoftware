@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import type { Employee } from '@/types';
 
@@ -11,17 +11,30 @@ interface UseEmployeesOptions {
   select?: string;
 }
 
+// Minimal set of columns needed across all pages in the app.
+// Individual pages can override with custom select if they need additional fields.
+const DEFAULT_EMPLOYEE_SELECT = `
+  id, emp_code, name_en, email, status, category, department, designation,
+  join_date, rejoin_date, company_id, bank_name, bank_bic, bank_iban,
+  is_salary_held, salary_hold_reason, salary_hold_at, air_ticket_cycle,
+  opening_air_tickets, opening_leave_balance,
+  basic_salary, housing_allowance, transport_allowance, food_allowance,
+  special_allowance, site_allowance, other_allowance, gross_salary,
+  nationality, gender, religion, family_status, id_type, civil_id,
+  passport_no, passport_expiry, visa_no, visa_expiry, onboarding_status
+`.trim().replace(/\s+/g, ' ');
+
 export function useEmployees({
   companyId,
   limit = 200,
   searchQuery,
   department,
   statuses,
-  select = '*',
-}: UseEmployeesOptions) {
+  select = DEFAULT_EMPLOYEE_SELECT,
+}: UseEmployeesOptions): UseQueryResult<Employee[], Error> {
   const supabase = createClient();
 
-  return useQuery({
+  return useQuery<Employee[]>({
     queryKey: ['employees', companyId, limit, searchQuery, department, statuses, select],
     queryFn: async (): Promise<Employee[]> => {
       try {
@@ -112,5 +125,7 @@ export function useEmployees({
       }
     },
     enabled: !!companyId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // garbage collect after 10 min (Next.js 15+)
   });
 }

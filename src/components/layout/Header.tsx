@@ -33,7 +33,7 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const title = getBreadcrumb(pathname);
-  const { activeCompanyId, setActiveCompanyId, availableCompanies, profile } = useCompany();
+  const { activeCompanyId, setActiveCompanyId, availableCompanies, profile, loading } = useCompany();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -45,8 +45,9 @@ export function Header() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const displayName = profile?.full_name || 'User';
-  const displayRole = profile?.role?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Staff';
+  // Show skeleton while loading profile
+  const displayName = profile?.full_name || (loading ? 'Loading...' : 'User');
+  const displayRole = profile?.role?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || (loading ? 'Loading...' : 'Staff');
 
   const handleSignOut = async () => {
     try {

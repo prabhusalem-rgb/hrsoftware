@@ -226,7 +226,7 @@ export async function parseEmployeeExcel(buffer: ArrayBuffer): Promise<EmployeeF
     const emp: any = {
       emp_code: String(getVal('emp_code') || ''),
       name_en: String(getVal('name_en') || ''),
-      email: String(getVal('email') || `emp_${Date.now()}@placeholder.invalid`),
+      email: String(getVal('email') || `emp_${Date.now()}_${rowNumber}@placeholder.invalid`),
       id_type: (getVal('id_type') || 'civil_id') as IdType,
       civil_id: String(getVal('civil_id') || ''),
       passport_no: String(getVal('passport_no') || ''),

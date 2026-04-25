@@ -20,14 +20,14 @@ import { useLeaves } from '@/hooks/queries/useLeaves';
 import { useLeaveBalances } from '@/hooks/queries/useLeaveBalances';
 import { useAttendance } from '@/hooks/queries/useAttendance';
 import { useLeaveTypes } from '@/hooks/queries/useLeaveTypes';
-import { useCompanies } from '@/hooks/queries/useCompanies';
 import { usePayrollItems } from '@/hooks/queries/usePayrollItems';
 import { calculateAccruedEOSB } from '@/lib/calculations/eosb';
 import { toast } from 'sonner';
 // jsPDF and PayrollReportPDF are imported dynamically inside export functions
 // to reduce initial bundle size and improve page load speed.
-import { generatePayrollExcel, type PayrollReportData } from '@/lib/payroll-reports';
+import { type PayrollReportData } from '@/lib/payroll-reports';
 import { format } from 'date-fns';
+import type { Employee, PayrollRun, Loan, Leave, LeaveBalance, LeaveType, Attendance, Company } from '@/types';
 
 
 type ReportType =
@@ -69,7 +69,7 @@ const reportTypes: { value: ReportType; label: string; description: string }[] =
 ];
 
 export default function ReportsPage() {
-  const { activeCompanyId, loading: companyLoading } = useCompany();
+  const { activeCompanyId, activeCompany, loading: companyLoading } = useCompany();
   const [reportType, setReportType] = useState<ReportType>('payroll_register');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
@@ -78,14 +78,32 @@ export default function ReportsPage() {
   const today = new Date();
 
   // Fetch all required data
-  const { data: employees = [], isLoading: employeesLoading } = useEmployees({ companyId: activeCompanyId });
-  const { data: payrollRuns = [], isLoading: payrollRunsLoading } = usePayrollRuns(activeCompanyId);
-  const { data: loans = [], isLoading: loansLoading } = useLoans(activeCompanyId);
-  const { data: leaves = [], isLoading: leavesLoading } = useLeaves(activeCompanyId);
-  const { data: leaveBalances = [], isLoading: leaveBalancesLoading } = useLeaveBalances(activeCompanyId);
-  const { data: leaveTypes = [] } = useLeaveTypes(activeCompanyId);
-  const { data: attendance = [], isLoading: attendanceLoading } = useAttendance(activeCompanyId);
-  const { data: companies = [] } = useCompanies();
+  const employeesQuery = useEmployees({ companyId: activeCompanyId });
+  const employees: Employee[] = (employeesQuery.data ?? []) as Employee[];
+  const employeesLoading = employeesQuery.isLoading;
+
+  const payrollRunsQuery = usePayrollRuns(activeCompanyId);
+  const payrollRuns: PayrollRun[] = (payrollRunsQuery.data ?? []) as PayrollRun[];
+  const payrollRunsLoading = payrollRunsQuery.isLoading;
+
+  const loansQuery = useLoans(activeCompanyId);
+  const loans: Loan[] = (loansQuery.data ?? []) as Loan[];
+  const loansLoading = loansQuery.isLoading;
+
+  const leavesQuery = useLeaves(activeCompanyId);
+  const leaves: Leave[] = (leavesQuery.data ?? []) as Leave[];
+  const leavesLoading = leavesQuery.isLoading;
+
+  const leaveBalancesQuery = useLeaveBalances(activeCompanyId);
+  const leaveBalances: LeaveBalance[] = (leaveBalancesQuery.data ?? []) as LeaveBalance[];
+  const leaveBalancesLoading = leaveBalancesQuery.isLoading;
+
+  const leaveTypesQuery = useLeaveTypes(activeCompanyId);
+  const leaveTypes: LeaveType[] = (leaveTypesQuery.data ?? []) as LeaveType[];
+
+  const attendanceQuery = useAttendance(activeCompanyId);
+  const attendance: Attendance[] = (attendanceQuery.data ?? []) as Attendance[];
+  const attendanceLoading = attendanceQuery.isLoading;
 
   // Determine selected month's payroll run and fetch its items
   const [selYear, selMonth] = selectedMonth.split('-').map(Number);
@@ -631,8 +649,7 @@ export default function ReportsPage() {
     }
 
     try {
-      const company = companies.find(c => c.id === activeCompanyId);
-      if (!company) {
+      if (!activeCompany) {
         toast.error('Company information not found');
         return;
       }
@@ -654,7 +671,7 @@ export default function ReportsPage() {
         }
 
         const reportDataObj: PayrollReportData = {
-          company,
+          company: activeCompany,
           payrollRun: selectedRun,
           items: runItems,
           employees: emps,
@@ -699,15 +716,15 @@ export default function ReportsPage() {
         // Company Header
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text(company.name_en || 'COMPANY NAME', pageWidth / 2, yPos, { align: 'center' });
+        doc.text(activeCompany.name_en || 'COMPANY NAME', pageWidth / 2, yPos, { align: 'center' });
 
         yPos += 7;
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.text(company.address || '', pageWidth / 2, yPos, { align: 'center' });
+        doc.text(activeCompany.address || '', pageWidth / 2, yPos, { align: 'center' });
 
         yPos += 5;
-        const contactInfo = `CR: ${company.cr_number} | Phone: ${company.contact_phone || 'N/A'}`;
+        const contactInfo = `CR: ${activeCompany.cr_number} | Phone: ${activeCompany.contact_phone || 'N/A'}`;
         doc.text(contactInfo, pageWidth / 2, yPos, { align: 'center' });
 
         // Report Title
@@ -787,8 +804,7 @@ export default function ReportsPage() {
         return;
       }
 
-      const company = companies.find(c => c.id === activeCompanyId);
-      if (!company) {
+      if (!activeCompany) {
         toast.error('Company information not found');
         return;
       }
@@ -804,7 +820,7 @@ export default function ReportsPage() {
 
       // Prepare data for Excel
       const reportDataObj: PayrollReportData = {
-        company,
+        company: activeCompany,
         payrollRun: selectedRun,
         items: payrollItems.filter(i => i.payroll_run_id === selectedRun.id),
         employees: emps,
@@ -813,6 +829,7 @@ export default function ReportsPage() {
 
       // Generate Excel file
       const loadingToast = toast.loading('Generating Excel file...');
+      const { generatePayrollExcel } = await import('@/lib/payroll-reports');
       const blob = await generatePayrollExcel(reportDataObj, {
         includeRegister: reportType === 'payroll_register',
         includeEarningsBreakdown: false,

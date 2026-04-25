@@ -36,7 +36,9 @@ export default function CompaniesPage() {
   });
 
   // Queries, Mutations & Context
-  const { data: companies = [], isLoading } = useCompanies();
+  const companiesQuery = useCompanies({ select: '*' });
+  const companies: Company[] = (companiesQuery.data ?? []) as Company[];
+  const isLoading = companiesQuery.isLoading;
   const { createCompany, updateCompany, deleteCompany } = useCompanyMutations();
   const { refresh, profile } = useCompany();
 
