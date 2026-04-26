@@ -33,7 +33,7 @@ import { useCompany } from '@/components/providers/CompanyProvider';
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { profile } = useCompany();
+  const { profile, activeCompany } = useCompany();
   const isSuperAdmin = profile?.role === 'super_admin';
 
   const navItems = [
@@ -92,15 +92,22 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
-        {/* Logo */}
+        {/* Logo / Company Identity */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border shrink-0">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shrink-0 shadow-lg shadow-primary/10">
-            <Flower className="w-5 h-5" />
-          </div>
+          {activeCompany?.logo_url ? (
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-background border border-sidebar-border shrink-0 overflow-hidden shadow-sm">
+              <img src={activeCompany.logo_url} alt="Logo" className="w-full h-full object-contain p-1" />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sidebar-accent text-sidebar-accent-foreground shrink-0 shadow-sm">
+              <Database className="w-5 h-5" />
+            </div>
+          )}
           {!collapsed && (
-            <div className="animate-fade-in group">
-              <h1 className="font-bold text-sm leading-tight text-primary">Bright Flowers</h1>
-              <p className="text-[10px] text-sidebar-foreground/60">HR &amp; Payroll System</p>
+            <div className="animate-fade-in group truncate">
+              <h1 className="font-bold text-xs leading-tight text-sidebar-foreground truncate uppercase tracking-wider">
+                HR &amp; Payroll System
+              </h1>
             </div>
           )}
         </div>

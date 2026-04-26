@@ -1,6 +1,6 @@
 'use client';
 
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { PayrollReportData } from '@/lib/payroll-reports';
 
 // Standard PDF fonts like Helvetica, Courier, and Times-Roman are built-in 
@@ -40,6 +40,23 @@ export function PayrollReportPDF({
       paddingBottom: 12,
       marginBottom: 16,
     },
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    logoContainer: {
+      width: 64,
+      height: 64,
+      marginRight: 15,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    logoImage: {
+      width: '100%',
+      height: '100%',
+      objectFit: 'contain',
+    },
     companyInfo: {
       flex: 1,
     },
@@ -47,12 +64,13 @@ export function PayrollReportPDF({
       fontSize: 16,
       fontWeight: 'bold',
       color: primaryColor,
-      marginBottom: 2,
+      marginBottom: 3,
+      lineHeight: 1.1,
     },
     companyDetail: {
-      fontSize: 7,
+      fontSize: 8,
       color: '#64748b',
-      marginBottom: 1,
+      marginBottom: 2,
     },
     reportMeta: {
       alignItems: 'flex-end',
@@ -71,10 +89,10 @@ export function PayrollReportPDF({
       color: '#64748b',
     },
     currencyDeclaration: {
-      fontSize: 7,
+      fontSize: 8,
       fontStyle: 'italic',
       color: primaryColor,
-      marginTop: 4,
+      marginTop: 6,
       fontWeight: 'bold',
     },
     table: {
@@ -207,11 +225,18 @@ export function PayrollReportPDF({
       <Page size="A4" orientation="landscape" style={styles.page}>
         {/* Header Section */}
         <View style={styles.header}>
-          <View style={styles.companyInfo}>
-            <Text style={styles.companyName}>{company?.name_en || 'COMPANY NAME'}</Text>
-            <Text style={styles.companyDetail}>{company?.address || ''}</Text>
-            <Text style={styles.companyDetail}>CR: {company?.cr_number || 'N/A'} | Phone: {company?.contact_phone || 'N/A'}</Text>
-            <Text style={styles.currencyDeclaration}>NOTE: ALL FINANCIAL VALUES ARE IN OMANI RIAL (OMR)</Text>
+          <View style={styles.headerLeft}>
+            {showLogo && company?.logo_url ? (
+              <View style={styles.logoContainer}>
+                <Image src={company.logo_url} style={styles.logoImage} />
+              </View>
+            ) : null}
+            <View style={styles.companyInfo}>
+              <Text style={styles.companyName}>{company?.name_en || 'COMPANY NAME'}</Text>
+              <Text style={styles.companyDetail}>{company?.address || ''}</Text>
+              <Text style={styles.companyDetail}>CR: {company?.cr_number || 'N/A'} | Phone: {company?.contact_phone || 'N/A'}</Text>
+              <Text style={styles.currencyDeclaration}>NOTE: ALL FINANCIAL VALUES ARE IN OMANI RIAL (OMR)</Text>
+            </View>
           </View>
           <View style={styles.reportMeta}>
             <Text style={styles.reportTitle}>Payroll Register</Text>

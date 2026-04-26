@@ -60,13 +60,11 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-md relative animate-slide-in-up">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary text-primary-foreground mb-4 shadow-lg shadow-primary/25">
-            <Flower className="w-8 h-8" />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Bright Flowers</h1>
-          <p className="text-muted-foreground mt-1">HR &amp; Payroll Management</p>
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-black tracking-widest text-slate-900 uppercase">
+            HR &amp; Payroll System
+          </h1>
+          <div className="h-1 w-12 bg-primary mx-auto mt-4 rounded-full" />
         </div>
 
         <Card className="border-0 shadow-xl shadow-black/5">

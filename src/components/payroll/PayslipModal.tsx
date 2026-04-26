@@ -145,6 +145,19 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
         { labelEN: 'SPECIAL ALLOWANCE', labelAR: 'بدل خاص', full: specialFull, actual: specialFull * factor },
         ...(siteFull > 0 ? [{ labelEN: 'SITE ALLOWANCE', labelAR: 'بدل موقع', full: siteFull, actual: siteFull * factor }] : []),
         ...(otherFull > 0 ? [{ labelEN: 'OTHER ALLOWANCE', labelAR: 'بدلات أخرى', full: otherFull, actual: otherFull * factor }] : []),
+        ...(Number(item?.overtime_hours) > 0 ? [{
+          labelEN: 'OVERTIME HOURS',
+          labelAR: 'ساعات العمل الإضافي',
+          full: 0,
+          actual: Number(item?.overtime_hours),
+          isHours: true
+        }] : []),
+        ...(Number(item?.overtime_pay) > 0 ? [{
+          labelEN: 'OVERTIME PAY',
+          labelAR: 'أجر العمل الإضافي',
+          full: 0,
+          actual: Number(item?.overtime_pay)
+        }] : []),
         {
           labelEN: 'LEAVE ENCASHMENT',
           labelAR: 'تقاضي الإجازة',
@@ -162,7 +175,19 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
         { labelEN: 'SPECIAL ALLOWANCE', labelAR: 'بدل خاص', full: employee.special_allowance || 0, actual: item.special_allowance || 0 },
         { labelEN: 'SITE ALLOWANCE', labelAR: 'بدل موقع', full: employee.site_allowance || 0, actual: item.site_allowance || 0 },
         { labelEN: 'OTHER ALLOWANCE', labelAR: 'بدلات أخرى', full: employee.other_allowance || 0, actual: item.other_allowance || 0 },
-        { labelEN: 'OVERTIME PAY', labelAR: 'عمل إضافي', full: 0, actual: item.overtime_pay || 0 },
+        ...(Number(item.overtime_hours) > 0 ? [{
+          labelEN: 'OVERTIME HOURS',
+          labelAR: 'ساعات العمل الإضافي',
+          full: 0,
+          actual: Number(item.overtime_hours),
+          isHours: true
+        }] : []),
+        ...(Number(item.overtime_pay) > 0 ? [{
+          labelEN: 'OVERTIME PAY',
+          labelAR: 'أجر العمل الإضافي',
+          full: 0,
+          actual: Number(item.overtime_pay)
+        }] : []),
       ].filter(e => e.actual > 0 || e.full > 0);
     }
   }, [type, employee, item, settlementWorkingDays, selectedLeave]);

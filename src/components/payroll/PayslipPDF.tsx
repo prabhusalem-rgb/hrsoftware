@@ -63,7 +63,17 @@ export function PayslipPDF({
     { label: 'SPECIAL ALLOWANCE', full: employee.special_allowance || 0, actual: item.special_allowance || 0 },
     { label: 'SITE ALLOWANCE', full: employee.site_allowance || 0, actual: item.site_allowance || 0 },
     { label: 'OTHER ALLOWANCE', full: employee.other_allowance || 0, actual: item.other_allowance || 0 },
-    { label: 'OVERTIME PAY', full: 0, actual: item.overtime_pay || 0 },
+    ...(Number(item.overtime_hours) > 0 ? [{
+      label: 'OVERTIME HOURS',
+      full: 0,
+      actual: Number(item.overtime_hours),
+      isHours: true
+    }] : []),
+    ...(Number(item.overtime_pay) > 0 ? [{
+      label: 'OVERTIME PAY',
+      full: 0,
+      actual: Number(item.overtime_pay)
+    }] : []),
   ].filter(e => e.actual > 0 || e.full > 0);
 
   const deductions = [
@@ -205,10 +215,10 @@ export function PayslipPDF({
               <View key={idx} style={[styles.tableRow, idx % 2 === 0 ? styles.tableRowAlt : {}]}>
                 <Text style={[styles.tableCell, { flex: 2.5 }]}>{earning.label}</Text>
                 <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', color: '#6B7280' }]}>
-                  {formatOMR(earning.full)}
+                  {earning.isHours ? '-' : formatOMR(earning.full)}
                 </Text>
-                <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', fontWeight: 'bold' }]}>
-                  {formatOMR(earning.actual)}
+                <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', fontWeight: 'bold', color: earning.isHours ? '#047857' : undefined }]}>
+                  {earning.isHours ? `${earning.actual.toFixed(1)} hrs` : formatOMR(earning.actual)}
                 </Text>
               </View>
             ))}

@@ -118,19 +118,19 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
               if (isSuperAdmin || isGlobalUser) {
                 const { data } = await supabase
                   .from('companies')
-                  .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone')
+                  .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone, logo_url, contact_email, bank_name, bank_account')
                   .order('name_en', { ascending: true });
                 companies = (data || []) as Company[];
               } else if (isCompanyAdmin && cached.company_id) {
                 const { data } = await supabase
                   .from('companies')
-                  .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone')
+                  .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone, logo_url, contact_email, bank_name, bank_account')
                   .eq('id', cached.company_id);
                 companies = (data || []) as Company[];
               } else if (cached.company_id) {
                 const { data } = await supabase
                   .from('companies')
-                  .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone')
+                  .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone, logo_url, contact_email, bank_name, bank_account')
                   .eq('id', cached.company_id);
                 companies = (data || []) as Company[];
               }
@@ -172,19 +172,19 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
           if (isSuperAdmin || isGlobalUser) {
             const { data } = await supabase
               .from('companies')
-              .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone')
+              .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone, logo_url, contact_email, bank_name, bank_account')
               .order('name_en', { ascending: true });
             companies = (data || []) as Company[];
           } else if (isCompanyAdmin && profileData.company_id) {
             const { data } = await supabase
               .from('companies')
-              .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone')
+              .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone, logo_url, contact_email, bank_name, bank_account')
               .eq('id', profileData.company_id);
             companies = (data || []) as Company[];
           } else if (profileData.company_id) {
             const { data } = await supabase
               .from('companies')
-              .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone')
+              .select('id, name_en, name_ar, wps_mol_id, cr_number, iban, address, contact_phone, logo_url, contact_email, bank_name, bank_account')
               .eq('id', profileData.company_id);
             companies = (data || []) as Company[];
           }

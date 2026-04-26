@@ -40,6 +40,11 @@ export function OfferLetterStatement({ company, candidate }: OfferLetterStatemen
         <div className="absolute -top-16 -left-16 h-32 w-1 bg-primary" />
 
         <div>
+          {company?.logo_url ? (
+            <div className="mb-4">
+              <img src={company.logo_url} alt="Company Logo" className="h-16 w-auto object-contain" />
+            </div>
+          ) : null}
           <h1 className="text-4xl font-black tracking-tighter text-slate-900 mb-2 uppercase italic">
             {company?.name_en || 'COMPANY NAME'}
           </h1>

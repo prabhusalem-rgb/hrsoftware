@@ -1,6 +1,6 @@
 'use client';
 
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Company } from '@/types';
 import { format } from 'date-fns';
 
@@ -55,9 +55,15 @@ export function OfferLetterPDF({ company, candidate }: OfferLetterPDFProps) {
         <View style={styles.header}>
           <View style={styles.headerContent}>
             <View style={styles.companyIdentity}>
-              <View style={styles.companyLogo}>
-                <Text style={styles.logoText}>{company?.name_en?.charAt(0) || 'C'}</Text>
-              </View>
+              {company?.logo_url ? (
+                <View style={styles.logoContainer}>
+                  <Image src={company.logo_url} style={styles.logoImage} />
+                </View>
+              ) : (
+                <View style={styles.companyLogo}>
+                  <Text style={styles.logoText}>{company?.name_en?.charAt(0) || 'C'}</Text>
+                </View>
+              )}
               <View style={styles.companyNameBlock}>
                 <Text style={styles.companyName}>{company?.name_en || 'COMPANY'}</Text>
                 {company?.trade_name && <Text style={styles.companyTrade}>{company.trade_name}</Text>}
@@ -251,6 +257,18 @@ function getStyles() {
     companyLogo: {
       width: 24, height: 24, borderRadius: 6, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center',
       marginRight: 6, shadowColor: BRAND, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowBlur: 2,
+    },
+    logoContainer: {
+      width: 40,
+      height: 40,
+      marginRight: 8,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    logoImage: {
+      width: '100%',
+      height: '100%',
+      objectFit: 'contain',
     },
     logoText: { color: 'white', fontSize: 13, fontWeight: 'bold' },
     companyNameBlock: {},

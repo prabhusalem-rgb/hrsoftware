@@ -985,7 +985,7 @@ export default function PayrollPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead><TableHead>Basic</TableHead><TableHead>Housing</TableHead>
-                  <TableHead>Transport</TableHead><TableHead>OT Pay</TableHead><TableHead>Gross</TableHead>
+                  <TableHead>Transport</TableHead><TableHead>OT Hours</TableHead><TableHead>OT Pay</TableHead><TableHead>Gross</TableHead>
                   <TableHead>Absent</TableHead><TableHead>Social Sec.</TableHead><TableHead>Leave Ded.</TableHead><TableHead>Loan Ded.</TableHead><TableHead>Total Ded.</TableHead>
                   <TableHead>Net Salary</TableHead>
                   {selectedItems.some(i => i.eosb_amount > 0) && <><TableHead>EOSB</TableHead><TableHead>Leave Encash</TableHead><TableHead>Final Total</TableHead></>}
@@ -999,6 +999,7 @@ export default function PayrollPage() {
                     <TableCell>{Number(item.basic_salary).toFixed(3)}</TableCell>
                     <TableCell>{Number(item.housing_allowance).toFixed(3)}</TableCell>
                     <TableCell>{Number(item.transport_allowance).toFixed(3)}</TableCell>
+                    <TableCell className="font-medium text-emerald-600">{Number(item.overtime_hours).toFixed(1)} hrs</TableCell>
                     <TableCell>{Number(item.overtime_pay).toFixed(3)}</TableCell>
                     <TableCell className="font-medium">{Number(item.gross_salary).toFixed(3)}</TableCell>
                     <TableCell>{item.absent_days > 0 ? <Badge className="bg-red-100 text-red-700 border-0">{item.absent_days}d</Badge> : '—'}</TableCell>
@@ -1028,6 +1029,7 @@ export default function PayrollPage() {
                   <TableCell>{selectedItems.reduce((s, i) => s + Number(i.basic_salary), 0).toFixed(3)}</TableCell>
                   <TableCell>{selectedItems.reduce((s, i) => s + Number(i.housing_allowance), 0).toFixed(3)}</TableCell>
                   <TableCell>{selectedItems.reduce((s, i) => s + Number(i.transport_allowance), 0).toFixed(3)}</TableCell>
+                  <TableCell className="font-medium text-emerald-600">{selectedItems.reduce((s, i) => s + Number(i.overtime_hours), 0).toFixed(1)} hrs</TableCell>
                   <TableCell>{selectedItems.reduce((s, i) => s + Number(i.overtime_pay), 0).toFixed(3)}</TableCell>
                   <TableCell>{selectedItems.reduce((s, i) => s + Number(i.gross_salary), 0).toFixed(3)}</TableCell>
                   <TableCell></TableCell>

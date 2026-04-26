@@ -13,7 +13,8 @@ import { OfferLetterStatement } from './OfferLetterStatement';
 import { OfferLetterPDF } from './OfferLetterPDF';
 import { toast } from 'sonner';
 import { EmployeeFormData, Nationality } from '@/types';
-import { pdf } from '@react-pdf/renderer';
+// pdf is imported dynamically in PDF generation handlers to reduce initial bundle size
+// import { pdf } from '@react-pdf/renderer';
 import { createClient } from '@/lib/supabase/client';
 
 interface OfferLetterWizardProps {
@@ -163,7 +164,9 @@ export function OfferLetterWizard({ isOpen, onClose, onCreate }: OfferLetterWiza
 
   const handleExportPDF = async () => {
     if (!activeCompany) return;
+    console.log('[OfferLetterWizard] activeCompany logo_url:', activeCompany.logo_url ? 'SET' : 'NOT SET', activeCompany.name_en);
     try {
+      const { pdf } = await import('@react-pdf/renderer');
       const doc = (
         <OfferLetterPDF
           company={activeCompany}
@@ -189,6 +192,7 @@ export function OfferLetterWizard({ isOpen, onClose, onCreate }: OfferLetterWiza
   const handleQuickPrint = async () => {
     if (!activeCompany) return;
     try {
+      const { pdf } = await import('@react-pdf/renderer');
       const doc = (
         <OfferLetterPDF
           company={activeCompany}
@@ -229,6 +233,7 @@ export function OfferLetterWizard({ isOpen, onClose, onCreate }: OfferLetterWiza
           URL.revokeObjectURL(pdfBlobUrlRef.current);
         }
 
+        const { pdf } = await import('@react-pdf/renderer');
         const doc = (
           <OfferLetterPDF
             company={activeCompany}

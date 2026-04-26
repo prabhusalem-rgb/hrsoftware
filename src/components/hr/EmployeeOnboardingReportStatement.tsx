@@ -27,6 +27,11 @@ export function EmployeeOnboardingReportStatement({ company, employee }: Employe
       {/* Header */}
       <div className="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
         <div>
+          {company?.logo_url && (
+            <div className="mb-4">
+              <img src={company.logo_url} alt="Company Logo" className="h-16 w-auto object-contain" />
+            </div>
+          )}
           <h1 className="text-3xl font-black tracking-tighter text-slate-900 mb-1">{company?.name_en || 'COMPANY NAME'}</h1>
           {company?.trade_name && (
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">{company.trade_name}</p>

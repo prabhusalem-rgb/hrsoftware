@@ -18,10 +18,13 @@ import {
 } from 'lucide-react';
 import { useEmployees } from '@/hooks/queries/useEmployees';
 import { useCompany } from '@/components/providers/CompanyProvider';
-import { OfferLetterWizard } from '@/components/hr/OfferLetterWizard';
+import dynamic from 'next/dynamic';
+const OfferLetterWizard = dynamic(() => import('@/components/hr/OfferLetterWizard').then(mod => mod.OfferLetterWizard), { ssr: false });
+const RegistrationWizard = dynamic(() => import('@/components/hr/RegistrationWizard').then(mod => mod.RegistrationWizard), { ssr: false });
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
 import { toast } from 'sonner';
-import { RegistrationWizard } from '@/components/hr/RegistrationWizard';
+// import { OfferLetterWizard } from '@/components/hr/OfferLetterWizard';
+// import { RegistrationWizard } from '@/components/hr/RegistrationWizard';
 import { Employee, EmployeeFormData } from '@/types';
 
 export default function OnboardingDashboard() {

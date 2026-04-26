@@ -12,7 +12,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Bright Flowers HR & Payroll",
+  title: "HR & Payroll Management",
   description:
     "Professional HR & Payroll management system designed by Kumaresan. Compliant with Oman Labour Law and Bank Muscat WPS standards.",
   keywords: ["Bright Flowers", "HR", "Payroll", "Oman", "WPS", "Bank Muscat", "Labour Law", "SaaS"],

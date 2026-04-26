@@ -50,7 +50,7 @@ export async function sendSettlementConfirmationEmail(data: SettlementEmailData)
       <body>
         <div class="header">
           <h2 style="margin: 0;">Final Settlement Statement</h2>
-          <p style="margin: 4px 0 0; opacity: 0.8;">${data.companyName || 'Bright Flowers HR & Payroll'}</p>
+          <p style="margin: 4px 0 0; opacity: 0.8;">${data.companyName || 'HR & Payroll System'}</p>
         </div>
         <div class="content">
           <p>A final settlement has been processed for the following employee:</p>
@@ -76,7 +76,7 @@ export async function sendSettlementConfirmationEmail(data: SettlementEmailData)
           </p>
         </div>
         <div class="footer">
-          © ${new Date().getFullYear()} — ${data.companyName || 'Bright Flowers HR & Payroll'}
+          © ${new Date().getFullYear()} — ${data.companyName || 'HR & Payroll System'}
         </div>
       </body>
     </html>
@@ -152,7 +152,7 @@ export async function sendUserWelcomeEmail(email: string, password: string, full
       <body>
         <div class="header">
           <h2 style="margin: 0;">Welcome, ${fullName}</h2>
-          <p style="margin: 4px 0 0; opacity: 0.8;">Bright Flowers HR & Payroll System</p>
+          <p style="margin: 4px 0 0; opacity: 0.8;">HR & Payroll System</p>
         </div>
         <div class="content">
           <p>An account has been created for you. You can now log in to the HR & Payroll dashboard using the credentials below:</p>
@@ -174,14 +174,14 @@ export async function sendUserWelcomeEmail(email: string, password: string, full
           </p>
         </div>
         <div class="footer">
-          © ${new Date().getFullYear()} — Bright Flowers HR & Payroll
+          © ${new Date().getFullYear()} — HR & Payroll System
         </div>
       </body>
     </html>
   `;
 
   const textBody = `
-Welcome to Bright Flowers HR & Payroll, ${fullName}!
+Welcome to the HR & Payroll System, ${fullName}!
 
 An account has been created for you.
 

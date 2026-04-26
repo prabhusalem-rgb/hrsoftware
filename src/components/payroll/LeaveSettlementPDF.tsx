@@ -16,7 +16,7 @@ interface LeaveSettlementPDFProps {
     working_days: number;
     last_salary_month: string;
     settlement_date: string;
-    earnings: { label: string; full: number; actual: number }[];
+    earnings: { label: string; full: number; actual: number; isHours?: boolean }[];
     deductions: { label: string; actual: number }[];
     net_pay: number;
     notes?: string;
@@ -161,8 +161,12 @@ export function LeaveSettlementPDF({
           {earnings.map((item, idx) => (
             <View key={idx} style={styles.tableRow}>
               <Text style={[styles.tableCell, { flex: 2.5, fontWeight: 500 }]}>{item.label}</Text>
-              <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right' }]}>{formatOMR(item.full)}</Text>
-              <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', fontWeight: 700 }]}>{formatOMR(item.actual)}</Text>
+              <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', color: item.isHours ? '#6B7280' : undefined }]}>
+                {item.isHours ? '-' : formatOMR(item.full)}
+              </Text>
+              <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', fontWeight: 700, color: item.isHours ? '#059669' : undefined }]}>
+                {item.isHours ? `${item.actual.toFixed(1)} hrs` : formatOMR(item.actual)}
+              </Text>
             </View>
           ))}
           {/* Deductions Section (if any) */}
