@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
     }, supabaseAdmin).catch(console.error);
 
     // Send email notification to employee (fire and forget)
-    const signingLink = `${APP_URL}/renew-contract/${inserted.secure_token}`;
+    const signingLink = `${APP_URL}/renew-contract/${encodeURIComponent(inserted.secure_token)}`;
     const employeeEmail = employee.email;
 
     if (employeeEmail) {

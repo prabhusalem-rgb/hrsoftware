@@ -46,8 +46,11 @@ import { generateWPSSIF, generateWPSFileName, calculateExportAmounts, isValidEmp
 import { EmployeePicker } from '@/components/employees/EmployeePicker';
 import { toast } from 'sonner';
 import { UserCheck } from 'lucide-react';
-import { RejoinDialog } from '@/components/employees/RejoinDialog';
-import { ManualAdjustmentModal } from '@/components/payroll/ManualAdjustmentModal';
+// import { RejoinDialog } from '@/components/employees/RejoinDialog';
+// import { ManualAdjustmentModal } from '@/components/payroll/ManualAdjustmentModal';
+
+const RejoinDialog = dynamic(() => import('@/components/employees/RejoinDialog').then(mod => mod.RejoinDialog), { ssr: false });
+const ManualAdjustmentModal = dynamic(() => import('@/components/payroll/ManualAdjustmentModal').then(mod => mod.ManualAdjustmentModal), { ssr: false });
 import { generatePayrollExcel, type PayrollReportData } from '@/lib/payroll-reports';
 import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';

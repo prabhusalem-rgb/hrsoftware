@@ -26,21 +26,25 @@ import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
 import { useSalaryRevisions } from '@/hooks/queries/useSalaryRevisions';
 import { useLeaveBalances } from '@/hooks/queries/useLeaveBalances';
 import { Employee, EmployeeStatus, EmployeeFormData, EmployeeCategory, LeaveBalance } from '@/types';
-import { RejoinDialog } from '@/components/employees/RejoinDialog';
-import { AppraisalDialog } from '@/components/employees/AppraisalDialog';
-import { SalaryHistoryTable } from '@/components/employees/SalaryHistoryTable';
-import { toast } from 'sonner';
-import { JoiningReportStatement } from '@/components/hr/JoiningReportStatement';
-import { EmployeeOnboardingReportStatement } from '@/components/hr/EmployeeOnboardingReportStatement';
-import { downloadJoiningReportPDF, downloadEmployeeOnboardingReportPDF, downloadRejoiningReportPDF, generateRejoiningReportPDF } from '@/lib/pdf-utils';
-import { ImportEmployeesDialog } from '@/components/employees/ImportEmployeesDialog';
-import { EmployeeProfileCard } from '@/components/employees/EmployeeProfileCard';
-import { EmployeeEditSheet } from '@/components/employees/EmployeeEditSheet';
+// import { RejoinDialog } from '@/components/employees/RejoinDialog';
+// import { AppraisalDialog } from '@/components/employees/AppraisalDialog';
+// import { ImportEmployeesDialog } from '@/components/employees/ImportEmployeesDialog';
+// import { EmployeeEditSheet } from '@/components/employees/EmployeeEditSheet';
 
-// Dynamic imports for heavy PDF components (only loaded when needed)
+// Dynamic imports for heavy components (only loaded when needed)
 import dynamic from 'next/dynamic';
 
-// RejoiningReportPDF is imported via pdf-utils for PDF generation
+const RejoinDialog = dynamic(() => import('@/components/employees/RejoinDialog').then(mod => mod.RejoinDialog), { ssr: false });
+const AppraisalDialog = dynamic(() => import('@/components/employees/AppraisalDialog').then(mod => mod.AppraisalDialog), { ssr: false });
+const ImportEmployeesDialog = dynamic(() => import('@/components/employees/ImportEmployeesDialog').then(mod => mod.ImportEmployeesDialog), { ssr: false });
+const EmployeeEditSheet = dynamic(() => import('@/components/employees/EmployeeEditSheet').then(mod => mod.EmployeeEditSheet), { ssr: false });
+const JoiningReportStatement = dynamic(() => import('@/components/hr/JoiningReportStatement').then(mod => mod.JoiningReportStatement), { ssr: false });
+const EmployeeOnboardingReportStatement = dynamic(() => import('@/components/hr/EmployeeOnboardingReportStatement').then(mod => mod.EmployeeOnboardingReportStatement), { ssr: false });
+
+import { SalaryHistoryTable } from '@/components/employees/SalaryHistoryTable';
+import { toast } from 'sonner';
+import { downloadJoiningReportPDF, downloadEmployeeOnboardingReportPDF, downloadRejoiningReportPDF, generateRejoiningReportPDF } from '@/lib/pdf-utils';
+import { EmployeeProfileCard } from '@/components/employees/EmployeeProfileCard';
 
 const statusColors: Record<EmployeeStatus, string> = {
   active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',

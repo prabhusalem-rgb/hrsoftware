@@ -93,7 +93,7 @@ export default function ContractRenewalListPage() {
   };
 
   const copyLink = (token: string) => {
-    const url = `${window.location.origin}/renew-contract/${token}`;
+    const url = `${window.location.origin}/renew-contract/${encodeURIComponent(token)}`;
     navigator.clipboard.writeText(url);
     toast.success('Signing link copied to clipboard');
   };
@@ -209,7 +209,7 @@ export default function ContractRenewalListPage() {
                           variant="ghost"
                           size="sm"
                           className="h-8 px-2"
-                          onClick={() => window.open(`/renew-contract/${renewal.secure_token}`, '_blank')}
+                          onClick={() => window.open(`/renew-contract/${encodeURIComponent(renewal.secure_token)}`, '_blank')}
                           title="View public page"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
