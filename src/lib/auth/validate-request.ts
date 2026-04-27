@@ -34,6 +34,7 @@ export async function validateRequest() {
   } = await supabase.auth.getUser();
 
   if (error || !user) {
+    console.log('[ValidateRequest] No user found:', error?.message || 'No user in session');
     return { request: null };
   }
 
@@ -60,6 +61,10 @@ export async function validateRequest() {
     .select('id, full_name, email, role, company_id')
     .eq('id', user.id)
     .single();
+
+  if (!profile) {
+    console.warn('[ValidateRequest] Profile not found for user:', user.id, user.email);
+  }
 
   return {
     request: {

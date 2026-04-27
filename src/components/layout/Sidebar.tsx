@@ -44,6 +44,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     ] : []),
     { label: 'Employees', href: '/dashboard/employees', icon: UserCircle },
     { label: 'Onboarding', href: '/dashboard/onboarding', icon: UserPlus },
+    { label: 'Contract Renewals', href: '/dashboard/contract-renewal', icon: ClipboardCheck },
     { type: 'separator' as const, label: 'HR Operations' },
     { label: 'Leave Management', href: '/dashboard/leaves', icon: CalendarDays },
     { label: 'Loan Management', href: '/dashboard/loans', icon: Wallet },

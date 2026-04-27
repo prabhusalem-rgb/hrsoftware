@@ -9,12 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calculator, User, ChevronRight, Printer, FileText, BadgeCheck, Plus, Minus, FileDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useCompany } from '@/components/providers/CompanyProvider';
-import { OfferLetterStatement } from './OfferLetterStatement';
-import { OfferLetterPDF } from './OfferLetterPDF';
+// OfferLetterPDF and pdf from @react-pdf/renderer are imported dynamically when needed
 import { toast } from 'sonner';
 import { EmployeeFormData, Nationality } from '@/types';
-// pdf is imported dynamically in PDF generation handlers to reduce initial bundle size
-// import { pdf } from '@react-pdf/renderer';
 import { createClient } from '@/lib/supabase/client';
 
 interface OfferLetterWizardProps {
@@ -166,7 +163,10 @@ export function OfferLetterWizard({ isOpen, onClose, onCreate }: OfferLetterWiza
     if (!activeCompany) return;
     console.log('[OfferLetterWizard] activeCompany logo_url:', activeCompany.logo_url ? 'SET' : 'NOT SET', activeCompany.name_en);
     try {
-      const { pdf } = await import('@react-pdf/renderer');
+      const [{ pdf }, { OfferLetterPDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./OfferLetterPDF')
+      ]);
       const doc = (
         <OfferLetterPDF
           company={activeCompany}
@@ -192,7 +192,10 @@ export function OfferLetterWizard({ isOpen, onClose, onCreate }: OfferLetterWiza
   const handleQuickPrint = async () => {
     if (!activeCompany) return;
     try {
-      const { pdf } = await import('@react-pdf/renderer');
+      const [{ pdf }, { OfferLetterPDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./OfferLetterPDF')
+      ]);
       const doc = (
         <OfferLetterPDF
           company={activeCompany}
@@ -233,7 +236,10 @@ export function OfferLetterWizard({ isOpen, onClose, onCreate }: OfferLetterWiza
           URL.revokeObjectURL(pdfBlobUrlRef.current);
         }
 
-        const { pdf } = await import('@react-pdf/renderer');
+        const [{ pdf }, { OfferLetterPDF }] = await Promise.all([
+          import('@react-pdf/renderer'),
+          import('./OfferLetterPDF')
+        ]);
         const doc = (
           <OfferLetterPDF
             company={activeCompany}

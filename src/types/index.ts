@@ -810,3 +810,81 @@ export type {
   SettlementStep,
   SettlementPayrollPayload,
 } from './settlement';
+
+// --- Contract Renewal ---
+export type ContractRenewalStatus = 'pending' | 'signed' | 'supervisor_approved' | 'manager_approved' | 'hr_approved' | 'rejected';
+
+export type ContractRenewalAction = 'employee_sign' | 'supervisor_approve' | 'manager_sign' | 'hr_approve' | 'reject';
+
+export interface ContractRenewal {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  status: ContractRenewalStatus;
+  secure_token: string;
+  renewal_period_years: number;
+
+  // Salary Breakdown
+  basic_salary: number;
+  housing_allowance: number;
+  transport_allowance: number;
+  food_allowance: number;
+  special_allowance: number;
+  site_allowance: number;
+  other_allowance: number;
+  gross_salary: number;
+
+  // Signatures and Timestamps
+  employee_signature_url: string | null;
+  employee_signed_at: string | null;
+  employee_signature_ip: string | null;
+  employee_signature_user_agent: string | null;
+
+  // Approval Flow
+  supervisor_id: string | null;
+  supervisor_comments: string | null;
+  supervisor_approved_at: string | null;
+
+  manager_id: string | null;
+  manager_signature_url: string | null;
+  manager_approved_at: string | null;
+
+  hr_id: string | null;
+  hr_approved_at: string | null;
+  hr_signature_url: string | null;
+  hr_signed_at: string | null;
+
+  // Final Document
+  signed_pdf_url: string | null;
+
+  // Metadata
+  rejection_reason: string | null;
+  expires_at: string | null;
+  version: number;
+
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+
+  employee?: Employee;
+  company?: Company;
+}
+
+export interface ContractRenewalFormData {
+  employee_id: string;
+  renewal_period_years: number;
+  basic_salary: number;
+  housing_allowance: number;
+  transport_allowance: number;
+  food_allowance: number;
+  special_allowance: number;
+  site_allowance: number;
+  other_allowance: number;
+}
+
+export interface ContractRenewalApprovalPayload {
+  action: ContractRenewalAction;
+  signature_data_url?: string;
+  comments?: string;
+  rejection_reason?: string;
+}

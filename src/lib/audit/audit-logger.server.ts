@@ -29,7 +29,9 @@ export type AuditAction =
   | 'mark_failed'
   | 'reset'
   | 'bulk_operation'
-  | 'system_event';
+  | 'system_event'
+  | 'employee_sign'
+  | 'supervisor_approve';
 
 export interface AuditLogMetadata {
   ip_address?: string;
