@@ -35,14 +35,17 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // If user is not signed in and tries to access dashboard routes, redirect to login
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/register') &&
-    !request.nextUrl.pathname.startsWith('/auth') &&
-    !request.nextUrl.pathname.startsWith('/renew-contract') &&
-    request.nextUrl.pathname !== '/'
-  ) {
+  const pathname = request.nextUrl.pathname;
+  const isPublicContractRenewalAPI = /^\/api\/contract-renewal\/[^\/]+$/.test(pathname);
+  const isExempt =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/register') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/renew-contract') ||
+    isPublicContractRenewalAPI ||
+    pathname === '/';
+
+  if (!user && !isExempt) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);

@@ -5,7 +5,20 @@
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@yourcompany.com';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+// Normalize APP_URL to ensure it's a valid absolute URL without trailing slash
+function getAppUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  try {
+    const parsed = new URL(raw);
+    // Remove trailing slash for consistent URL construction
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    // Fallback to localhost if invalid
+    return 'http://localhost:3000';
+  }
+}
+const APP_URL = getAppUrl();
 
 // ============================================================
 // Settlement Emails

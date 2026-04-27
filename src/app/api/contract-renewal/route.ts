@@ -8,7 +8,18 @@ import { v4 as uuidv4 } from 'uuid';
 import { sendContractRenewalRequestEmail } from '@/lib/utils/email';
 
 const ENTITY = 'contract_renewal';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+// Normalize APP_URL to ensure it's a valid absolute URL without trailing slash
+function getAppUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  try {
+    const parsed = new URL(raw);
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return 'http://localhost:3000';
+  }
+}
+const APP_URL = getAppUrl();
 
 function jsonError(message: string, status: number = 400) {
   return NextResponse.json({ error: message }, { status });
