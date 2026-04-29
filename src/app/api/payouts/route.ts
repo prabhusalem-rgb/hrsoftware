@@ -102,6 +102,8 @@ export async function GET(req: NextRequest) {
         is_salary_held,
         salary_hold_reason,
         salary_hold_at,
+        allowance_note,
+        deduction_note,
         created_at,
         updated_at,
         employee:employees(

@@ -299,6 +299,27 @@ export function PayslipPDF({
           </View>
         )}
 
+        {/* Adjustment Notes Section */}
+        {(item.allowance_note || item.deduction_note) && (
+          <View style={styles.notesSection}>
+            <Text style={[styles.notesTitle, { backgroundColor: '#8B5CF6' }]}>ADJUSTMENT NOTES</Text>
+            <View style={styles.notesContent}>
+              {item.allowance_note && (
+                <View style={styles.noteRow}>
+                  <Text style={[styles.noteLabel, { color: '#047857' }]}>Allowance Note:</Text>
+                  <Text style={styles.noteText}>{item.allowance_note}</Text>
+                </View>
+              )}
+              {item.deduction_note && (
+                <View style={styles.noteRow}>
+                  <Text style={[styles.noteLabel, { color: '#B91C1C' }]}>Deduction Note:</Text>
+                  <Text style={styles.noteText}>{item.deduction_note}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Net Pay Section */}
         <View style={styles.netPaySection}>
           <View style={[styles.netPayHeader, { backgroundColor: primaryColor }]}>
@@ -520,6 +541,48 @@ const getStyles = (primaryColor: string) => StyleSheet.create({
     paddingVertical: 1,
     borderRadius: 2,
     fontSize: 8,
+  },
+
+  // ============== NOTES SECTION ==============
+  notesSection: {
+    marginBottom: 10,
+  },
+  notesTitle: {
+    fontSize: 8.5,
+    fontFamily: 'Helvetica',
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    padding: 5,
+    textAlign: 'center',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    backgroundColor: '#8B5CF6',
+    borderRadius: 3,
+    marginBottom: 1,
+  },
+  notesContent: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 3,
+    padding: 6,
+  },
+  noteRow: {
+    marginBottom: 4,
+  },
+  noteLabel: {
+    fontSize: 7,
+    fontFamily: 'Helvetica',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  noteText: {
+    fontSize: 8,
+    fontFamily: 'Helvetica',
+    color: '#1F2937',
+    lineHeight: 1.3,
   },
 
   // ============== TABLES ==============

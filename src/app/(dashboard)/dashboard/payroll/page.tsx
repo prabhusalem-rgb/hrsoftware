@@ -212,10 +212,34 @@ export default function PayrollPage() {
     };
 
     // Use the refetched employees data
-    const eligibleEmployees = (employeesQuery.data ?? []).filter(e =>
+    let eligibleEmployees = (employeesQuery.data ?? []).filter(e =>
       eligibleStatuses.includes(e.status) &&
       (processCategory === 'all' || normalizeCat(e.category) === processCategory)
     );
+
+    // Exclude employees who already have a leave_settlement or final_settlement for this month/year
+    // Data-driven check to prevent duplicate payments even if cached status is stale
+    const { data: settlementRuns } = await supabase
+      .from('payroll_runs')
+      .select('id')
+      .in('type', ['leave_settlement', 'final_settlement'])
+      .eq('month', processMonth)
+      .eq('year', processYear);
+
+    const settlementRunIds = (settlementRuns || []).map((r: any) => r.id);
+
+    if (settlementRunIds.length > 0) {
+      const { data: settlementItems } = await supabase
+        .from('payroll_items')
+        .select('employee_id')
+        .in('payroll_run_id', settlementRunIds);
+
+      const settledEmployeeIds = new Set(
+        (settlementItems || []).map((s: any) => s.employee_id)
+      );
+
+      eligibleEmployees = eligibleEmployees.filter(e => !settledEmployeeIds.has(e.id));
+    }
 
     if (eligibleEmployees.length === 0) {
       toast.error('No eligible employees found in the selected category. Ensure employees are Active, on Probation, or on Leave.');
@@ -225,7 +249,7 @@ export default function PayrollPage() {
     setAdjustmentModalOpen(true);
   };
 
-  const finalizeProcessPayroll = async (adjustments: Record<string, { allowance: number, deduction: number }>) => {
+  const finalizeProcessPayroll = async (adjustments: Record<string, { allowance: number, deduction: number, allowanceNote?: string, deductionNote?: string }>) => {
     setProcessing(true);
     setProcessingProgress(0);
     try {
@@ -250,8 +274,40 @@ export default function PayrollPage() {
         eligibleStatuses.includes(e.status) &&
         (processCategory === 'all' || normalizeCat(e.category) === processCategory)
       );
-      
-      if (activeEmployees.length === 0) {
+
+      // Exclude employees who already have a leave_settlement or final_settlement for this month/year
+      // Fetch settlement run IDs for this month/year
+      const { data: settlementRuns } = await supabase
+        .from('payroll_runs')
+        .select('id')
+        .in('type', ['leave_settlement', 'final_settlement'])
+        .eq('month', processMonth)
+        .eq('year', processYear);
+
+      const settlementRunIds = (settlementRuns || []).map((r: any) => r.id);
+
+      let eligibleEmployees = activeEmployees;
+
+      if (settlementRunIds.length > 0) {
+        const { data: settlementItems } = await supabase
+          .from('payroll_items')
+          .select('employee_id')
+          .in('payroll_run_id', settlementRunIds);
+
+        const settledEmployeeIds = new Set(
+          (settlementItems || []).map((s: any) => s.employee_id)
+        );
+
+        // Filter out already-settled employees
+        eligibleEmployees = activeEmployees.filter(e => !settledEmployeeIds.has(e.id));
+      }
+
+      if (eligibleEmployees.length === 0) {
+        toast.error('No eligible employees found in the selected category.');
+        return;
+      }
+
+      if (eligibleEmployees.length === 0) {
         toast.error('No eligible employees found in the selected category.');
         return;
       }
@@ -269,7 +325,7 @@ export default function PayrollPage() {
           const empLoan = (loansData || []).find(l => l.employee_id === emp.id && l.status === 'active');
           const empRepayment = (repaymentsData || []).find(r => r.loan_id === empLoan?.id && r.month === processMonth && r.year === processYear);
 
-          const adj = adjustments[emp.id] || { allowance: 0, deduction: 0 };
+          const adj = adjustments[emp.id] || { allowance: 0, deduction: 0, allowanceNote: '', deductionNote: '' };
 
           // Filter revisions for this employee
           const empRevisions = payrollRevisions.filter(r => r.employee_id === emp.id);
@@ -317,6 +373,8 @@ export default function PayrollPage() {
             payout_status: emp.is_salary_held ? 'held' : 'pending',
             hold_reason: emp.is_salary_held ? emp.salary_hold_reason : null,
             hold_placed_at: emp.is_salary_held ? emp.salary_hold_at || new Date().toISOString() : null,
+            allowance_note: adj.allowanceNote || null,
+            deduction_note: adj.deductionNote || null,
             created_at: new Date().toISOString(),
             loan_schedule_id: empRepayment?.id || null,
           };

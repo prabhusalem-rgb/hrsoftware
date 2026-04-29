@@ -463,6 +463,9 @@ export interface PayrollItem {
   hold_extension_reason?: string | null;
   // WPS export override for partial payments
   wps_export_override?: number | null;
+  // Manual adjustment notes
+  allowance_note?: string | null;
+  deduction_note?: string | null;
   created_at: string;
   employee?: Employee;
 }

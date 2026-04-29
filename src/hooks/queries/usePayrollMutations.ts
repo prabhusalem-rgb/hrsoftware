@@ -63,39 +63,42 @@ export function usePayrollMutations(companyId: string) {
         }
 
         if (run.type === 'final_settlement' || run.type === 'leave_settlement') {
-          if (run.type === 'final_settlement') {
-            const { error } = await supabase
-              .from('loans')
-              .update({ status: 'completed', balance_remaining: 0 })
-              .eq('employee_id', item.employee_id)
-              .eq('status', 'active');
-            if (error) throw error;
-          } else if (run.type === 'leave_settlement') {
-            const includeActive = item.includeActiveLoans ?? true;
-            const includePending = item.includePendingLoans ?? false;
-
-            if (includeActive && includePending) {
-              const { error } = await supabase
-                .from('loans')
-                .update({ status: 'completed', balance_remaining: 0 })
-                .eq('employee_id', item.employee_id)
-                .gt('balance_remaining', 0);
-              if (error) throw error;
-            } else if (includeActive) {
+          // Only close loans if a loan deduction was actually taken in this settlement
+          if (Number(item.loan_deduction || 0) > 0) {
+            if (run.type === 'final_settlement') {
               const { error } = await supabase
                 .from('loans')
                 .update({ status: 'completed', balance_remaining: 0 })
                 .eq('employee_id', item.employee_id)
                 .eq('status', 'active');
               if (error) throw error;
-            } else if (includePending) {
-              const { error } = await supabase
-                .from('loans')
-                .update({ status: 'completed', balance_remaining: 0 })
-                .eq('employee_id', item.employee_id)
-                .gt('balance_remaining', 0)
-                .neq('status', 'active');
-              if (error) throw error;
+            } else if (run.type === 'leave_settlement') {
+              const includeActive = item.includeActiveLoans ?? true;
+              const includePending = item.includePendingLoans ?? false;
+
+              if (includeActive && includePending) {
+                const { error } = await supabase
+                  .from('loans')
+                  .update({ status: 'completed', balance_remaining: 0 })
+                  .eq('employee_id', item.employee_id)
+                  .gt('balance_remaining', 0);
+                if (error) throw error;
+              } else if (includeActive) {
+                const { error } = await supabase
+                  .from('loans')
+                  .update({ status: 'completed', balance_remaining: 0 })
+                  .eq('employee_id', item.employee_id)
+                  .eq('status', 'active');
+                if (error) throw error;
+              } else if (includePending) {
+                const { error } = await supabase
+                  .from('loans')
+                  .update({ status: 'completed', balance_remaining: 0 })
+                  .eq('employee_id', item.employee_id)
+                  .gt('balance_remaining', 0)
+                  .neq('status', 'active');
+                if (error) throw error;
+              }
             }
           }
         }
@@ -372,7 +375,77 @@ export function usePayrollMutations(companyId: string) {
         }
       }
 
-      // Step 5: Revert final_settlement changes (loan closures + leave balance)
+      // Step 5: Revert loan_schedule status for monthly payroll runs
+      // When a payroll item with loan_deduction > 0 is deleted, the corresponding
+      // loan installment needs to be marked as "scheduled" again.
+      if (run.type === 'monthly' && items.length > 0) {
+        const monthlyItems = items as any[];
+        const loanScheduleIds = Array.from(new Set(
+          monthlyItems
+            .map(item => item.loan_schedule_id)
+            .filter((id: string | null) => id != null)
+        ));
+
+        if (loanScheduleIds.length > 0) {
+          console.log('[Loan Revert] Monthly run delete: checking', loanScheduleIds.length, 'loan schedule entries');
+
+          for (const scheduleId of loanScheduleIds) {
+            // Check if any OTHER payroll items (from different runs) reference this schedule item
+            const { data: otherItems } = await supabase
+              .from('payroll_items')
+              .select('id')
+              .eq('loan_schedule_id', scheduleId)
+              .neq('payroll_run_id', runId)
+              .eq('loan_deduction', '>', 0)
+              .limit(1);
+
+            if (!otherItems || otherItems.length === 0) {
+              // Safe to revert — no other payroll run paid this installment
+              const { data: schedule } = await supabase
+                .from('loan_schedule')
+                .select('id, loan_id, installment_no, paid_amount')
+                .eq('id', scheduleId)
+                .single();
+
+              if (schedule && schedule.paid_amount > 0) {
+                const { error: revertError } = await supabase
+                  .from('loan_schedule')
+                  .update({
+                    status: 'scheduled',
+                    paid_amount: 0,
+                    paid_date: null,
+                    payment_method: null,
+                    payment_reference: null,
+                  })
+                  .eq('id', scheduleId);
+
+                if (revertError) {
+                  console.error('[Loan Revert] Failed for', scheduleId, ':', revertError.message);
+                } else {
+                  console.log('[Loan Revert] Restored loan installment:', scheduleId, '(loan:', schedule.loan_id?.substring(0,8), 'inst#', schedule.installment_no, ')');
+
+                  // Record the reversal in loan_history
+                  await supabase.from('loan_history').insert({
+                    loan_id: schedule.loan_id,
+                    company_id: run.company_id,
+                    action: 'installment_unpaid',
+                    field_name: 'status',
+                    old_value: JSON.stringify({ status: 'paid', paid_amount: schedule.paid_amount }),
+                    new_value: JSON.stringify({ status: 'scheduled', paid_amount: 0 }),
+                    changed_by: profile?.id || user.id,
+                    change_reason: `Payroll run ${runId.substring(0,8)}... deleted — installment restored`,
+                    created_at: new Date().toISOString()
+                  }).catch(console.error);
+                }
+              }
+            } else {
+              console.log('[Loan Revert] Skipping', scheduleId, '- still referenced by another payroll item');
+            }
+          }
+        }
+      }
+
+      // Step 6: Revert final_settlement changes (loan closures + leave balance)
       if (run.type === 'final_settlement' && items.length > 0) {
         const employeeIds = Array.from(new Set((items as any[]).map(i => i.employee_id).filter(Boolean)));
 

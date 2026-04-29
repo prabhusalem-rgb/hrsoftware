@@ -220,7 +220,9 @@ export function useLeaveMutations(companyId: string) {
         .maybeSingle();
 
       if (fetchError) throw new Error(fetchError.message || 'Failed to fetch leave');
-      if (!leave) throw new Error('Leave not found');
+
+      // If leave doesn't exist, it's already deleted — treat as success (idempotent)
+      if (!leave) return;
 
       if (leave.settlement_status === 'settled') {
         throw new Error(
@@ -234,20 +236,34 @@ export function useLeaveMutations(companyId: string) {
 
       // Restore balance and reset employee status on deletion
       // 1. Restore Balance
-      const { data: balance, error: balError } = await supabase
-        .from('leave_balances')
-        .select('id, used')
-        .eq('employee_id', leave.employee_id)
-        .eq('leave_type_id', leave.leave_type_id)
-        .order('year', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!balError && balance) {
-        await supabase
+      if (leave.status === 'approved' || leave.status === 'pending') {
+        const { data: balance, error: balError } = await supabase
           .from('leave_balances')
-          .update({ used: Math.max(0, Number(balance.used) - Number(leave.days)) })
-          .eq('id', balance.id);
+          .select('id, used')
+          .eq('employee_id', leave.employee_id)
+          .eq('leave_type_id', leave.leave_type_id)
+          .order('year', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (balError) {
+          console.error('[deleteLeave] Failed to fetch balance:', balError);
+        }
+
+        if (balance) {
+          const newUsed = Math.max(0, Number(balance.used) - Number(leave.days));
+          const { error: updateError } = await supabase
+            .from('leave_balances')
+            .update({ used: newUsed })
+            .eq('id', balance.id);
+
+          if (updateError) {
+            console.error('[deleteLeave] Failed to restore balance:', updateError, 'balance_id:', balance.id, 'old_used:', balance.used, 'new_used:', newUsed);
+            throw new Error(`Failed to restore leave balance: ${updateError.message}`);
+          }
+        } else {
+          console.warn('[deleteLeave] No balance record found for employee:', leave.employee_id, 'leave_type:', leave.leave_type_id);
+        }
       }
 
       // 2. Reset Employee Status based on remaining approved/pending leaves
