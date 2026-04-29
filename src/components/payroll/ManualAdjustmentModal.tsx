@@ -113,11 +113,16 @@ export function ManualAdjustmentModal({
   const handleAdjust = (empId: string, field: 'allowance' | 'deduction' | 'allowanceNote' | 'deductionNote', value: string | number) => {
     setAdjustments(prev => {
       const current = prev[empId] || { allowance: 0, deduction: 0, allowanceNote: '', deductionNote: '' };
+      // For amount fields, ensure we store a number; for notes, store string as-is
+      const processedValue = (field === 'allowance' || field === 'deduction')
+        ? (typeof value === 'number' ? value : parseFloat(value) || 0)
+        : value;
+
       const newAdj = {
         ...prev,
         [empId]: {
           ...current,
-          [field]: value
+          [field]: processedValue
         }
       };
 
