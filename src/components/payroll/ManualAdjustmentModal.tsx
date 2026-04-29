@@ -25,7 +25,7 @@ interface ManualAdjustmentModalProps {
   leaveTypes: LeaveType[];
   month: number;
   year: number;
-  onConfirm: (adjustments: Record<string, { allowance: number, deduction: number }>) => void;
+  onConfirm: (adjustments: Record<string, { allowance: number, deduction: number, allowanceNote?: string, deductionNote?: string }>) => void;
   processing?: boolean;
   progress?: number;
 }
@@ -46,7 +46,7 @@ export function ManualAdjustmentModal({
   progress = 0
 }: ManualAdjustmentModalProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [adjustments, setAdjustments] = useState<Record<string, { allowance: number, deduction: number }>>({});
+  const [adjustments, setAdjustments] = useState<Record<string, { allowance: number, deduction: number, allowanceNote?: string, deductionNote?: string }>>({});
   const [previews, setPreviews] = useState<Record<string, any>>({});
   const [searchOpen, setSearchOpen] = useState(false);
   
@@ -72,7 +72,7 @@ export function ManualAdjustmentModal({
     setSelectedIds(prev => [...prev, empId]);
     setAdjustments(prev => ({
       ...prev,
-      [empId]: { allowance: 0, deduction: 0 }
+      [empId]: { allowance: 0, deduction: 0, allowanceNote: '', deductionNote: '' }
     }));
 
     // Calculate initial preview
@@ -110,39 +110,41 @@ export function ManualAdjustmentModal({
     });
   };
 
-  const handleAdjust = (empId: string, field: 'allowance' | 'deduction', value: string) => {
-    const numValue = parseFloat(value) || 0;
-    
+  const handleAdjust = (empId: string, field: 'allowance' | 'deduction' | 'allowanceNote' | 'deductionNote', value: string | number) => {
     setAdjustments(prev => {
+      const current = prev[empId] || { allowance: 0, deduction: 0, allowanceNote: '', deductionNote: '' };
       const newAdj = {
         ...prev,
         [empId]: {
-          ...prev[empId],
-          [field]: numValue
+          ...current,
+          [field]: value
         }
       };
 
-      // Recalculate preview for this employee
-      const emp = activeEmployees.find(e => e.id === empId)!;
-      const empAttendance = attendanceData.filter(a => a.employee_id === emp.id && a.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
-      const empLoan = loansData.find(l => l.employee_id === emp.id && l.status === 'active');
-      const empRepayment = repaymentsData.find(r => r.loan_id === empLoan?.id && r.month === month && r.year === year);
+      // Recalculate preview only if amount changed (not note)
+      if (field === 'allowance' || field === 'deduction') {
+        const emp = activeEmployees.find(e => e.id === empId)!;
+        const empAttendance = attendanceData.filter(a => a.employee_id === emp.id && a.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
+        const empLoan = loansData.find(l => l.employee_id === emp.id && l.status === 'active');
+        const empRepayment = repaymentsData.find(r => r.loan_id === empLoan?.id && r.month === month && r.year === year);
 
-      const newPreview = calculateEmployeePayroll({
-        employee: emp,
-        attendanceRecords: empAttendance,
-        leaveRecords: leaveRecords.filter(l => l.employee_id === emp.id),
-        leaveTypes,
-        activeLoan: empLoan || null,
-        loanRepayment: empRepayment || null,
-        workingDaysInMonth: workingDays,
-        month,
-        year,
-        manualOtherAllowance: newAdj[empId].allowance,
-        manualOtherDeduction: newAdj[empId].deduction
-      });
+        const newPreview = calculateEmployeePayroll({
+          employee: emp,
+          attendanceRecords: empAttendance,
+          leaveRecords: leaveRecords.filter(l => l.employee_id === emp.id),
+          leaveTypes,
+          activeLoan: empLoan || null,
+          loanRepayment: empRepayment || null,
+          workingDaysInMonth: workingDays,
+          month,
+          year,
+          manualOtherAllowance: newAdj[empId].allowance,
+          manualOtherDeduction: newAdj[empId].deduction
+        });
 
-      setPreviews(p => ({ ...p, [empId]: newPreview }));
+        setPreviews(p => ({ ...p, [empId]: newPreview }));
+      }
+
       return newAdj;
     });
   };
@@ -209,18 +211,20 @@ export function ManualAdjustmentModal({
             <Table>
               <TableHeader className="bg-slate-100/50">
                 <TableRow className="border-b-2 border-slate-200">
-                  <TableHead className="font-bold text-slate-900 w-[280px]">Employee Details</TableHead>
-                  <TableHead className="font-bold text-slate-900 text-right w-[140px]">Base Gross (OMR)</TableHead>
-                  <TableHead className="font-bold text-emerald-600 bg-emerald-50/50 text-right w-[140px]">Extra Allowance</TableHead>
-                  <TableHead className="font-bold text-red-600 bg-red-50/50 text-right w-[140px]">Manual Deduction</TableHead>
-                  <TableHead className="font-bold text-slate-900 text-right w-[140px]">Net Payable</TableHead>
+                  <TableHead className="font-bold text-slate-900 w-[220px]">Employee Details</TableHead>
+                  <TableHead className="font-bold text-slate-900 text-right w-[120px]">Base Gross (OMR)</TableHead>
+                  <TableHead className="font-bold text-emerald-600 bg-emerald-50/50 text-right w-[130px]">Extra Allowance</TableHead>
+                  <TableHead className="font-bold text-emerald-600 bg-emerald-50/30 w-[140px]">Allowance Note</TableHead>
+                  <TableHead className="font-bold text-red-600 bg-red-50/50 text-right w-[130px]">Manual Deduction</TableHead>
+                  <TableHead className="font-bold text-red-600 bg-red-50/30 w-[140px]">Deduction Note</TableHead>
+                  <TableHead className="font-bold text-slate-900 text-right w-[130px]">Net Payable</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {selectedIds.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-[200px] text-center">
+                    <TableCell colSpan={8} className="h-[200px] text-center">
                       <div className="flex flex-col items-center gap-2 opacity-30">
                         <UserPlus className="h-10 w-10" />
                         <span className="text-sm font-black uppercase tracking-widest">No employees added for adjustment</span>
@@ -230,6 +234,7 @@ export function ManualAdjustmentModal({
                   </TableRow>
                 ) : selectedIds.map((empId) => {
                   const emp = activeEmployees.find(e => e.id === empId)!;
+                  const empAdj = adjustments[empId] || { allowance: 0, deduction: 0, allowanceNote: '', deductionNote: '' };
                   return (
                     <TableRow key={emp.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
                       <TableCell className="py-4">
@@ -240,25 +245,43 @@ export function ManualAdjustmentModal({
                       </TableCell>
                       <TableCell className="text-right">
                         <span className="font-mono text-[11px] font-medium text-slate-500">
-                          {previews[emp.id] ? (Number(previews[emp.id].grossSalary) - (adjustments[emp.id]?.allowance || 0)).toFixed(3) : '0.000'}
+                          {previews[emp.id] ? (Number(previews[emp.id].grossSalary) - (empAdj.allowance || 0)).toFixed(3) : '0.000'}
                         </span>
                       </TableCell>
-                      <TableCell className="bg-emerald-50/20 px-3">
-                        <Input 
+                      <TableCell className="bg-emerald-50/20 px-2">
+                        <Input
                           type="number"
                           placeholder="0.000"
                           className="h-9 rounded-lg border-emerald-100 bg-white font-mono text-right text-[11px] font-bold ring-emerald-500 focus-visible:ring-1"
-                          value={adjustments[emp.id]?.allowance === 0 ? '' : adjustments[emp.id]?.allowance}
+                          value={empAdj.allowance === 0 ? '' : empAdj.allowance}
                           onChange={(e) => handleAdjust(emp.id, 'allowance', e.target.value)}
                         />
                       </TableCell>
-                      <TableCell className="bg-red-50/20 px-3">
-                        <Input 
+                      <TableCell className="px-2">
+                        <Input
+                          type="text"
+                          placeholder="Reason..."
+                          className="h-9 rounded-lg border-slate-200 bg-white text-[11px] focus:ring-emerald-500 focus:border-emerald-500"
+                          value={empAdj.allowanceNote || ''}
+                          onChange={(e) => handleAdjust(emp.id, 'allowanceNote', e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell className="bg-red-50/20 px-2">
+                        <Input
                           type="number"
                           placeholder="0.000"
                           className="h-9 rounded-lg border-red-100 bg-white font-mono text-right text-[11px] font-bold ring-red-500 focus-visible:ring-1"
-                          value={adjustments[emp.id]?.deduction === 0 ? '' : adjustments[emp.id]?.deduction}
+                          value={empAdj.deduction === 0 ? '' : empAdj.deduction}
                           onChange={(e) => handleAdjust(emp.id, 'deduction', e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell className="px-2">
+                        <Input
+                          type="text"
+                          placeholder="Reason..."
+                          className="h-9 rounded-lg border-slate-200 bg-white text-[11px] focus:ring-red-500 focus:border-red-500"
+                          value={empAdj.deductionNote || ''}
+                          onChange={(e) => handleAdjust(emp.id, 'deductionNote', e.target.value)}
                         />
                       </TableCell>
                       <TableCell className="text-right">
@@ -266,15 +289,15 @@ export function ManualAdjustmentModal({
                           <span className="font-black text-[13px] text-slate-900 tracking-tighter">
                             {previews[emp.id]?.netSalary.toFixed(3) || '0.000'}
                           </span>
-                          {(adjustments[emp.id]?.allowance > 0 || adjustments[emp.id]?.deduction > 0) && (
+                          {(empAdj.allowance > 0 || empAdj.deduction > 0) && (
                             <span className="text-[7px] font-black text-primary uppercase tracking-tighter leading-none mt-0.5">Adjusted</span>
                           )}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => removeEmployee(emp.id)}
                           className="text-slate-300 hover:text-red-600 hover:bg-red-50 transition-all rounded-lg size-8"
                         >
