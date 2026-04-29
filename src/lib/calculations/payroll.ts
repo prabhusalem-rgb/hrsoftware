@@ -323,7 +323,8 @@ function calculateLeaveDeductions(employeeId: string, dailyRate: number, leaveRe
   const cumulativeDaysPerType: Record<string, number> = {};
 
   for (const leave of sortedLeaves) {
-    if (leave.status !== 'approved' || leave.employee_id !== employeeId) continue;
+    // Only count approved, non-settled leaves (settled leaves already paid, don't deduct again)
+    if (leave.status !== 'approved' || leave.settlement_status === 'settled' || leave.employee_id !== employeeId) continue;
     
     const type = leaveTypes.find(t => t.id === leave.leave_type_id);
     if (!type) continue;

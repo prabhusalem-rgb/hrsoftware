@@ -182,12 +182,25 @@ export default function PayrollPage() {
   };
 
   const handleProcessPayroll = async () => {
+    // IMPORTANT: Refetch employees to ensure we have the latest status.
+    // Employee status may have changed (e.g., to 'leave_settled') while the page was open
+    // and the useEmployees query cache could be stale (staleTime = 5 minutes).
+    const loadingToast = toast.loading('Loading latest employee data...');
+    try {
+      await employeesQuery.refetch();
+      toast.dismiss(loadingToast);
+    } catch (err) {
+      console.error('Failed to refetch employees:', err);
+      toast.dismiss(loadingToast);
+      toast.warning('Using cached employee data — may be outdated');
+    }
+
     // Filter employees by category and status
     // Monthly payroll includes: active, probation, and on_leave employees.
     // 'on_leave' employees are paid with leave deductions applied.
     // EXCLUDED: 'leave_settled' (already settled, not yet rejoined) and 'final_settled' (terminated)
     const eligibleStatuses = ['active', 'probation', 'on_leave'];
-    
+
     const normalizeCat = (cat: string | null): string => {
       if (!cat) return 'INDIRECT_STAFF';
       const c = cat.toUpperCase();
@@ -198,7 +211,8 @@ export default function PayrollPage() {
       return 'INDIRECT_STAFF';
     };
 
-    const eligibleEmployees = employees.filter(e => 
+    // Use the refetched employees data
+    const eligibleEmployees = (employeesQuery.data ?? []).filter(e =>
       eligibleStatuses.includes(e.status) &&
       (processCategory === 'all' || normalizeCat(e.category) === processCategory)
     );
@@ -218,6 +232,10 @@ export default function PayrollPage() {
       // Monthly payroll includes active, probation, and on_leave employees
       // leave_settled employees are excluded until they rejoin
       const eligibleStatuses = ['active', 'probation', 'on_leave'];
+
+      // Use fresh data from the query (handleProcessPayroll already refetched)
+      const currentEmployees = employeesQuery.data ?? [];
+
       const normalizeCat = (cat: string | null): string => {
         if (!cat) return 'INDIRECT_STAFF';
         const c = cat.toUpperCase();
@@ -228,7 +246,7 @@ export default function PayrollPage() {
         return 'INDIRECT_STAFF';
       };
 
-      const activeEmployees = employees.filter(e => 
+      const activeEmployees = currentEmployees.filter(e =>
         eligibleStatuses.includes(e.status) &&
         (processCategory === 'all' || normalizeCat(e.category) === processCategory)
       );

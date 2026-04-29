@@ -107,7 +107,37 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
   // Calculation hooks - always compute, using optional chaining for safety
   const daysInMonth = useMemo(() => getDaysInMonth(period), [period]);
   const unpaidDays = useMemo(() => Number(item?.absent_days || 0), [item]);
-  const effectiveWorkDays = useMemo(() => daysInMonth - unpaidDays, [daysInMonth, unpaidDays]);
+
+  // Calculate actual work days considering rejoin/join dates
+  const getEffectiveWorkDays = useMemo(() => {
+    if (!employee) return daysInMonth - unpaidDays;
+    const [monthName, yearStr] = period.split(' ');
+    const monthIdx = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+    const year = parseInt(yearStr);
+    if (monthIdx === -1 || isNaN(year)) return daysInMonth - unpaidDays;
+
+    // Check for rejoin_date (employee returning from leave)
+    if (employee.rejoin_date) {
+      const rejoin = new Date(employee.rejoin_date);
+      if (rejoin.getFullYear() === year && rejoin.getMonth() + 1 === monthIdx + 1) {
+        const worked = daysInMonth - rejoin.getDate() + 1;
+        return Math.max(0, worked - unpaidDays);
+      }
+    }
+
+    // Check for join_date (new employee)
+    if (employee.join_date) {
+      const join = new Date(employee.join_date);
+      if (join.getFullYear() === year && join.getMonth() + 1 === monthIdx + 1) {
+        const worked = daysInMonth - join.getDate() + 1;
+        return Math.max(0, worked - unpaidDays);
+      }
+    }
+
+    return daysInMonth - unpaidDays;
+  }, [period, daysInMonth, unpaidDays, employee]);
+
+  const effectiveWorkDays = getEffectiveWorkDays;
 
   const settlementWorkingDays = useMemo(() => {
     if (type === 'leave_settlement' && selectedLeave) {

@@ -51,7 +51,37 @@ export function PayslipPDF({
 
   const daysInMonth = getDaysInMonth(period);
   const unpaidDays = Number(item.absent_days || 0);
-  const effectiveWorkDays = daysInMonth - unpaidDays;
+
+  // Calculate actual work days considering rejoin/join dates
+  // For employees who rejoined or joined this month, they only get paid from that date onward
+  const getEffectiveWorkDays = () => {
+    const [monthName, yearStr] = period.split(' ');
+    const monthIdx = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+    const year = parseInt(yearStr);
+    if (monthIdx === -1 || isNaN(year)) return daysInMonth - unpaidDays;
+
+    // Check for rejoin_date (employee returning from leave)
+    if (employee.rejoin_date) {
+      const rejoin = new Date(employee.rejoin_date);
+      if (rejoin.getFullYear() === year && rejoin.getMonth() + 1 === monthIdx + 1) {
+        const worked = daysInMonth - rejoin.getDate() + 1;
+        return Math.max(0, worked - unpaidDays);
+      }
+    }
+
+    // Check for join_date (new employee)
+    if (employee.join_date) {
+      const join = new Date(employee.join_date);
+      if (join.getFullYear() === year && join.getMonth() + 1 === monthIdx + 1) {
+        const worked = daysInMonth - join.getDate() + 1;
+        return Math.max(0, worked - unpaidDays);
+      }
+    }
+
+    return daysInMonth - unpaidDays;
+  };
+
+  const effectiveWorkDays = getEffectiveWorkDays();
 
   const formatOMR = (val: number) => Number(val || 0).toFixed(3);
 

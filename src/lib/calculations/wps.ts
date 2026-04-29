@@ -153,7 +153,7 @@ export function calculateExportAmounts(
     // WPS column definitions:
     // - Basic Salary: base salary + all fixed allowances (housing, transport, food, special, site, other)
     // - Extra Income: variable earnings (overtime only)
-    // - Deductions: all deductions
+    // - Deductions: non-social-security deductions (total_deductions minus social_security_deduction)
     // - Social Security: SPF contribution
     const fullBasicSalary = Number(item.basic_salary || 0) +
                            Number(item.housing_allowance || 0) +
@@ -163,8 +163,9 @@ export function calculateExportAmounts(
                            Number(item.site_allowance || 0) +
                            Number(item.other_allowance || 0);
     const fullExtraIncome = Number(item.overtime_pay || 0);
-    const fullDeductions = Number(item.total_deductions || 0);
+    // total_deductions includes social_security, so subtract to get non-SPF deductions
     const fullSocialSecurity = Number(item.social_security_deduction || 0);
+    const fullDeductions = Math.max(0, Number(item.total_deductions || 0) - fullSocialSecurity);
     const absentDays = Number(item.absent_days || 0);
     const workingDays = 30 - absentDays;
 
@@ -214,6 +215,7 @@ export function calculateExportAmounts(
   // WPS column definitions:
   // - Basic Salary: base salary + all fixed allowances
   // - Extra Income: variable earnings (overtime only)
+  // Deductions column excludes social security (social security reported separately)
   const fullBasicSalary = Number(item.basic_salary || 0) +
                          Number(item.housing_allowance || 0) +
                          Number(item.transport_allowance || 0) +
@@ -222,8 +224,9 @@ export function calculateExportAmounts(
                          Number(item.site_allowance || 0) +
                          Number(item.other_allowance || 0);
   const fullExtraIncome = Number(item.overtime_pay || 0);
-  const fullDeductions = Number(item.total_deductions || 0);
   const fullSocialSecurity = Number(item.social_security_deduction || 0);
+  // total_deductions includes social security; subtract to get non-SPF deductions for WPS Deductions column
+  const fullDeductions = Math.max(0, Number(item.total_deductions || 0) - fullSocialSecurity);
   const absentDays = Number(item.absent_days || 0);
   const workingDays = 30 - absentDays;
 

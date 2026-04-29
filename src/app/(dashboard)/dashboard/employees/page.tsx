@@ -70,7 +70,9 @@ interface EmployeeTableRowProps {
   onOpenEdit: (emp: Employee) => void;
   onOpenHistory: (emp: Employee) => void;
   onOpenJoiningReport: (emp: Employee) => void;
+  onOpenOnboardingReport: (emp: Employee) => void;
   onOpenRejoin?: (emp: Employee) => void;
+  onOpenRejoiningReport: (emp: Employee) => void;
   onHoldSalary: (emp: Employee) => void;
   onReleaseHold: (emp: Employee) => void;
   currentLeaveBalance?: number | undefined;
@@ -84,7 +86,9 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
   onOpenEdit,
   onOpenHistory,
   onOpenJoiningReport,
+  onOpenOnboardingReport,
   onOpenRejoin,
+  onOpenRejoiningReport,
   onHoldSalary,
   onReleaseHold,
   currentLeaveBalance,
@@ -179,7 +183,7 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
               className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 rounded-xl"
               onClick={(e) => {
                 e.stopPropagation();
-                onOpenJoiningReport(emp);
+                onOpenOnboardingReport(emp);
               }}
               title="Onboarding Report"
             >
@@ -206,7 +210,7 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
                 className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-xl"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onOpenRejoin?.(emp);
+                  onOpenRejoiningReport(emp);
                 }}
                 title="Re-joining Report"
               >
@@ -445,8 +449,16 @@ export default function EmployeesPage() {
     setJoiningReportEmployee(emp);
   }, []);
 
+  const handleOpenOnboardingReport = useCallback((emp: Employee) => {
+    setOnboardingReportEmployee(emp);
+  }, []);
+
   const handleOpenRejoin = useCallback((emp: Employee) => {
     setRejoiningEmployee(emp);
+  }, []);
+
+  const handleOpenRejoiningReport = useCallback((emp: Employee) => {
+    setRejoiningReportEmployee(emp);
   }, []);
 
   const handleHoldSalary = useCallback((emp: Employee) => {
@@ -521,7 +533,9 @@ export default function EmployeesPage() {
                   onOpenEdit={handleOpenEdit}
                   onOpenHistory={handleOpenHistory}
                   onOpenJoiningReport={handleOpenJoiningReport}
+                  onOpenOnboardingReport={handleOpenOnboardingReport}
                   onOpenRejoin={handleOpenRejoin}
+                  onOpenRejoiningReport={handleOpenRejoiningReport}
                   onHoldSalary={handleHoldSalary}
                   onReleaseHold={handleReleaseHold}
                   currentLeaveBalance={balancesData?.find((b: LeaveBalance) => b.employee_id === emp.id && b.leave_type?.name?.toLowerCase().includes('annual'))?.balance}

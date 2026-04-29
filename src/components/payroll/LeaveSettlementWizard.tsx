@@ -101,9 +101,14 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
 
   // Get balance for the leave's year (using leaveYear from useMemo above)
   const leaveYearBalances = allBalances.filter(b => b.year === leaveYear);
-  const annualBalance = leaveYearBalances.find(b =>
+  const annualBalanceRecord = leaveYearBalances.find(b =>
     b.leave_type?.name?.toLowerCase().includes('annual')
-  )?.balance || 0;
+  );
+  const annualBalance = annualBalanceRecord?.balance || 0;
+
+  // For settlement validation: check if leave was within original entitlement
+  // (balance already deducts this leave, so we need original available = entitled + carried_forward)
+  const originalEntitlement = (annualBalanceRecord?.entitled || 0) + (annualBalanceRecord?.carried_forward || 0);
 
   // Salary calculations
   const basicSalary = Number(employee?.basic_salary || 0);
@@ -167,7 +172,8 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
   // Validation
   const isAnnualLeave = selectedLeave?.leave_type?.name?.toLowerCase().includes('annual') || false;
   const overdraftAllowance = isAnnualLeave ? 3 : 0;
-  const maxAllowedDays = annualBalance + overdraftAllowance;
+  // Check against original entitlement (before this leave was deducted), not remaining balance
+  const maxAllowedDays = originalEntitlement + overdraftAllowance;
   const balanceExceeded = vacationDays > maxAllowedDays;
 
   const handleNext = () => {
@@ -189,8 +195,8 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
       }
       if (balanceExceeded) {
         const msg = isAnnualLeave
-          ? `Balance insufficient. Employee has ${annualBalance.toFixed(1)} days (max allowed: ${maxAllowedDays.toFixed(1)} with 3-day overdraft), but leave is for ${vacationDays} days.`
-          : `Balance insufficient. Employee has ${annualBalance.toFixed(1)} days, but leave is for ${vacationDays} days.`;
+          ? `Leave exceeds allowable limit. Employee has ${originalEntitlement.toFixed(1)} days total annual entitlement (plus ${overdraftAllowance}-day overdraft = ${maxAllowedDays.toFixed(1)} allowed), but leave request is for ${vacationDays} days.`
+          : `Leave exceeds balance. Employee has ${annualBalance.toFixed(1)} days available, but leave is for ${vacationDays} days.`;
         toast.error(msg);
         return;
       }
@@ -469,8 +475,8 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
                           <p className="text-xs font-semibold text-red-800">Insufficient Balance</p>
                           <p className="text-[10px] text-red-600 mt-0.5">
                             {isAnnualLeave
-                              ? `Employee has ${annualBalance.toFixed(1)} days (plus ${overdraftAllowance}-day overdraft = ${maxAllowedDays.toFixed(1)} allowed), but leave requires ${vacationDays} days.`
-                              : `Employee has ${annualBalance.toFixed(1)} days, but leave requires ${vacationDays} days.`
+                              ? `Total annual entitlement is ${originalEntitlement.toFixed(1)} days (plus ${overdraftAllowance}-day overdraft = ${maxAllowedDays.toFixed(1)} allowed). Leave requires ${vacationDays} days.`
+                              : `Employee has ${annualBalance.toFixed(1)} days available, but leave requires ${vacationDays} days.`
                             }
                           </p>
                         </div>
