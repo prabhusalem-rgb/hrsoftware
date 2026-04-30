@@ -59,7 +59,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
 
   // Filter and Memoize eligible employees
   const eligibleEmployees = useMemo(() => {
-    return employees.filter(e => e.status === 'active');
+    return employees.filter(e => e.status === 'active' || e.status === 'on_leave');
   }, [employees]);
 
   // Derived state
@@ -434,7 +434,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
                       </div>
                     ) : employeeLeaves.length > 0 ? (
                       employeeLeaves
-                        .filter(l => l.settlement_status !== 'settled')
+                        .filter(l => l.settlement_status !== 'settled' && l.status === 'approved')
                         .map(leave => (
                           <SelectItem key={leave.id} value={leave.id} className="py-2">
                             {format(new Date(leave.start_date), 'dd MMM yyyy')} — {format(new Date(leave.end_date), 'dd MMM yyyy')} • {leave.days} days

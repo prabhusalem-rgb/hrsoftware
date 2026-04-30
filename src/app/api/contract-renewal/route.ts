@@ -74,6 +74,9 @@ export async function GET(request: NextRequest) {
       return jsonError('Internal server error: Database client unavailable', 500);
     }
 
+    const { searchParams } = new URL(request.url);
+    const requestedCompanyId = searchParams.get('companyId');
+
     let query = supabaseAdmin
       .from('contract_renewals')
       .select(`
@@ -94,6 +97,9 @@ export async function GET(request: NextRequest) {
       }
       query = query.eq('company_id', profile.company_id);
     } else {
+      if (requestedCompanyId) {
+        query = query.eq('company_id', requestedCompanyId);
+      }
       console.log('[ContractRenewal GET] User has full access:', { role: profile.role, company_id: profile.company_id });
     }
 

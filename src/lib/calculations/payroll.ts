@@ -267,10 +267,10 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
 
   if (isOmani) {
     // Current SPF (Social Protection Fund) Law:
-    // Base: Basic + Housing (Capped at 3000 OMR)
+    // Base: Gross Salary excluding overtime (Capped at 3000 OMR)
     // Employee share: 8.0% total (7.5% Pension + 0.5% Job Security)
     // Employer share: 13.5% total (11% Pension + 1% Work Injury + 1% Maternity + 0.5% Job Security)
-    const pasiBase = Math.min(3000, basicSalary + housingAllowance);
+    const pasiBase = Math.min(3000, fixedGrossPerMonth);
     socialSecurityDeduction = Math.round(pasiBase * 0.08 * 1000) / 1000;
     pasiCompanyShare = Math.round(pasiBase * 0.135 * 1000) / 1000;
   }

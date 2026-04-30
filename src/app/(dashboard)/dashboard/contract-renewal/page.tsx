@@ -43,7 +43,7 @@ import {
 
 export default function ContractRenewalListPage() {
   const router = useRouter();
-  const { profile } = useCompany();
+  const { profile, activeCompanyId } = useCompany();
   const [loading, setLoading] = useState(true);
   const [renewals, setRenewals] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -53,12 +53,15 @@ export default function ContractRenewalListPage() {
   const isSuperAdmin = profile?.role === 'super_admin';
 
   useEffect(() => {
-    fetchRenewals();
-  }, []);
+    if (activeCompanyId) {
+      fetchRenewals();
+    }
+  }, [activeCompanyId]);
 
   const fetchRenewals = async () => {
     try {
-      const res = await fetch('/api/contract-renewal');
+      const url = activeCompanyId ? `/api/contract-renewal?companyId=${activeCompanyId}` : '/api/contract-renewal';
+      const res = await fetch(url);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to fetch renewals (HTTP ${res.status})`);

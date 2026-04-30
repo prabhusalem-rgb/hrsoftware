@@ -172,7 +172,11 @@ export function useLeaveMutations(companyId: string) {
 
       // Employee status updates
       if (status === 'approved' && data.previousStatus !== 'approved') {
-        await supabase.from('employees').update({ status: 'on_leave' }).eq('id', data.employeeId);
+        // Do not overwrite leave_settled or final_settled if the leave was already settled before approval
+        const { data: currentEmp } = await supabase.from('employees').select('status').eq('id', data.employeeId).single();
+        if (currentEmp && currentEmp.status !== 'leave_settled' && currentEmp.status !== 'final_settled') {
+          await supabase.from('employees').update({ status: 'on_leave' }).eq('id', data.employeeId);
+        }
       } else if (data.previousStatus === 'approved' && status !== 'approved') {
         const { data: remainingLeaves } = await supabase
           .from('leaves')
