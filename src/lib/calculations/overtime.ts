@@ -1,9 +1,9 @@
 // ============================================================
 // Overtime Calculation — Oman Labour Law
 //
-// Normal working days: 125% of hourly wage
-// Weekends/holidays:   150% of hourly wage
-// Max 12 hours overtime per week
+// All overtime hours paid at 1x (regular rate) of hourly wage
+// Hourly wage = basicSalary / (8 hours/day × 26 working days/month)
+// No weekly cap on overtime hours
 // ============================================================
 
 export type OvertimeRate = 'normal' | 'weekend' | 'holiday';
@@ -19,21 +19,16 @@ export function calculateHourlyWage(basicSalary: number): number {
 
 /**
  * Calculate overtime pay for given hours and rate type.
+ * All OT is paid at 1x the hourly wage (no multipliers).
  */
 export function calculateOvertimePay(
   basicSalary: number,
   hours: number,
-  type: OvertimeRate
+  _type: OvertimeRate
 ): number {
   const hourlyWage = calculateHourlyWage(basicSalary);
-
-  const multipliers: Record<OvertimeRate, number> = {
-    normal: 1.25,   // 125% for normal weekdays
-    weekend: 1.50,  // 150% for weekends
-    holiday: 1.50,  // 150% for public holidays
-  };
-
-  const overtime = hourlyWage * multipliers[type] * hours;
+  // All overtime paid at 1x rate regardless of day type
+  const overtime = hourlyWage * 1.0 * hours;
   return Math.round(overtime * 1000) / 1000;
 }
 

@@ -228,17 +228,17 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
   }
 
   // --- Overtime from Timesheets ---
-  // Timesheet OT: working_day OT @ 1.0, working_holiday all hours @ 1.0
+  // OT paid at 1x hourly wage based on basic salary (per revised policy)
+  // Hourly rate = basicSalary / 208 (8 hrs/day × 26 working days/month)
   let overtimeHours = 0;
   let overtimePay = 0;
-  const hourlyRate = Number(employee.gross_salary || 0) / 30 / 8;
+  const hourlyRate = basicSalary / 208;
 
   if (timesheetRecords && timesheetRecords.length > 0) {
     for (const ts of timesheetRecords) {
       const ot = Number(ts.overtime_hours || 0);
       if (ot > 0) {
         overtimeHours += ot;
-        // Both working_day OT and working_holiday hours paid at 1.0 rate
         overtimePay += ot * hourlyRate * 1.0;
       }
     }

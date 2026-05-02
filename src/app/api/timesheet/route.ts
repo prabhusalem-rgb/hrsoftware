@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .eq('company_id', companyId)
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
     })
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .single();

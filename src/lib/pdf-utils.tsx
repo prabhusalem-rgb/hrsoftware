@@ -4,8 +4,9 @@
 // to ensure heavy PDF logic is not included in the initial bundle.
 import { format } from 'date-fns';
 
-import { Employee, PayrollItem, Company } from '@/types';
+import { Employee, PayrollItem, Company, Project } from '@/types';
 import { SettlementStatementData } from '@/types/settlement';
+import { Timesheet } from '@/types';
 
 export interface PDFOptions {
   employee: Employee;
@@ -422,8 +423,8 @@ export async function generateSettlementPDF({
 
 export async function downloadSettlementPDF(options: SettlementPDFOptions): Promise<void> {
   const blob = await generateSettlementPDF(options);
-  
-  const downloadFileName = options.fileName || 
+
+  const downloadFileName = options.fileName ||
     `final-settlement-${options.data.employee.emp_code}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
 
   const url = URL.createObjectURL(blob);
@@ -434,4 +435,68 @@ export async function downloadSettlementPDF(options: SettlementPDFOptions): Prom
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+// ============================================
+// TIMESHEET CONFIRMATION PDF
+// ============================================
+
+export interface TimesheetConfirmationPDFOptions {
+  timesheet: Timesheet & {
+    employees: Pick<Employee, 'id' | 'name_en' | 'emp_code' | 'basic_salary' | 'gross_salary'>;
+    projects: Pick<Project, 'id' | 'name'> | null;
+  };
+  company: Company;
+  submissionToken: string;
+}
+
+export async function generateTimesheetConfirmationPDF({
+  timesheet,
+  company,
+  submissionToken
+}: TimesheetConfirmationPDFOptions): Promise<Blob> {
+  const { TimesheetConfirmationPDF } = await import('@/components/timesheet/TimesheetConfirmationPDF');
+  const { pdf } = await import('@react-pdf/renderer');
+
+  const doc = (
+    <TimesheetConfirmationPDF
+      timesheet={timesheet}
+      company={company}
+      submissionToken={submissionToken}
+    />
+  );
+
+  const pdfBlob = await pdf(doc).toBlob();
+  return pdfBlob;
+}
+
+export async function downloadTimesheetConfirmationPDF({
+  timesheet,
+  company,
+  submissionToken,
+  fileName
+}: TimesheetConfirmationPDFOptions & { fileName?: string }): Promise<void> {
+  const blob = await generateTimesheetConfirmationPDF({
+    timesheet,
+    company,
+    submissionToken
+  });
+
+  const downloadFileName = fileName ||
+    `timesheet-confirmation-${timesheet.employees?.emp_code || 'emp'}-${timesheet.date}.pdf`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = downloadFileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function openTimesheetConfirmationPDFInNewTab(options: TimesheetConfirmationPDFOptions): Promise<void> {
+  const blob = await generateTimesheetConfirmationPDF(options);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
 }

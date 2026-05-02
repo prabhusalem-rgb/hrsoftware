@@ -69,7 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .eq('id', id)
@@ -150,7 +150,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .eq('company_id', companyId)
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .single();

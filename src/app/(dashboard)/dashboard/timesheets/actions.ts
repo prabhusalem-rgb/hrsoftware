@@ -69,7 +69,7 @@ export async function getTimesheets(companyId: string, params: {
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `, { count: 'exact' })
     .eq('company_id', companyId)
@@ -117,7 +117,7 @@ export async function getTimesheet(id: string, companyId: string) {
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .eq('id', id)
@@ -837,7 +837,7 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .eq('company_id', companyId)
@@ -855,8 +855,8 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
 
   timesheets?.forEach((ts: any) => {
     const emp = ts.employees;
-    const grossSalary = Number(emp?.gross_salary || 0);
-    const hourlyRate = grossSalary / 30 / 8;
+    const basicSalary = Number(emp?.basic_salary || 0);
+    const hourlyRate = basicSalary / 208; // 8 hrs/day × 26 working days/month
 
     summary.totalHours += Number(ts.hours_worked);
     if (ts.day_type === 'absent') summary.totalAbsentDays += 1;
@@ -873,11 +873,10 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
       p.totalCost += cost;
     }
 
-    // Overtime from separate field
+    // Overtime from separate field — all OT at 1x rate
     const otHours = Number(ts.overtime_hours || 0);
     if (otHours > 0) {
       summary.totalOvertimeHours += otHours;
-      // Multiplier: both working_day and working_holiday = 1.0
       const multiplier = 1.0;
       overtimeRecords.push({
         ...ts,

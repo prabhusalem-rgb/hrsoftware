@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
 import { useSalaryRevisions } from '@/hooks/queries/useSalaryRevisions';
 import { useLeaveBalances } from '@/hooks/queries/useLeaveBalances';
@@ -255,12 +256,25 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
 export default function EmployeesPage() {
   const { activeCompanyId, activeCompany } = useCompany();
 
-  const { data: employeesData, isLoading } = useEmployees({ companyId: activeCompanyId });
-  const { data: balancesData } = useLeaveBalances(activeCompanyId);
-  const { createEmployee, updateEmployee } = useEmployeeMutations(activeCompanyId);
-
   const [tab, setTab] = useState<'current' | 'past'>('current');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 500);
+
+  const statuses = useMemo(() => {
+    return tab === 'current' 
+      ? ['active', 'probation', 'on_leave', 'leave_settled', 'offer_sent']
+      : ['terminated', 'final_settled'];
+  }, [tab]);
+
+  const { data: employeesData, isLoading } = useEmployees({ 
+    companyId: activeCompanyId,
+    searchQuery: debouncedSearch,
+    statuses: statuses
+  });
+  const { data: balancesData } = useLeaveBalances(activeCompanyId);
+  const { createEmployee, updateEmployee } = useEmployeeMutations(activeCompanyId);
+  const { importEmployees } = useEmployeeMutations(activeCompanyId);
+  
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | 'create' | null>(null);
 
@@ -275,7 +289,6 @@ export default function EmployeesPage() {
   const [onboardingReportEmployee, setOnboardingReportEmployee] = useState<Employee | null>(null);
   const [rejoiningReportEmployee, setRejoiningReportEmployee] = useState<Employee | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const { importEmployees } = useEmployeeMutations(activeCompanyId);
 
   // PDF Preview State for Rejoining Report
   const [rejoiningPdfBlobUrl, setRejoiningPdfBlobUrl] = useState<string | null>(null);
@@ -290,18 +303,7 @@ export default function EmployeesPage() {
 
   const employees: Employee[] = (employeesData ?? []) as Employee[];
 
-  const filtered = useMemo(() => employees.filter(e => {
-    const matchSearch = e.name_en.toLowerCase().includes(search.toLowerCase()) || e.emp_code.toLowerCase().includes(search.toLowerCase());
-    const matchCompany = e.company_id === activeCompanyId;
-
-    // Categorization logic:
-    // Current: active, probation, on_leave, leave_settled, offer_sent
-    // Past: terminated, final_settled
-    const isPast = e.status === 'terminated' || e.status === 'final_settled';
-    const matchTab = tab === 'current' ? !isPast : isPast;
-
-    return matchSearch && matchCompany && matchTab;
-  }), [employees, search, activeCompanyId, tab]);
+  const filtered = employees; // Already filtered by the hook
 
   // Optimize leave balance lookup
   const balanceLookup = useMemo(() => {

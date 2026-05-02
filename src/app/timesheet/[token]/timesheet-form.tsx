@@ -4,14 +4,16 @@ import { useState, useEffect } from 'react';
 import { useForm, UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { submitTimesheet } from './actions';
+import { submitTimesheet, type SubmitTimesheetResponse } from './actions';
 import { timesheetSubmitSchema, type DayType } from '@/lib/validations/schemas';
+import { type Timesheet, type Company } from '@/types';
+import { downloadTimesheetConfirmationPDF } from '@/lib/pdf-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, AlertCircle, Clock, Building2, User, Calendar as CalendarIcon, FileText, Search, X } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, Building2, User, Calendar as CalendarIcon, FileText, Search, X, Download } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -53,6 +55,11 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingData, setPendingData] = useState<FormDataWithToken | null>(null);
+  const [submittedTimesheet, setSubmittedTimesheet] = useState<Timesheet & {
+    employees: { name_en: string; emp_code: string; basic_salary: number; gross_salary: number };
+    projects: { name: string } | null;
+  } | null>(null);
+  const [submittedCompany, setSubmittedCompany] = useState<Company | null>(null);
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
 
@@ -124,31 +131,62 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
         }
       });
 
-      const result = await submitTimesheet(formData);
-      if (result?.error) {
+      const result = await submitTimesheet(formData) as SubmitTimesheetResponse;
+      if ('error' in result) {
         toast.error(result.error);
+        setShowConfirmDialog(false);
+        setPendingData(null);
       } else {
+        // Store submitted data for PDF download
+        setSubmittedTimesheet(result.timesheet as Timesheet & {
+          employees: { name_en: string; emp_code: string; basic_salary: number; gross_salary: number };
+          projects: { name: string } | null;
+        });
+        setSubmittedCompany(result.company as Company);
         toast.success('Timesheet submitted successfully!');
-        // Reset form but keep token and set date to today
-        const today = new Date().toISOString().split('T')[0];
-        setValue('date', today);
-        setValue('day_type', 'working_day');
-        setValue('hours_worked', 8);
-        setValue('overtime_hours', 0);
-        setValue('reason', '');
-        setValue('employee_id', '');
-        setValue('project_id', '');
-        setSelectedEmployeeId('');
-        setEmployeeSearchQuery('');
+        // Keep dialog open to show success + download button
+        setPendingData(null);
       }
-      setShowConfirmDialog(false);
-      setPendingData(null);
     } catch (error) {
       console.error('[TimesheetForm] Submit error:', error);
       toast.error('An unexpected error occurred. Please try again.');
+      setShowConfirmDialog(false);
+      setPendingData(null);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!submittedTimesheet || !submittedCompany) return;
+    try {
+      await downloadTimesheetConfirmationPDF({
+        timesheet: submittedTimesheet,
+        company: submittedCompany,
+        submissionToken: token
+      });
+    } catch (pdfErr) {
+      console.error('[TimesheetForm] PDF download failed:', pdfErr);
+      toast.error('Failed to download PDF. Please try again.');
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setShowConfirmDialog(false);
+    setPendingData(null);
+    setSubmittedTimesheet(null);
+    setSubmittedCompany(null);
+    // Reset form but keep token and set date to today
+    const today = new Date().toISOString().split('T')[0];
+    setValue('date', today);
+    setValue('day_type', 'working_day');
+    setValue('hours_worked', 8);
+    setValue('overtime_hours', 0);
+    setValue('reason', '');
+    setValue('employee_id', '');
+    setValue('project_id', '');
+    setSelectedEmployeeId('');
+    setEmployeeSearchQuery('');
   };
 
   return (
@@ -348,19 +386,13 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
         </div>
       )}
 
-      {/* Working Holiday — all hours count as OT at 1× rate */}
+      {/* Working Holiday — all hours count as OT */}
       {dayType === 'working_holiday' && (
         <div className="space-y-4">
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded-md">
-            <p className="text-sm text-orange-800">
-              <strong>Working Holiday:</strong> All 8 hours worked are paid as overtime at 1× the regular hourly rate.
-            </p>
-          </div>
-
           {/* Overtime Hours — fixed at 8 hours, disabled dropdown */}
           <div>
             <Label htmlFor="overtime_hours">
-              Holiday OT Hours (Fixed)
+              Overtime Hours
             </Label>
             <select
               {...register('overtime_hours', { valueAsNumber: true })}
@@ -385,7 +417,7 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
               </p>
             )}
             <p className="text-xs text-muted-foreground mt-1">
-              Fixed 8 hours at holiday OT rate (1×). Reason is required.
+              Fixed 8 hours. Reason is required.
             </p>
           </div>
         </div>
@@ -452,15 +484,16 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
       </Button>
 
       {/* Confirmation Dialog */}
-      <Dialog open={showConfirmDialog} onOpenChange={(open) => {
-        setShowConfirmDialog(open);
-        if (!open) setPendingData(null);
-      }}>
+      <Dialog open={showConfirmDialog} onOpenChange={handleCloseDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Confirm Timesheet Submission</DialogTitle>
+            <DialogTitle>
+              {submittedTimesheet ? 'Timesheet Submitted' : 'Confirm Timesheet Submission'}
+            </DialogTitle>
             <DialogDescription>
-              Please review your timesheet details before submitting.
+              {submittedTimesheet
+                ? 'Your timesheet has been recorded. You can download a confirmation PDF using the button below.'
+                : 'Please review your timesheet details before submitting.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -495,19 +528,21 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
                         <span className="font-medium">Regular Hours:</span>
                         <span className="text-muted-foreground">{pendingData.hours_worked} hrs</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">Overtime Hours:</span>
-                        <span className="text-muted-foreground">{pendingData.overtime_hours} hrs (OT @ 1× rate)</span>
-                      </div>
+                      {pendingData.overtime_hours > 0 && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">Overtime Hours:</span>
+                          <span className="text-muted-foreground">{pendingData.overtime_hours} hrs</span>
+                        </div>
+                      )}
                     </>
                   )}
 
                   {pendingData.day_type === 'working_holiday' && (
                     <div className="flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">Holiday OT Hours:</span>
-                      <span className="text-muted-foreground">{pendingData.overtime_hours} hrs (all hours @ 1× rate)</span>
+                      <span className="font-medium">Holiday Hours:</span>
+                      <span className="text-muted-foreground">{pendingData.overtime_hours} hrs</span>
                     </div>
                   )}
 
@@ -541,20 +576,95 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
             </div>
           )}
 
+          {submittedTimesheet && (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Employee:</span>
+                    <span className="text-muted-foreground">
+                      {submittedTimesheet.employees.emp_code} — {submittedTimesheet.employees.name_en}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Date:</span>
+                    <span className="text-muted-foreground">{submittedTimesheet.date}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Day Type:</span>
+                    <span className="text-muted-foreground capitalize">{submittedTimesheet.day_type.replace('_', ' ')}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Regular Hours:</span>
+                    <span className="text-muted-foreground">{submittedTimesheet.hours_worked} hrs</span>
+                  </div>
+
+                  {submittedTimesheet.overtime_hours > 0 && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">Overtime Hours:</span>
+                      <span className="text-muted-foreground">{submittedTimesheet.overtime_hours} hrs</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Project:</span>
+                    <span className="text-muted-foreground">
+                      {submittedTimesheet.projects?.name || 'Not specified'}
+                    </span>
+                  </div>
+
+                  {submittedTimesheet.reason && (
+                    <div className="text-sm">
+                      <span className="font-medium">Reason:</span>
+                      <p className="mt-1 p-2 bg-muted rounded text-muted-foreground">{submittedTimesheet.reason}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <p className="text-xs text-muted-foreground text-center">
+                A confirmation receipt is available for download.
+              </p>
+            </div>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmSubmit} disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                'Confirm & Submit'
-              )}
-            </Button>
+            {submittedTimesheet ? (
+              <>
+                <Button variant="outline" onClick={handleCloseDialog}>
+                  Close
+                </Button>
+                <Button onClick={handleDownloadPDF} disabled={isSubmitting}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Download PDF
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleConfirmSubmit} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Confirm & Submit'
+                  )}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
