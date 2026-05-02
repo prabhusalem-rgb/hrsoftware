@@ -51,4 +51,3 @@ export function useDashboardStats(companyId: string): UseQueryResult<DashboardSt
     gcTime: 5 * 60 * 1000,
   });
 }
-

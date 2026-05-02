@@ -22,15 +22,11 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
 import { useSalaryRevisions } from '@/hooks/queries/useSalaryRevisions';
 import { useLeaveBalances } from '@/hooks/queries/useLeaveBalances';
-import { useDebounce } from '@/hooks/useDebounce';
 import { Employee, EmployeeStatus, EmployeeFormData, EmployeeCategory, LeaveBalance } from '@/types';
-// import { RejoinDialog } from '@/components/employees/RejoinDialog';
-// import { AppraisalDialog } from '@/components/employees/AppraisalDialog';
-// import { ImportEmployeesDialog } from '@/components/employees/ImportEmployeesDialog';
-// import { EmployeeEditSheet } from '@/components/employees/EmployeeEditSheet';
 
 // Dynamic imports for heavy components (only loaded when needed)
 import dynamic from 'next/dynamic';
@@ -272,8 +268,8 @@ export default function EmployeesPage() {
     statuses: statuses
   });
   const { data: balancesData } = useLeaveBalances(activeCompanyId);
-  const { createEmployee, updateEmployee } = useEmployeeMutations(activeCompanyId);
-  const { importEmployees } = useEmployeeMutations(activeCompanyId);
+  const { createEmployee, updateEmployee, importEmployees } = useEmployeeMutations(activeCompanyId);
+
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | 'create' | null>(null);
 
@@ -301,8 +297,7 @@ export default function EmployeesPage() {
   const [isHolding, setIsHolding] = useState(false);
 
   const employees: Employee[] = (employeesData ?? []) as Employee[];
-
-  const filtered = employees; // Already filtered by the hook
+  const filtered = employees; // Hook already handles filtering by company, search, and statuses
 
   // Optimize leave balance lookup
   const balanceLookup = useMemo(() => {
@@ -770,96 +765,67 @@ export default function EmployeesPage() {
           {/* Document Container */}
           <div className="flex-1 min-h-0 py-20 px-8 flex justify-center print:py-4 print:px-0" onClick={(e) => e.stopPropagation()}>
             <div className="shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] print:shadow-none bg-white rounded-[2rem] overflow-hidden print:rounded-none w-full max-w-[21cm]">
-              {activeCompany && (
-                isGeneratingRejoiningPDF ? (
-                  <div className="flex items-center justify-center h-96">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                ) : rejoiningPreviewError ? (
-                  <div className="flex items-center justify-center h-96 text-red-500">
-                    {rejoiningPreviewError}
-                  </div>
-                ) : rejoiningPdfBlobUrl ? (
-                  <iframe
-                    src={rejoiningPdfBlobUrl}
-                    width="100%"
-                    height="100%"
-                    style={{ border: 'none' }}
-                    title="Re-joining Report Preview"
-                    className="flex-1"
-                  />
-                ) : null
-              )}
+               {activeCompany && (
+                 <JoiningReportStatement
+                   company={activeCompany}
+                   employee={rejoiningReportEmployee}
+                 />
+               )}
             </div>
           </div>
         </div>
       )}
 
-      <ImportEmployeesDialog
-        isOpen={importDialogOpen}
-        onClose={() => setImportDialogOpen(false)}
-        onImport={handleBulkImport}
-      />
-
-      {/* Employee Edit Sheet */}
-      <EmployeeEditSheet
-        isOpen={editEmployee !== null}
-        onClose={handleCloseEdit}
-        employee={editEmployee === 'create' ? null : editEmployee}
-        companyId={activeCompanyId}
-        onCreate={createEmployee.mutateAsync}
-        onUpdate={updateEmployee.mutateAsync}
-      />
-
-      {/* Quick Hold Dialog */}
+      {/* Salary Hold Dialog */}
       <Dialog open={!!holdEmployee} onOpenChange={(v) => !v && setHoldEmployee(null)}>
-        <DialogContent className="sm:max-w-md rounded-3xl p-6 border-0 shadow-2xl">
-          <DialogHeader className="pb-4">
-            <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center mb-4">
-              <Lock className="w-6 h-6 text-red-600" />
-            </div>
-            <DialogTitle className="text-xl font-black">Hold Salary Payout</DialogTitle>
+        <DialogContent className="sm:max-w-md rounded-3xl p-8 border-0 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-2xl font-black">
+              <Lock className="w-6 h-6 text-red-500" />
+              Hold Salary Payout
+            </DialogTitle>
             <DialogDescription className="font-medium text-slate-500">
-              This will pause all future salary payouts for <span className="text-slate-900 font-bold">{holdEmployee?.name_en}</span> until released.
+              Set a payment hold for <span className="font-black text-slate-900">{holdEmployee?.name_en}</span>.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4 py-2">
+          <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label className="text-[11px] font-black uppercase tracking-widest text-slate-400">Reason for Hold</Label>
-              <Input
-                placeholder="e.g. Awaiting final documentation, Disciplinary action..."
+              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Reason for Hold</Label>
+              <Input 
+                placeholder="e.g. Pending documents, Pending return from leave..." 
                 value={holdReason}
                 onChange={(e) => setHoldReason(e.target.value)}
-                className="h-12 rounded-2xl border-2 focus:ring-red-500"
+                className="rounded-2xl border-2 h-12"
               />
             </div>
-            <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-2xl border border-amber-100">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <p className="text-[10px] text-amber-700 font-medium">
-                The global hold flag will be automatically applied to any new payroll runs.
+            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                Holding salary will prevent this employee from appearing in the WPS SIF generation and payroll payout files until released.
               </p>
             </div>
           </div>
-
-          <DialogFooter className="mt-6 flex flex-col-reverse sm:flex-row gap-2 sm:gap-0">
-            <Button
-              variant="ghost"
-              onClick={() => setHoldEmployee(null)}
-              className="w-full sm:w-auto rounded-2xl font-black h-12"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={confirmHold}
-              disabled={isHolding}
-              className="w-full sm:w-auto rounded-2xl font-black h-12 bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20"
-            >
-              {isHolding ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply Hold'}
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setHoldEmployee(null)} className="rounded-2xl font-black h-11">Cancel</Button>
+            <Button onClick={confirmHold} disabled={isHolding} className="rounded-2xl px-8 font-black h-11 bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20">
+              {isHolding ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Hold'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EmployeeEditSheet 
+        isOpen={editEmployee !== null}
+        onClose={handleCloseEdit}
+        employee={editEmployee === 'create' ? undefined : editEmployee}
+        companyId={activeCompanyId}
+      />
+
+      <ImportEmployeesDialog 
+        isOpen={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        onImport={handleBulkImport}
+      />
     </div>
   );
 }

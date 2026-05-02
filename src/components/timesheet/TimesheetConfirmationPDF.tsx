@@ -132,6 +132,9 @@ export function TimesheetConfirmationPDF({
           <Text style={styles.footerSubtext}>
             Generated: {new Date().toLocaleString('en-GB')}
           </Text>
+          <Text style={styles.footerSubtext}>
+            Timesheet ID: {timesheet.id}
+          </Text>
         </View>
       </Page>
     </Document>
@@ -273,12 +276,6 @@ const getStyles = (companyName: string) =>
     numeric: {
       textAlign: 'right',
       paddingRight: 8,
-    },
-    note: {
-      fontSize: 8,
-      color: '#6b7280',
-      marginTop: 6,
-      fontStyle: 'italic',
     },
     footer: {
       marginTop: 20,

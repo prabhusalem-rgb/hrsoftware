@@ -175,10 +175,6 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     return { success: false, error: e?.message || 'Invalid form data' };
   }
 
-  // hours_worked <= 8 is enforced by schema (max: 8)
-  // overtime_hours >= 0 enforced by schema
-  // reason requirement for OT enforced by schema refinement
-
   const now = Date.now();
   const bucket = submissionRateLimit.get(token) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
   if (now > bucket.resetAt) {
@@ -208,12 +204,24 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
 
   if (linkError || !linkData || !linkData.is_active) {
     return { success: false, error: 'Invalid or inactive timesheet link.' };
-  const companyData = Array.isArray(linkData.companies) ? linkData.companies[0] : linkData.companies;
-  if (!companyData) {
-    return { success: false, error: 'Company details not found.' };
   }
 
   const companyId = linkData.company_id;
+  const companyData = Array.isArray(linkData.companies) ? linkData.companies[0] : linkData.companies;
+  
+  if (!companyData) {
+    // Fallback to separate fetch if join failed
+    const { data: fallback, error: fallbackErr } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single();
+    
+    if (fallbackErr || !fallback) {
+      return { success: false, error: 'Company details not found.' };
+    }
+    // companyData is correctly typed now
+  }
 
   const { data: targetEmployee, error: targetEmpErr } = await supabase
     .from('employees')
@@ -280,5 +288,5 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     console.error('[submitTimesheet] Audit log failed:', auditErr);
   }
 
-  return { success: true, timesheet: newTimesheet, company: companyData };
+  return { success: true, timesheet: newTimesheet, company: companyData as Company };
 }
