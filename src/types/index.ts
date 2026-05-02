@@ -26,7 +26,7 @@ export interface Company {
 }
 
 // --- User / Profile ---
-export type UserRole = 'super_admin' | 'company_admin' | 'hr' | 'finance' | 'viewer';
+export type UserRole = 'super_admin' | 'company_admin' | 'hr' | 'finance' | 'viewer' | 'foreman';
 
 export interface Profile {
   id: string;
@@ -382,6 +382,91 @@ export interface Attendance {
   created_at: string;
   employee?: Employee;
 }
+
+// --- Timesheet ---
+export type DayType = 'working_day' | 'working_holiday' | 'absent';
+
+export interface Project {
+  id: string;
+  company_id: string;
+  name: string;
+  description: string;
+  status: 'active' | 'completed' | 'on_hold';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Timesheet {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  project_id: string | null;
+  date: string;  // ISO date: YYYY-MM-DD
+  day_type: DayType;
+  hours_worked: number;
+  overtime_hours: number;
+  reason: string;
+  created_at: string;
+  updated_at: string;
+  employees?: Pick<Employee, 'id' | 'name_en' | 'emp_code' | 'gross_salary' | 'basic_salary'>;
+  projects?: Pick<Project, 'id' | 'name'>;
+}
+
+export interface TimesheetLink {
+  id: string;
+  company_id: string;
+  token: string;  // UUID v4
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  companies?: Pick<Company, 'id' | 'name_en'>;
+}
+
+// Report types
+export interface ProjectCostReport {
+  projectId: string;
+  projectName: string;
+  totalHours: number;
+  totalCost: number;
+  employeeCount: number;
+  employeeBreakdown?: Array<{
+    employeeId: string;
+    employeeName: string;
+    empCode: string;
+    hours: number;
+    cost: number;
+  }>;
+}
+
+export interface OvertimeReportRecord extends Timesheet {
+  overtimeHours: number;
+  regularHours: number;
+  hourlyRate: number;
+  otRateMultiplier: number;
+  otCost: number;
+}
+
+export interface AbsenceReportRecord extends Timesheet {
+  isConsecutive: boolean;
+  streakGroup: string;
+  streakLength: number;
+}
+
+export interface TimesheetReport {
+  projectCosts: ProjectCostReport[];
+  overtimeRecords: OvertimeReportRecord[];
+  absenceRecords: AbsenceReportRecord[];
+  summary: {
+    totalHours: number;
+    totalOvertimeHours: number;
+    totalAbsentDays: number;
+    totalWorkingDays: number;
+    totalWorkingHolidays: number;
+  };
+}
+
+export type TimesheetFormData = Omit<Timesheet, 'id' | 'created_at' | 'updated_at' | 'employees' | 'projects'>;
 
 // --- Payroll ---
 export type PayrollRunType = 'monthly' | 'leave_settlement' | 'final_settlement' | 'leave_encashment';

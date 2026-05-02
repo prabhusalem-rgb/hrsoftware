@@ -37,12 +37,17 @@ export async function updateSession(request: NextRequest) {
   // If user is not signed in and tries to access dashboard routes, redirect to login
   const pathname = request.nextUrl.pathname;
   const isPublicContractRenewalAPI = /^\/api\/contract-renewal\/[^\/]+$/.test(pathname);
+  const isPublicTimesheetAPI = /^\/timesheet\/[a-zA-Z0-9]+$/.test(pathname);
+  const isDebugDB = pathname.startsWith('/api/debug-db');
   const isExempt =
     pathname.startsWith('/login') ||
     pathname.startsWith('/register') ||
     pathname.startsWith('/auth') ||
     pathname.startsWith('/renew-contract') ||
+    pathname.startsWith('/timesheet') ||
     isPublicContractRenewalAPI ||
+    isPublicTimesheetAPI ||
+    isDebugDB ||
     pathname === '/';
 
   if (!user && !isExempt) {

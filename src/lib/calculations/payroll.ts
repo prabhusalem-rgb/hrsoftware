@@ -1,9 +1,21 @@
 import { Employee, Attendance, Loan, LoanRepayment, SalaryRevision, Leave, LeaveType } from '@/types';
 import { calculateOvertimePay, type OvertimeRate } from './overtime';
 
+// Timesheet record shape for payroll calculations
+export interface TimesheetRecord {
+  employee_id: string;
+  date: string;
+  day_type: 'working_day' | 'working_holiday' | 'absent';
+  hours_worked: number;
+  overtime_hours: number;
+  project_id?: string | null;
+  reason?: string;
+}
+
 export interface PayrollInput {
   employee: Employee;
-  attendanceRecords: Attendance[];  // absent/overtime records for the month
+  attendanceRecords: Attendance[];  // Legacy attendance (may be empty)
+  timesheetRecords: TimesheetRecord[]; // New timesheet data
   leaveRecords: Leave[];            // All approved leaves for the year so far
   leaveTypes: LeaveType[];          // Available leave types with payment tiers
   activeLoan: Loan | null;
@@ -43,8 +55,8 @@ export interface PayrollOutput {
  * Calculate monthly payroll for a single employee.
  */
 export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
-  const { 
-    employee, attendanceRecords, leaveRecords, leaveTypes,
+  const {
+    employee, attendanceRecords, timesheetRecords, leaveRecords, leaveTypes,
     activeLoan, loanRepayment, workingDaysInMonth, month, year, revisions = [],
     manualOtherAllowance, manualOtherDeduction
   } = input;
@@ -215,18 +227,35 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
     }
   }
 
-  // --- Overtime ---
+  // --- Overtime from Timesheets ---
+  // Timesheet OT: working_day OT @ 1.0, working_holiday all hours @ 1.0
   let overtimeHours = 0;
   let overtimePay = 0;
-  for (const record of attendanceRecords) {
-    if (record.overtime_hours > 0 && record.overtime_type !== 'none') {
-      overtimeHours += Number(record.overtime_hours);
-      overtimePay += calculateOvertimePay(basicSalary, Number(record.overtime_hours), record.overtime_type as OvertimeRate);
+  const hourlyRate = Number(employee.gross_salary || 0) / 30 / 8;
+
+  if (timesheetRecords && timesheetRecords.length > 0) {
+    for (const ts of timesheetRecords) {
+      const ot = Number(ts.overtime_hours || 0);
+      if (ot > 0) {
+        overtimeHours += ot;
+        // Both working_day OT and working_holiday hours paid at 1.0 rate
+        overtimePay += ot * hourlyRate * 1.0;
+      }
+    }
+  } else {
+    // Fallback to legacy attendance data
+    for (const record of attendanceRecords) {
+      if (record.overtime_hours > 0 && record.overtime_type !== 'none') {
+        overtimeHours += Number(record.overtime_hours);
+        overtimePay += calculateOvertimePay(basicSalary, Number(record.overtime_hours), record.overtime_type as OvertimeRate);
+      }
     }
   }
 
   // --- Gross Earnings ---
+  // Regular gross (excludes overtime — OT is separate earnings)
   const grossSalary = basicSalary + housingAllowance + transportAllowance + foodAllowance + specialAllowance + siteAllowance + otherAllowance + overtimePay;
+  const regularGross = grossSalary - overtimePay;
 
   // --- Daily Rates for Deductions ---
   // We use gross fixed allowances + basic for deductions as per common practice
@@ -234,7 +263,13 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
   const dailyRate = fixedGrossPerMonth / 30.0;
 
   // --- Absent Days Deduction ---
-  const absentDays = attendanceRecords.filter(r => r.status === 'absent').length;
+  // Use timesheets if available, otherwise fall back to attendance
+  let absentDays = 0;
+  if (timesheetRecords && timesheetRecords.length > 0) {
+    absentDays = timesheetRecords.filter(r => r.day_type === 'absent').length;
+  } else {
+    absentDays = attendanceRecords.filter(r => r.status === 'absent').length;
+  }
   const absenceDeduction = Math.round(dailyRate * absentDays * 1000) / 1000;
 
   // --- Leave Tiered Deductions ---
@@ -279,8 +314,8 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
   const totalDeductions = absenceDeduction + leaveDeduction + loanDeduction + otherDeduction + socialSecurityDeduction;
 
   // --- Net Salary ---
-  // Guard against NaN from any component (e.g., if employee salary data is incomplete)
-  const rawNet = grossSalary - totalDeductions;
+  // Net = regularGross + overtimePay - totalDeductions
+  const rawNet = regularGross + overtimePay - totalDeductions;
   const netSalary = isNaN(rawNet) ? 0 : Math.max(0, Math.round(rawNet * 1000) / 1000);
 
   return {
@@ -294,7 +329,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
     otherAllowance: Math.round(otherAllowance * 1000) / 1000,
     overtimeHours: Math.round(overtimeHours * 10) / 10,
     overtimePay: Math.round(overtimePay * 1000) / 1000,
-    grossSalary: Math.round(grossSalary * 1000) / 1000,
+    grossSalary: Math.round(regularGross * 1000) / 1000, // Regular earnings only (excludes OT)
     absentDays,
     absenceDeduction,
     leaveDeduction,

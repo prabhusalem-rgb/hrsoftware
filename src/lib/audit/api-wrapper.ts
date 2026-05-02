@@ -122,7 +122,7 @@ export function withAuditLogging<
         }
 
         // Fire-and-forget audit log
-        logAudit(auditEntry, supabase).catch(console.error);
+        logAudit(auditEntry).catch(console.error);
       }
 
       return result;

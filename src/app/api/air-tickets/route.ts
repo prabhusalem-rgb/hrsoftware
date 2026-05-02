@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
         filters: { employee_id: employeeId, company_id: profile?.company_id },
         result_count: tickets?.length || 0,
       },
-    }, supabase).catch(console.error);
+    }).catch(console.error);
 
     const items = (tickets || []).map((ticket: any) => ({
       id: ticket.id,
@@ -335,7 +335,7 @@ export async function POST(request: NextRequest) {
         tickets_created: tickets.length,
         ticket_ids: tickets.map((t: any) => t.id),
       },
-    }, supabase).catch(console.error);
+    }).catch(console.error);
 
     return jsonSuccess({
       tickets,
@@ -470,7 +470,7 @@ export async function DELETE(request: NextRequest) {
         http_method: 'DELETE',
         was_used: ticket.status === 'used',
       },
-    }, supabase).catch(console.error);
+    }).catch(console.error);
 
     return jsonSuccess({
       message: 'Ticket record deleted successfully',

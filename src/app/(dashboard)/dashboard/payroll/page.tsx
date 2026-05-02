@@ -22,6 +22,7 @@ import { Progress } from '@/components/ui/progress';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
 import { useAttendance } from '@/hooks/queries/useAttendance';
+import { useTimesheets } from '@/hooks/queries/useTimesheets';
 import { useLoans } from '@/hooks/queries/useLoans';
 import { useLoanRepayments } from '@/hooks/queries/useLoanRepayments';
 import { usePayrollRuns } from '@/hooks/queries/usePayrollRuns';
@@ -101,6 +102,49 @@ export default function PayrollPage() {
   const [showSIFProgress, setShowSIFProgress] = useState(false);
   const [processCategory, setProcessCategory] = useState<string | null>('all');
 
+  // Timesheet data for payroll calculation
+  const timesheetMonth = `${processYear}-${String(processMonth).padStart(2, '0')}`;
+  const timesheetsQuery = useTimesheets({ companyId: activeCompanyId, month: timesheetMonth });
+  const timesheetsData = (timesheetsQuery.data ?? []) as any[];
+
+  console.log('[PayrollPage] processYear:', processYear, 'processMonth:', processMonth, 'timesheetMonth:', timesheetMonth);
+
+  // Debug: Check Abdul Gani's timesheets
+  useEffect(() => {
+    console.log('=== Payroll Debug ===');
+    console.log('processYear:', processYear, 'processMonth:', processMonth);
+    console.log('timesheetMonth (YYYY-MM):', timesheetMonth);
+    console.log('Total timesheets fetched:', timesheetsData.length);
+    console.log('timesheetsQuery status:', { isLoading: timesheetsQuery.isLoading, isError: timesheetsQuery.isError, error: timesheetsQuery.error });
+
+    // Show raw data structure
+    console.log('Raw timesheetsData:', timesheetsData);
+
+    // Find Abdul Gani by name in employees
+    const abdulEmp = employees.find(e =>
+      e.name_en.toLowerCase().includes('abdul') || e.name_en.toLowerCase().includes('gani')
+    );
+    console.log('Abdul Gani employee record:', abdulEmp);
+
+    // Find Abdul Gani's timesheets by employee_id
+    if (abdulEmp) {
+      const abdulTs = timesheetsData.filter(ts => ts.employee_id === abdulEmp.id);
+      console.log('Abdul Gani timesheets by employee_id:', abdulTs);
+    }
+
+    // Show all timesheets with OT
+    const withOT = timesheetsData.filter((ts: any) => (ts.overtime_hours || 0) > 0);
+    console.log('Timesheets with OT > 0:', withOT.map((ts: any) => ({
+      emp: ts.employees?.name_en,
+      empId: ts.employee_id,
+      date: ts.date,
+      day_type: ts.day_type,
+      hours_worked: ts.hours_worked,
+      overtime_hours: ts.overtime_hours,
+      project: ts.projects?.name
+    })));
+  }, [timesheetsData, timesheetMonth, timesheetsQuery, employees]);
+
   // Memoize employee IDs to prevent unnecessary query refetches
   const employeeIds = useMemo(() => employees.map(e => e.id), [employees]);
 
@@ -126,6 +170,19 @@ export default function PayrollPage() {
 
   const runs = runsData || [];
   const items = selectedItemsData || [];
+
+  // Debug: when a run is selected, log its details
+  useEffect(() => {
+    if (selectedRunId) {
+      const selectedRun = runs.find(r => r.id === selectedRunId);
+      console.log('Selected payroll run:', selectedRun ? { id: selectedRun.id.substring(0,8), month: selectedRun.month, year: selectedRun.year, type: selectedRun.type } : 'not found');
+      console.log('Selected items OT values:', items.map(i => ({
+        empId: i.employee_id.substring(0,8),
+        overtime_hours: i.overtime_hours,
+        overtime_pay: i.overtime_pay
+      })));
+    }
+  }, [selectedRunId, runs, items]);
   const selectedItems = items;
   const selectedRun = runs.find(r => r.id === selectedRunId);
 
@@ -322,8 +379,21 @@ export default function PayrollPage() {
         const batch = activeEmployees.slice(i, i + batchSize);
         const batchItems = batch.map(emp => {
           const empAttendance = (attendanceData || []).filter(a => a.employee_id === emp.id && a.date.startsWith(`${processYear}-${String(processMonth).padStart(2, '0')}`));
+          const empTimesheets = (timesheetsData || []).filter(ts => ts.employee_id === emp.id);
           const empLoan = (loansData || []).find(l => l.employee_id === emp.id && l.status === 'active');
           const empRepayment = (repaymentsData || []).find(r => r.loan_id === empLoan?.id && r.month === processMonth && r.year === processYear);
+
+          // Target debug for Abdul Gani
+          if (emp.name_en.toLowerCase().includes('abdul') || emp.name_en.toLowerCase().includes('gani')) {
+            console.log(`>>> ABDUL GANI DEBUG:`);
+            console.log('  Employee:', emp.name_en, '| ID:', emp.id);
+            console.log('  gross_salary:', emp.gross_salary);
+            console.log('  Timesheets count:', empTimesheets.length);
+            empTimesheets.forEach((ts, idx) => {
+              console.log(`  TS[${idx}]: date=${ts.date}, day_type=${ts.day_type}, hours_worked=${ts.hours_worked}, overtime_hours=${ts.overtime_hours}`);
+            });
+            console.log('  Attendance count:', empAttendance.length);
+          }
 
           const adj = adjustments[emp.id] || { allowance: 0, deduction: 0, allowanceNote: '', deductionNote: '' };
 
@@ -333,6 +403,7 @@ export default function PayrollPage() {
           const result = calculateEmployeePayroll({
             employee: emp,
             attendanceRecords: empAttendance,
+            timesheetRecords: empTimesheets,
             leaveRecords: (leavesData || []).filter(l => l.employee_id === emp.id),
             leaveTypes: leaveTypesData || [],
             activeLoan: empLoan || null,
@@ -344,6 +415,17 @@ export default function PayrollPage() {
             manualOtherAllowance: adj.allowance,
             manualOtherDeduction: adj.deduction
           });
+
+          // Target debug for Abdul Gani - show result
+          if (emp.name_en.toLowerCase().includes('abdul') || emp.name_en.toLowerCase().includes('gani')) {
+            console.log(`  >>> PAYROLL RESULT for ${emp.name_en}:`);
+            console.log('    overtimeHours:', result.overtimeHours);
+            console.log('    overtimePay:', result.overtimePay);
+            console.log('    grossSalary:', result.grossSalary);
+            console.log('    netSalary:', result.netSalary);
+            console.log('    batchItem.overtime_hours will be:', result.overtimeHours);
+            console.log('    batchItem.overtime_pay will be:', result.overtimePay);
+          }
 
           return {
             employee_id: emp.id,
@@ -1072,9 +1154,21 @@ export default function PayrollPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selectedItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium text-sm">{getEmpName(item.employee_id)}</TableCell>
+                {selectedItems.map((item) => {
+                  // Debug: log item for Abdul Gani
+                  const empName = getEmpName(item.employee_id);
+                  if (empName?.toLowerCase().includes('abdul') || empName?.toLowerCase().includes('gani')) {
+                    console.log(`>>> TABLE RENDER for ${empName}:`, {
+                      overtime_hours: item.overtime_hours,
+                      overtime_pay: item.overtime_pay,
+                      gross_salary: item.gross_salary,
+                      net_salary: item.net_salary
+                    });
+                  }
+
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium text-sm">{getEmpName(item.employee_id)}</TableCell>
                     <TableCell>{Number(item.basic_salary).toFixed(3)}</TableCell>
                     <TableCell>{Number(item.housing_allowance).toFixed(3)}</TableCell>
                     <TableCell>{Number(item.transport_allowance).toFixed(3)}</TableCell>
@@ -1102,7 +1196,8 @@ export default function PayrollPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                );}
+              )}
                 <TableRow className="font-bold border-t-2 bg-slate-50/50">
                   <TableCell>TOTAL</TableCell>
                   <TableCell>{selectedItems.reduce((s, i) => s + Number(i.basic_salary), 0).toFixed(3)}</TableCell>
@@ -1178,6 +1273,7 @@ export default function PayrollPage() {
           return eligibleStatuses.includes(e.status) && (processCategory === 'all' || normalizeCat(e.category) === processCategory);
         })}
         attendanceData={attendanceData || []}
+        timesheetData={timesheetsData || []}
         loansData={loansData || []}
         repaymentsData={repaymentsData || []}
         leaveRecords={(leavesData || []).filter(l => l.employee_id !== undefined)}  // all leaves, will be filtered per employee in modal

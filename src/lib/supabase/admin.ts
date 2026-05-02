@@ -33,7 +33,8 @@ const loadEnv = () => {
 let _adminClient: SupabaseClient | null = null;
 
 function getAdminClient(): SupabaseClient | null {
-  if (_adminClient) return _adminClient;
+  // Always create fresh client for now (debugging)
+  // if (_adminClient) return _adminClient;
 
   loadEnv();
 
@@ -49,20 +50,17 @@ function getAdminClient(): SupabaseClient | null {
     return null;
   }
 
-  _adminClient = createClient(url, key, {
+  console.log('[supabaseAdmin] Creating admin client, key prefix:', key.substring(0, 20));
+
+  const client = createClient(url, key, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
-    // Set the service role as Authorization bearer token to bypass RLS
-    global: {
-      headers: {
-        Authorization: `Bearer ${key}`,
-      },
-    },
   });
 
-  return _adminClient;
+  // _adminClient = client; // skip caching for now
+  return client;
 }
 
 export { getAdminClient };

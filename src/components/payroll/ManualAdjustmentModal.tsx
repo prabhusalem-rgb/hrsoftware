@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Employee, Attendance, Loan, LoanRepayment, Leave, LeaveType } from '@/types';
-import { calculateEmployeePayroll, getWorkingDaysInMonth } from '@/lib/calculations/payroll';
+import { calculateEmployeePayroll, getWorkingDaysInMonth, type TimesheetRecord } from '@/lib/calculations/payroll';
 import { Loader2, Save, Calculator, AlertCircle, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -19,6 +19,7 @@ interface ManualAdjustmentModalProps {
   onClose: () => void;
   employees: Employee[];
   attendanceData: Attendance[];
+  timesheetData: TimesheetRecord[];
   loansData: Loan[];
   repaymentsData: LoanRepayment[];
   leaveRecords: Leave[];
@@ -35,6 +36,7 @@ export function ManualAdjustmentModal({
   onClose,
   employees,
   attendanceData,
+  timesheetData,
   loansData,
   repaymentsData,
   leaveRecords,
@@ -77,12 +79,14 @@ export function ManualAdjustmentModal({
 
     // Calculate initial preview
     const empAttendance = attendanceData.filter(a => a.employee_id === emp.id && a.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
+    const empTimesheets = timesheetData.filter(ts => ts.employee_id === emp.id);
     const empLoan = loansData.find(l => l.employee_id === emp.id && l.status === 'active');
     const empRepayment = repaymentsData.find(r => r.loan_id === empLoan?.id && r.month === month && r.year === year);
 
     const preview = calculateEmployeePayroll({
       employee: emp,
       attendanceRecords: empAttendance,
+      timesheetRecords: empTimesheets,
       leaveRecords,
       leaveTypes,
       activeLoan: empLoan || null,
@@ -130,12 +134,14 @@ export function ManualAdjustmentModal({
       if (field === 'allowance' || field === 'deduction') {
         const emp = activeEmployees.find(e => e.id === empId)!;
         const empAttendance = attendanceData.filter(a => a.employee_id === emp.id && a.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
+        const empTimesheets = timesheetData.filter(ts => ts.employee_id === emp.id);
         const empLoan = loansData.find(l => l.employee_id === emp.id && l.status === 'active');
         const empRepayment = repaymentsData.find(r => r.loan_id === empLoan?.id && r.month === month && r.year === year);
 
         const newPreview = calculateEmployeePayroll({
           employee: emp,
           attendanceRecords: empAttendance,
+          timesheetRecords: empTimesheets,
           leaveRecords: leaveRecords.filter(l => l.employee_id === emp.id),
           leaveTypes,
           activeLoan: empLoan || null,

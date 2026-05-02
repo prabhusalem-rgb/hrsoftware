@@ -16,7 +16,14 @@ const nextConfig = {
       'exceljs',
       'jspdf',
       'jspdf-autotable',
-      'transliteration'
+      'transliteration',
+      'clsx',
+      'tailwind-merge',
+      'sonner',
+      '@radix-ui/react-progress',
+      '@hookform/resolvers',
+      'react-hook-form',
+      'zod'
     ],
   },
   // Turbopack config required in Next.js 16+ when webpack config exists

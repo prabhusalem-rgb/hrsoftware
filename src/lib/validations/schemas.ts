@@ -132,6 +132,102 @@ export const attendanceSchema = z.object({
   notes: z.string().optional().default(''),
 });
 
+// --- Timesheet ---
+export const dayTypeEnum = ['working_day', 'working_holiday', 'absent'] as const;
+export type DayType = (typeof dayTypeEnum)[number];
+
+export const DayTypeLabels: Record<DayType, string> = {
+  working_day: 'Working Day',
+  working_holiday: 'Working Holiday',
+  absent: 'Absent',
+};
+
+// Base schema — all fields with their base validations
+const timesheetBaseSchema = z.object({
+  employee_id: z.string().uuid('Please select a valid employee'),
+  project_id: z.string().uuid('Project is required'),
+  date: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)')
+    .refine((val) => {
+      const d = new Date(val);
+      return !isNaN(d.getTime()) && d <= new Date();
+    }, { message: 'Date cannot be in the future' }),
+  day_type: z.enum(['working_day', 'working_holiday', 'absent']),
+  hours_worked: z.coerce.number()
+    .min(0, 'Hours cannot be negative')
+    .max(8, 'Regular hours cannot exceed 8'),
+  overtime_hours: z.coerce.number()
+    .min(0, 'Overtime cannot be negative')
+    .max(16, 'Maximum 16 overtime hours')
+    .default(0),
+  reason: z.string()
+    .max(500, 'Reason too long (max 500 characters)')
+    .default(''),
+});
+
+// Full schema with cross-field validation
+export const timesheetSchema = timesheetBaseSchema.refine(
+  (data) => {
+    // working_day: regular hours must be at least 0.5, overtime optional
+    if (data.day_type === 'working_day') {
+      return data.hours_worked >= 0.5;
+    }
+    // working_holiday: no regular hours, must have exactly 8 OT hours
+    if (data.day_type === 'working_holiday') {
+      return data.hours_worked === 0 && data.overtime_hours === 8;
+    }
+    // absent: no hours, no OT
+    if (data.day_type === 'absent') {
+      return data.hours_worked === 0 && data.overtime_hours === 0;
+    }
+    return true;
+  },
+  {
+    message: 'Invalid hours configuration for selected day type',
+    path: ['hours_worked'],
+  }
+);
+
+// Patch schema — all fields optional (for PATCH endpoint)
+export const timesheetPatchSchema = timesheetBaseSchema.partial();
+
+export const timesheetSubmitSchema = timesheetSchema.extend({
+  token: z.string().min(1, 'Invalid submission link'),
+}).refine(
+  (data) => {
+    // Reason required for absent OR when overtime is recorded
+    if (data.day_type === 'absent' || data.overtime_hours > 0) {
+      return data.reason && data.reason.trim().length > 0;
+    }
+    return true;
+  },
+  {
+    message: 'Reason is required for absences and overtime entries',
+    path: ['reason'],
+  }
+);
+
+export const timesheetAdminSchema = timesheetSchema.refine(
+  (data) => {
+    // Reason required for absent OR when overtime is recorded
+    if (data.day_type === 'absent' || data.overtime_hours > 0) {
+      return data.reason && data.reason.trim().length > 0;
+    }
+    return true;
+  },
+  {
+    message: 'Reason is required for absences and overtime entries',
+    path: ['reason'],
+  }
+);
+
+export const projectSchema = z.object({
+  company_id: z.string().uuid(),
+  name: z.string().min(1, 'Project name is required').max(100),
+  description: z.string().max(500).optional().default(''),
+  status: z.enum(['active', 'completed', 'on_hold']).default('active'),
+});
+
 // --- User / Profile ---
 export const profileSchema = z.object({
   email: z.string().email('Invalid email'),
@@ -249,3 +345,9 @@ export type CreateSettlementValues = z.infer<typeof createSettlementSchema>;
 export type SettlementReversalValues = z.infer<typeof settlementReversalSchema>;
 export type BatchSettlementValues = z.infer<typeof batchSettlementSchema>;
 export type SettlementTemplateValues = z.infer<typeof settlementTemplateSchema>;
+
+// Timesheet types
+export type TimesheetFormData = z.infer<typeof timesheetSchema>;
+export type TimesheetSubmitData = z.infer<typeof timesheetSubmitSchema>;
+export type TimesheetAdminData = z.infer<typeof timesheetAdminSchema>;
+export type ProjectFormData = z.infer<typeof projectSchema>;

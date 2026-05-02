@@ -125,7 +125,7 @@ export async function POST(
         purpose: ticket.purpose,
         destination: ticket.destination,
       },
-    }, supabase).catch(console.error);
+    }).catch(console.error);
 
     return NextResponse.json({
       id,

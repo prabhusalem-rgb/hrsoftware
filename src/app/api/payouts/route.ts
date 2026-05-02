@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         entity_id: 'unknown',
         action: 'login_failed',
         metadata: { route: req.nextUrl.pathname, reason: 'no_session' },
-      }, supabase).catch(console.error);
+      }).catch(console.error);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -529,7 +529,7 @@ export async function POST(req: NextRequest) {
         item_count: item_ids.length,
         updated_count: updatedCount,
       },
-    }, supabase).catch(console.error);
+    }).catch(console.error);
 
     return NextResponse.json({
       success: true,

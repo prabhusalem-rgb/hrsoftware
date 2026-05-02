@@ -9,6 +9,15 @@ export function usePayrollMutations(companyId: string) {
 
   const processPayroll = useMutation({
     mutationFn: async ({ run, items }: { run: any; items: any[] }) => {
+      console.log('[processPayroll] Inserting payroll run:', run);
+      console.log('[processPayroll] Items to insert (first 3):', items.slice(0, 3).map(i => ({
+        employee_id: i.employee_id,
+        overtime_hours: i.overtime_hours,
+        overtime_pay: i.overtime_pay,
+        gross_salary: i.gross_salary,
+        net_salary: i.net_salary
+      })));
+
       // Insert payroll run
       const { data: runData, error: runError } = await supabase
         .from('payroll_runs')
@@ -29,11 +38,50 @@ export function usePayrollMutations(companyId: string) {
         type: runData.type,
       }));
 
+      console.log('[processPayroll] Items with runId (first 3):', itemsWithRunId.slice(0, 3).map((i: any) => ({
+        employee_id: i.employee_id,
+        overtime_hours: i.overtime_hours,
+        overtime_pay: i.overtime_pay
+      })));
+
+      // Check Abdul Gani specifically (by employee name lookup would need employees query, skip for now)
+      const abdulItems = itemsWithRunId.filter(i =>
+        i.employee_id === '13d979ed-50d2-4b2c-a5cc-a8227f7637b0' ||
+        i.employee_id === '1f1bede0-d427-4709-9256-301fdd79b307' ||
+        i.employee_id === '0851e851-28a6-406d-97ce-cdcd088472b6'
+      );
+      if (abdulItems.length > 0) {
+        console.log('[processPayroll] ABDUL FAMILY ITEMS:', abdulItems.map(i => ({
+          employee_id: i.employee_id.substring(0,8),
+          overtime_hours: i.overtime_hours,
+          overtime_pay: i.overtime_pay
+        })));
+      }
+
       const { error: itemsError } = await supabase
         .from('payroll_items')
         .insert(itemsWithRunId);
 
       if (itemsError) throw new Error(itemsError.message || 'Failed to insert payroll items');
+
+      console.log('[processPayroll] Successfully inserted', itemsWithRunId.length, 'items');
+
+      // Verify saved data for Abdul Gani
+      const { data: verifyData } = await supabase
+        .from('payroll_items')
+        .select('employee_id, overtime_hours, overtime_pay')
+        .eq('payroll_run_id', runData.id)
+        .in('employee_id', [
+          '13d979ed-50d2-4b2c-a5cc-a8227f7637b0',
+          '1f1bede0-d427-4709-9256-301fdd79b307',
+          '0851e851-28a6-406d-97ce-cdcd088472b6'
+        ]);
+
+      console.log('[processPayroll] Verification query for Abdul family:', verifyData?.map((i: any) => ({
+        empId: i.employee_id.substring(0,8),
+        overtime_hours: i.overtime_hours,
+        overtime_pay: i.overtime_pay
+      })));
 
       if (['leave_settlement', 'final_settlement', 'leave_encashment'].includes(run.type)) {
         const item = items[0];

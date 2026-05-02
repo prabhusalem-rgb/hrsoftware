@@ -246,7 +246,7 @@ export async function POST(
         new_status: newStatus,
         action,
       },
-    }, supabase).catch(console.error);
+    }).catch(console.error);
 
     // 5. If HR approved, send email to employee and generate final PDF
     if (newStatus === 'hr_approved') {

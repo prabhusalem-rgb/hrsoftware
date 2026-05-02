@@ -68,54 +68,18 @@ export function useEmployees({
         const { data, error } = await query;
 
         if (error) {
-          // Enhanced debugging: capture all properties including non-enumerable ones
-          const errorAny = error as any;
-          const ownKeys = Object.getOwnPropertyNames ? Object.getOwnPropertyNames(errorAny) : Object.keys(errorAny || {});
-          const inheritedKeys = errorAny && typeof errorAny === 'object'
-            ? Object.getOwnPropertyNames(Object.getPrototypeOf(errorAny))
-            : [];
-
-          console.error('useEmployees query error:', {
-            errorType: typeof error,
-            errorConstructor: error && typeof error === 'object' ? error.constructor.name : 'N/A',
-            ownKeys,
-            inheritedKeys,
-            message: errorAny?.message,
-            code: errorAny?.code,
-            details: errorAny?.details,
-            hint: errorAny?.hint,
-            status: errorAny?.status,
-            rawError: error,
-          });
-
-          const hasErrorProps = error && typeof error === 'object' && ownKeys.length > 0;
-
-          // Try multiple ways to extract message (handles non-enumerable properties)
-          const messageFromProp = errorAny?.message;
-          const messageFromDescriptor = errorAny && typeof errorAny === 'object' && 'message' in errorAny
-            ? (Object.getOwnPropertyDescriptor(errorAny, 'message')?.value ||
-               Object.getOwnPropertyDescriptor(Object.getPrototypeOf(errorAny), 'message')?.value)
-            : undefined;
-          const effectiveMessage = messageFromProp || messageFromDescriptor || 'Unknown error';
-
-          console.error('useEmployees query error:', {
-            errorType: typeof error,
-            errorConstructor: error && typeof error === 'object' ? error.constructor.name : 'N/A',
-            ownKeys,
-            inheritedKeys,
-            message: effectiveMessage,
-            messageFromProp,
-            messageFromDescriptor,
-            code: errorAny?.code,
-            details: errorAny?.details,
-            hint: errorAny?.hint,
-            status: errorAny?.status,
-            rawError: error,
-            rawErrorString: String(error),
-          });
-
-          const errorMessage = hasErrorProps ? effectiveMessage : 'Unable to connect to database. Check Supabase configuration.';
-
+          // Safely extract error message
+          let errorMessage = 'Unknown error';
+          try {
+            if (error && typeof error === 'object') {
+              errorMessage = (error as any)?.message || JSON.stringify(error) || 'Unknown error';
+            } else {
+              errorMessage = String(error);
+            }
+          } catch {
+            errorMessage = 'Unknown error';
+          }
+          console.error('useEmployees query error:', errorMessage);
           throw new Error(errorMessage);
         }
         return (data || []) as Employee[];

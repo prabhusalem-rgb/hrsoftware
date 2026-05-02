@@ -303,6 +303,20 @@ export default function EmployeesPage() {
     return matchSearch && matchCompany && matchTab;
   }), [employees, search, activeCompanyId, tab]);
 
+  // Optimize leave balance lookup
+  const balanceLookup = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!balancesData) return map;
+    
+    balancesData.forEach((b: LeaveBalance) => {
+      if (b.leave_type?.name?.toLowerCase().includes('annual')) {
+        map[b.employee_id] = b.balance;
+      }
+    });
+    return map;
+  }, [balancesData]);
+
+
   // Generate PDF blob URL for Rejoining Report preview
   useEffect(() => {
     if (!rejoiningReportEmployee || !activeCompany) {
@@ -538,7 +552,7 @@ export default function EmployeesPage() {
                   onOpenRejoiningReport={handleOpenRejoiningReport}
                   onHoldSalary={handleHoldSalary}
                   onReleaseHold={handleReleaseHold}
-                  currentLeaveBalance={balancesData?.find((b: LeaveBalance) => b.employee_id === emp.id && b.leave_type?.name?.toLowerCase().includes('annual'))?.balance}
+                  currentLeaveBalance={balanceLookup[emp.id]}
                 />
               ))}
               {filtered.length === 0 && (

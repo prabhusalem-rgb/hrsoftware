@@ -5,7 +5,7 @@
 // in Server Components, Route Handlers, or Server Actions.
 // ============================================================
 
-import { createClient } from '@/lib/supabase/server';
+import { getAdminClient } from '@/lib/supabase/admin';
 import { cookies } from 'next/headers';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -44,7 +44,7 @@ export interface AuditLogMetadata {
 
 export interface AuditLogEntry {
   company_id?: string | null;
-  user_id: string;
+  user_id?: string | null;  // Can be null for system/public events
   entity_type: string;
   entity_id: string | number;
   action: AuditAction;
@@ -67,7 +67,9 @@ export async function logAudit(
   supabaseClient?: SupabaseClient
 ): Promise<void> {
   try {
-    const supabase = supabaseClient || await createClient();
+    // Use admin client by default to bypass RLS (audit logs are system-level)
+    // If a specific client is passed, use that instead
+    const supabase = supabaseClient || getAdminClient();
     if (!supabase) {
       console.error('[AuditLogger] No Supabase client available - cannot log audit:', {
         action: entry.action,

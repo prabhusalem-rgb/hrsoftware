@@ -22,7 +22,9 @@ import {
   Database,
   Flower,
   Shield,
-  Bug
+  Bug,
+  Clock,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -50,11 +52,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     { label: 'Loan Management', href: '/dashboard/loans', icon: Wallet },
     { label: 'Air Tickets', href: '/dashboard/air-tickets', icon: Plane },
     { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
+    { label: 'Timesheets', href: '/dashboard/timesheets', icon: Clock },
     { type: 'separator' as const, label: 'Payroll & Finance' },
     { label: 'Payroll', href: '/dashboard/payroll', icon: Calculator },
     { label: 'Salary Payouts', href: '/dashboard/payroll/payouts', icon: Landmark },
     { type: 'separator' as const, label: 'Analytics' },
     { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+    { label: 'Timesheet Reports', href: '/dashboard/timesheets/reports', icon: FileSpreadsheet },
     ...(isSuperAdmin ? [
       { type: 'separator' as const, label: 'Audit & Compliance' },
       { label: 'Audit Logs', href: '/dashboard/audit-logs', icon: Shield },

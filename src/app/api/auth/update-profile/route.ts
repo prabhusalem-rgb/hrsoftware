@@ -53,7 +53,7 @@ export async function PUT(request: Request) {
         entity_id: user.id,
         action: 'password_change',
         metadata: { route: '/api/auth/update-profile' },
-      }, supabase).catch(console.error);
+      }).catch(console.error);
     }
 
     // 2. Update Full Name if provided
@@ -105,7 +105,7 @@ export async function PUT(request: Request) {
         old_values: changes.reduce((acc, c) => ({ ...acc, [c.field]: c.oldValue }), {}),
         new_values: changes.reduce((acc, c) => ({ ...acc, [c.field]: c.newValue }), {}),
         metadata: { route: '/api/auth/update-profile' },
-      }, supabase).catch(console.error);
+      }).catch(console.error);
     }
 
     return NextResponse.json({ success: true, message: 'Profile updated successfully' });
