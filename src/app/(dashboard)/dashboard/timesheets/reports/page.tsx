@@ -241,14 +241,14 @@ export default function TimesheetReportsPage() {
       doc.text('Overtime Summary', margin, y);
       y += 5;
 
-      const body: any[] = reports.otSummary.map(r => [
+      const body = reports.otSummary.map(r => [
         r.employee_name,
         r.emp_code,
         r.days_worked.toString(),
         r.ot_hours.toFixed(1),
         r.holiday_ot_hours.toFixed(1),
         r.total_ot_hours.toFixed(1)
-      ]);
+      ]) as (string | { content: string; colSpan?: number; styles?: Record<string, unknown> })[][];
 
       if (otGrandTotals) {
         body.push([

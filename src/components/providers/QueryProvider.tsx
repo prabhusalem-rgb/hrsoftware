@@ -15,12 +15,17 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Standard defaults for HR-Payroll apps:
-            // - Refresh data on focus (tab change) to ensure user sees latest state
-            // - 1 minute stale time to prevent excessive re-fetching
-            staleTime: 60 * 1000,
-            refetchOnWindowFocus: true,
-            retry: 1, // Only retry once to avoid excessive loading on failures
+            // Performance-optimized defaults:
+            // - 5 minute stale time reduces unnecessary re-fetches
+            // - 10 minute gcTime keeps unused data in memory
+            staleTime: 5 * 60 * 1000,
+            gcTime: 10 * 60 * 1000,
+            // Don't refetch on focus for better offline experience
+            refetchOnWindowFocus: false,
+            // Don't refetch on reconnect to avoid sudden loading states
+            refetchOnReconnect: false,
+            // Retry failed queries once
+            retry: 1,
           },
         },
       })

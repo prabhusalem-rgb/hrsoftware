@@ -1,14 +1,13 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
-import { DashboardStats, Employee } from '@/types';
-import { addDays, format } from 'date-fns';
+import { DashboardStats } from '@/types';
 
-export function useDashboardStats(companyId: string): UseQueryResult<DashboardStats, Error> {
+export function useDashboardStats(companyId: string) {
   const supabase = createClient();
 
-  return useQuery<DashboardStats>({
+  return useQuery({
     queryKey: ['dashboard-stats', companyId],
-    queryFn: async (): Promise<DashboardStats> => {
+    queryFn: async () => {
       if (!supabase || !companyId) {
         return {
           totalCompanies: 0,
@@ -21,7 +20,7 @@ export function useDashboardStats(companyId: string): UseQueryResult<DashboardSt
           pendingAirTickets: 0,
           recentPayrollRuns: [],
           expiringDocs: [],
-        };
+        } as DashboardStats;
       }
 
       const { data, error } = await supabase.rpc('get_dashboard_stats', {
@@ -47,7 +46,7 @@ export function useDashboardStats(companyId: string): UseQueryResult<DashboardSt
       };
     },
     enabled: !!companyId,
-    staleTime: 2 * 60 * 1000, // 2 minutes - dashboard data changes frequently
-    gcTime: 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - reduces unnecessary re-fetches
+    gcTime: 10 * 60 * 1000,   // 10 minutes garbage collection
   });
 }

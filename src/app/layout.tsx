@@ -9,6 +9,8 @@ import "./globals.css";
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 export const metadata: Metadata = {
@@ -16,6 +18,22 @@ export const metadata: Metadata = {
   description:
     "Professional HR & Payroll management system designed by Kumaresan. Compliant with Oman Labour Law and Bank Muscat WPS standards.",
   keywords: ["Bright Flowers", "HR", "Payroll", "Oman", "WPS", "Bank Muscat", "Labour Law", "SaaS"],
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default function RootLayout({

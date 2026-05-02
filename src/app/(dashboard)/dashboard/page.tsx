@@ -28,6 +28,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Employee } from '@/types';
 import { format } from 'date-fns';
+import { DashboardSkeleton } from '@/components/ui/skeleton';
 
 export default function DashboardPage() {
   const { activeCompanyId } = useCompany();
@@ -35,14 +36,8 @@ export default function DashboardPage() {
   const { createEmployee } = useEmployeeMutations(activeCompanyId);
   const [offerWizardOpen, setOfferWizardOpen] = useState(false);
 
-  console.log('[DashboardPage] render - activeCompanyId:', activeCompanyId, 'isLoading:', isLoading, 'error:', error);
-
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const result = dashboardData;
