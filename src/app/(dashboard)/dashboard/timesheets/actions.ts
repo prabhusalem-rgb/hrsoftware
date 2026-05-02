@@ -619,6 +619,8 @@ export async function getActiveTimesheetLink(companyId: string) {
     .select('*')
     .eq('company_id', companyId)
     .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
@@ -626,7 +628,8 @@ export async function getActiveTimesheetLink(companyId: string) {
 }
 
 /**
- * Generate a new timesheet link for the company (invalidates previous).
+ * Generate a new timesheet link for the company.
+ * Multiple active links can coexist — old links remain valid.
  * Only HR and admins can generate timesheet links.
  * Any authenticated user with the link can submit timesheets (public form).
  */
@@ -647,19 +650,6 @@ export async function generateTimesheetLink(companyId: string) {
   }
 
   console.log('[generateTimesheetLink] User:', request.userId, 'Role:', request.profile.role, 'Company:', request.profile.company_id, 'Target companyId:', companyId);
-
-  // Deactivate old links for this company
-  console.log('[generateTimesheetLink] Deactivating old links...');
-  const { error: deactivateErr } = await supabase
-    .from('timesheet_links')
-    .update({ is_active: false })
-    .eq('company_id', companyId);
-
-  if (deactivateErr) {
-    console.error('[generateTimesheetLink] Deactivate error:', deactivateErr);
-    throw new Error(`Failed to deactivate old links: ${deactivateErr.message}`);
-  }
-  console.log('[generateTimesheetLink] Deactivated old links');
 
   const token = crypto.randomUUID();
 

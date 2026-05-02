@@ -731,7 +731,7 @@ export default function TimesheetsDashboard() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Regenerating will invalidate the old link immediately.
+                      A new link will be generated. Previous links remain active.
                     </p>
                   </div>
                 ) : (

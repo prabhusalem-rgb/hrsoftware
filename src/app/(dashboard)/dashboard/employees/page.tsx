@@ -22,10 +22,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
-import { useDebounce } from '@/hooks/useDebounce';
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
 import { useSalaryRevisions } from '@/hooks/queries/useSalaryRevisions';
 import { useLeaveBalances } from '@/hooks/queries/useLeaveBalances';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Employee, EmployeeStatus, EmployeeFormData, EmployeeCategory, LeaveBalance } from '@/types';
 // import { RejoinDialog } from '@/components/employees/RejoinDialog';
 // import { AppraisalDialog } from '@/components/employees/AppraisalDialog';
@@ -274,7 +274,6 @@ export default function EmployeesPage() {
   const { data: balancesData } = useLeaveBalances(activeCompanyId);
   const { createEmployee, updateEmployee } = useEmployeeMutations(activeCompanyId);
   const { importEmployees } = useEmployeeMutations(activeCompanyId);
-  
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | 'create' | null>(null);
 

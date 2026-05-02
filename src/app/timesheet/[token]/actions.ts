@@ -30,7 +30,7 @@ export type SubmitTimesheetResponse = SubmitTimesheetResult | SubmitTimesheetSuc
 export async function getTimesheetFormData(token: string) {
   const supabase = getAdminClient();
   if (!supabase) {
-    return { error: 'Server configuration error: Admin client not available' };
+    return { success: false, error: 'Server configuration error: Admin client not available' };
   }
 
   console.log('[DEBUG] getTimesheetFormData called');
@@ -74,13 +74,13 @@ export async function getTimesheetFormData(token: string) {
   // Fetch company info for PDF
   const { data: companyData, error: companyErr } = await supabase
     .from('companies')
-    .select('id, name_en, name_ar, cr_number, address, contact_phone')
+    .select('*')
     .eq('id', companyId)
     .single();
 
   if (companyErr) {
     console.error('[submitTimesheet] Company fetch error:', companyErr);
-    return { error: 'Failed to fetch company details.' };
+    return { success: false, error: 'Failed to fetch company details.' };
   }
 
   const { data: employees, error: empError } = await supabase
@@ -93,7 +93,7 @@ export async function getTimesheetFormData(token: string) {
 
   if (empError) {
     console.error('[getTimesheetFormData] Error fetching employees:', empError);
-    return { error: 'Failed to fetch employees.' };
+    return { success: false, error: 'Failed to fetch employees.' };
   }
 
   const { data: projects, error: projError } = await supabase
@@ -105,7 +105,7 @@ export async function getTimesheetFormData(token: string) {
 
   if (projError) {
     console.error('[getTimesheetFormData] Error fetching projects:', projError);
-    return { error: 'Failed to fetch projects.' };
+    return { success: false, error: 'Failed to fetch projects.' };
   }
 
   return {
@@ -208,8 +208,6 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
 
   if (linkError || !linkData || !linkData.is_active) {
     return { success: false, error: 'Invalid or inactive timesheet link.' };
-  }
-
   const companyData = Array.isArray(linkData.companies) ? linkData.companies[0] : linkData.companies;
   if (!companyData) {
     return { success: false, error: 'Company details not found.' };
