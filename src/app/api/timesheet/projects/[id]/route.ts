@@ -9,6 +9,7 @@ const PROJECT_UPDATE_SCHEMA = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional().default(''),
   status: z.enum(['active', 'completed', 'on_hold']).optional(),
+  email: z.string().email('Invalid email address').optional().default(''),
 });
 
 const ENTITY = {

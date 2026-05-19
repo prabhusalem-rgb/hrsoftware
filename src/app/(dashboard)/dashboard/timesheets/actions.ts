@@ -38,6 +38,7 @@ async function getAuthorizedCompany() {
 const DAY_TYPE_LABELS: Record<string, string> = {
   working_day: 'Working Day',
   working_holiday: 'Working Holiday',
+  holiday_overtime: 'Holiday Overtime',
   absent: 'Absent',
 };
 
@@ -69,7 +70,7 @@ export async function getTimesheets(companyId: string, params: {
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `, { count: 'exact' })
     .eq('company_id', companyId)
@@ -117,7 +118,7 @@ export async function getTimesheet(id: string, companyId: string) {
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .eq('id', id)
@@ -354,7 +355,7 @@ export async function getProjects(companyId: string) {
 /**
  * Create a new project.
  */
-export async function createProject(companyId: string, name: string, description?: string) {
+export async function createProject(companyId: string, name: string, description?: string, email?: string) {
   const supabase = await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
@@ -366,6 +367,7 @@ export async function createProject(companyId: string, name: string, description
       company_id: companyId,
       name: name.trim(),
       description: description?.trim() || '',
+      email: email?.trim() || null,
       status: 'active',
     })
     .select()
@@ -399,7 +401,7 @@ export async function createProject(companyId: string, name: string, description
 /**
  * Update a project.
  */
-export async function updateProject(id: string, updates: { name?: string; description?: string; status?: string }) {
+export async function updateProject(id: string, updates: { name?: string; description?: string; status?: string; email?: string }) {
   const supabase = await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
@@ -418,6 +420,7 @@ export async function updateProject(id: string, updates: { name?: string; descri
   if (updates.name !== undefined) cleanUpdates.name = updates.name.trim();
   if (updates.description !== undefined) cleanUpdates.description = updates.description?.trim() || '';
   if (updates.status !== undefined) cleanUpdates.status = updates.status;
+  if (updates.email !== undefined) cleanUpdates.email = updates.email?.trim() || null;
 
   const { data, error } = await supabase
     .from('projects')
@@ -619,6 +622,8 @@ export async function getActiveTimesheetLink(companyId: string) {
     .select('*')
     .eq('company_id', companyId)
     .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
@@ -626,7 +631,8 @@ export async function getActiveTimesheetLink(companyId: string) {
 }
 
 /**
- * Generate a new timesheet link for the company (invalidates previous).
+ * Generate a new timesheet link for the company.
+ * Multiple active links can coexist — old links remain valid.
  * Only HR and admins can generate timesheet links.
  * Any authenticated user with the link can submit timesheets (public form).
  */
@@ -647,19 +653,6 @@ export async function generateTimesheetLink(companyId: string) {
   }
 
   console.log('[generateTimesheetLink] User:', request.userId, 'Role:', request.profile.role, 'Company:', request.profile.company_id, 'Target companyId:', companyId);
-
-  // Deactivate old links for this company
-  console.log('[generateTimesheetLink] Deactivating old links...');
-  const { error: deactivateErr } = await supabase
-    .from('timesheet_links')
-    .update({ is_active: false })
-    .eq('company_id', companyId);
-
-  if (deactivateErr) {
-    console.error('[generateTimesheetLink] Deactivate error:', deactivateErr);
-    throw new Error(`Failed to deactivate old links: ${deactivateErr.message}`);
-  }
-  console.log('[generateTimesheetLink] Deactivated old links');
 
   const token = crypto.randomUUID();
 
@@ -732,7 +725,9 @@ export async function getTimesheetReport(companyId: string, month: string) {
 
   // Parse month (YYYY-MM) to get start and end dates
   const startDate = `${month}-01`;
-  const endDate = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).toISOString().split('T')[0];
+  const [year, monthNum] = month.split('-').map(Number);
+  const lastDay = new Date(year, monthNum, 0).getDate();
+  const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
 
   // Use RPC functions for better performance
   const { data: projectCosts, error: projErr } = await supabase.rpc('get_project_timesheet_costs', {
@@ -786,7 +781,7 @@ export async function getTimesheetReport(companyId: string, month: string) {
     totalHours += Number(ts.hours_worked || 0);
     if (ts.day_type === 'absent') totalAbsentDays += 1;
     else if (ts.day_type === 'working_day') totalWorkingDays += 1;
-    else if (ts.day_type === 'working_holiday') totalWorkingHolidays += 1;
+    else if (ts.day_type === 'working_holiday' || ts.day_type === 'holiday_overtime') totalWorkingHolidays += 1;
 
     // Overtime from explicit field
     const ot = Number(ts.overtime_hours || 0);
@@ -837,7 +832,7 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, gross_salary),
+      employees(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .eq('company_id', companyId)
@@ -855,8 +850,8 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
 
   timesheets?.forEach((ts: any) => {
     const emp = ts.employees;
-    const grossSalary = Number(emp?.gross_salary || 0);
-    const hourlyRate = grossSalary / 30 / 8;
+    const basicSalary = Number(emp?.basic_salary || 0);
+    const hourlyRate = basicSalary / 208; // 8 hrs/day × 26 working days/month
 
     summary.totalHours += Number(ts.hours_worked);
     if (ts.day_type === 'absent') summary.totalAbsentDays += 1;
@@ -873,11 +868,10 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
       p.totalCost += cost;
     }
 
-    // Overtime from separate field
+    // Overtime from separate field — all OT at 1x rate
     const otHours = Number(ts.overtime_hours || 0);
     if (otHours > 0) {
       summary.totalOvertimeHours += otHours;
-      // Multiplier: both working_day and working_holiday = 1.0
       const multiplier = 1.0;
       overtimeRecords.push({
         ...ts,
@@ -997,7 +991,7 @@ export async function getTimesheetStats(companyId: string, month?: string) {
     stats.totalEntries += 1;
     stats.totalHours += Number(ts.hours_worked || 0);
     if (ts.day_type === 'working_day') stats.workingDays += 1;
-    else if (ts.day_type === 'working_holiday') stats.workingHolidays += 1;
+    else if (ts.day_type === 'working_holiday' || ts.day_type === 'holiday_overtime') stats.workingHolidays += 1;
     else if (ts.day_type === 'absent') stats.absentDays += 1;
 
     // Overtime from explicit field

@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -76,23 +76,35 @@ export function BatchSettlementModal({
   const [includePendingLoans, setIncludePendingLoans] = useState(true);
   const [batchNotes, setBatchNotes] = useState('');
 
-  // Per-employee overrides
+  // Per-employee overrides (lazy init from employees prop)
   const [employeeOverrides, setEmployeeOverrides] = useState<
     Record<string, { additionalDeductions: number; notes: string; enabled: boolean }>
-  >({});
+  >(() => {
+    const initial: Record<string, { additionalDeductions: number; notes: string; enabled: boolean }> = {};
+    employees.forEach((emp) => {
+      initial[emp.id] = { additionalDeductions: 0, notes: '', enabled: true };
+    });
+    return initial;
+  });
 
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
-  // Initialize overrides for all employees
-  useState(() => {
-    const initial: Record<string, { additionalDeductions: number; notes: string; enabled: boolean }> = {};
-    employees.forEach((emp) => {
-      initial[emp.id] = { additionalDeductions: 0, notes: '', enabled: true };
+  // Update overrides when employees list changes (add new employees, keep existing values)
+  useEffect(() => {
+    setEmployeeOverrides((prev) => {
+      const updated = { ...prev };
+      let changed = false;
+      employees.forEach((emp) => {
+        if (!(emp.id in updated)) {
+          updated[emp.id] = { additionalDeductions: 0, notes: '', enabled: true };
+          changed = true;
+        }
+      });
+      return changed ? updated : prev;
     });
-    setEmployeeOverrides(initial);
-  });
+  }, [employees]);
 
   // Handlers
   const handleReasonChange = (value: SettlementReason | null) => {
@@ -169,8 +181,10 @@ export function BatchSettlementModal({
         terminationDate,
         reason,
         noticeServed,
-        additionalDeductions: employeeOverrides[emp.id].additionalDeductions,
-        additionalPayments: 0,
+        otherDeductions: employeeOverrides[emp.id].additionalDeductions > 0
+          ? [{ label: 'Other Deductions', amount: employeeOverrides[emp.id].additionalDeductions }]
+          : [],
+        otherAdditions: [],
         notes: employeeOverrides[emp.id].notes || batchNotes,
       }));
 

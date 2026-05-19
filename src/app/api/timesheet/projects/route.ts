@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { company_id, name, description } = parsed.data;
+  const { company_id, name, description, email } = parsed.data;
 
   // Verify access
   const { data: membership } = await supabase
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
 
   const { data: newProject, error: insertErr } = await supabase
     .from('projects')
-    .insert({ company_id, name, description: description || '' })
+    .insert({ company_id, name, description: description || '', email: email || null })
     .select('*')
     .single();
 

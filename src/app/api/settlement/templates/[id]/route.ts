@@ -25,8 +25,14 @@ const templateUpdateSchema = z.object({
     terminationDate: z.string().optional(),
     reason: z.enum(['resignation', 'termination', 'contract_expiry', 'death', 'retirement', 'mutual_agreement']).optional(),
     noticeServed: z.boolean().optional(),
-    additionalPayments: z.number().min(0).optional(),
-    additionalDeductions: z.number().min(0).optional(),
+    otherAdditions: z.array(z.object({
+      label: z.string().min(1),
+      amount: z.coerce.number().min(0),
+    })).optional(),
+    otherDeductions: z.array(z.object({
+      label: z.string().min(1),
+      amount: z.coerce.number().min(0),
+    })).optional(),
     notes: z.string().optional(),
   }).optional(),
   is_default: z.boolean().optional(),
@@ -94,8 +100,8 @@ export async function PATCH(
       if (parsed.data.config.terminationDate !== undefined) newConfig.terminationDate = parsed.data.config.terminationDate;
       if (parsed.data.config.reason !== undefined) newConfig.reason = parsed.data.config.reason;
       if (parsed.data.config.noticeServed !== undefined) newConfig.noticeServed = parsed.data.config.noticeServed;
-      if (parsed.data.config.additionalPayments !== undefined) newConfig.additionalPayments = parsed.data.config.additionalPayments;
-      if (parsed.data.config.additionalDeductions !== undefined) newConfig.additionalDeductions = parsed.data.config.additionalDeductions;
+      if (parsed.data.config.otherAdditions !== undefined) newConfig.otherAdditions = parsed.data.config.otherAdditions;
+      if (parsed.data.config.otherDeductions !== undefined) newConfig.otherDeductions = parsed.data.config.otherDeductions;
       if (parsed.data.config.notes !== undefined) newConfig.notes = parsed.data.config.notes;
       updates.config = newConfig;
     }

@@ -172,6 +172,96 @@
   text-align: right;
 }
 
+/* ============================================================
+   PRINT STYLES - Attendance Reports
+   ============================================================ */
+
+@media print {
+  /* Hide non-essential elements */
+  .no-print,
+  nav,
+  header,
+  footer,
+  .sidebar,
+  .print-hide {
+    display: none !important;
+  }
+
+  /* Reset page margins */
+  @page {
+    margin: 0.5cm;
+    size: landscape;
+  }
+
+  /* Ensure full width */
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Table styling */
+  table {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  /* Attendance marks as badges */
+  .attendance-mark {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: bold;
+    color: white;
+  }
+
+  .mark-P { background-color: #22c55e !important; }
+  .mark-A { background-color: #ef4444 !important; }
+  .mark-L { background-color: #3b82f6 !important; }
+  .mark-H { background-color: #eab308 !important; }
+  .mark-W { background-color: #9ca3af !important; }
+
+  /* Headers */
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  /* Summary cards */
+  .print-summary {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 15px !important;
+  }
+
+  /* Force colors */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* ============================================================
+   END PRINT STYLES
+   ============================================================ */
+
 /* Animations */
 @keyframes slideInLeft {
   from { opacity: 0; transform: translateX(-12px); }

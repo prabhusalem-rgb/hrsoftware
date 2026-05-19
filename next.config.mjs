@@ -3,8 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
+  // Keep pdfkit unbundled for proper __dirname resolution
+  serverExternalPackages: ['pdfkit'],
   compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
+    // Keep console.log for email/debugging even in production
+    removeConsole: false,
   },
   experimental: {
     // Optimize heavy packages by only importing what is used

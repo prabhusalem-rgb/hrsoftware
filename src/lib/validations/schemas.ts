@@ -133,12 +133,13 @@ export const attendanceSchema = z.object({
 });
 
 // --- Timesheet ---
-export const dayTypeEnum = ['working_day', 'working_holiday', 'absent'] as const;
+export const dayTypeEnum = ['working_day', 'working_holiday', 'holiday_overtime', 'absent'] as const;
 export type DayType = (typeof dayTypeEnum)[number];
 
 export const DayTypeLabels: Record<DayType, string> = {
   working_day: 'Working Day',
   working_holiday: 'Working Holiday',
+  holiday_overtime: 'Holiday Overtime',
   absent: 'Absent',
 };
 
@@ -152,7 +153,7 @@ const timesheetBaseSchema = z.object({
       const d = new Date(val);
       return !isNaN(d.getTime()) && d <= new Date();
     }, { message: 'Date cannot be in the future' }),
-  day_type: z.enum(['working_day', 'working_holiday', 'absent']),
+  day_type: z.enum(['working_day', 'working_holiday', 'holiday_overtime', 'absent']),
   hours_worked: z.coerce.number()
     .min(0, 'Hours cannot be negative')
     .max(8, 'Regular hours cannot exceed 8'),
@@ -172,9 +173,13 @@ export const timesheetSchema = timesheetBaseSchema.refine(
     if (data.day_type === 'working_day') {
       return data.hours_worked >= 0.5;
     }
-    // working_holiday: no regular hours, must have exactly 8 OT hours
+    // working_holiday (legacy): no regular hours, must have exactly 8 OT hours
     if (data.day_type === 'working_holiday') {
       return data.hours_worked === 0 && data.overtime_hours === 8;
+    }
+    // holiday_overtime: no regular hours, must have 1-8 OT hours
+    if (data.day_type === 'holiday_overtime') {
+      return data.hours_worked === 0 && data.overtime_hours >= 1 && data.overtime_hours <= 8;
     }
     // absent: no hours, no OT
     if (data.day_type === 'absent') {
@@ -226,6 +231,7 @@ export const projectSchema = z.object({
   name: z.string().min(1, 'Project name is required').max(100),
   description: z.string().max(500).optional().default(''),
   status: z.enum(['active', 'completed', 'on_hold']).default('active'),
+  email: z.string().email('Invalid email address').optional().default(''),
 });
 
 // --- User / Profile ---
@@ -259,8 +265,14 @@ export const settlementConfigSchema = z.object({
     ),
   reason: z.enum(['resignation', 'termination', 'contract_expiry', 'death', 'retirement', 'mutual_agreement']),
   noticeServed: z.boolean().default(true),
-  additionalPayments: z.coerce.number().min(0, 'Must be positive').default(0),
-  additionalDeductions: z.coerce.number().min(0, 'Must be positive').default(0),
+  otherAdditions: z.array(z.object({
+    label: z.string().min(1, 'Label required'),
+    amount: z.coerce.number().min(0, 'Must be positive'),
+  })).default([]),
+  otherDeductions: z.array(z.object({
+    label: z.string().min(1, 'Label required'),
+    amount: z.coerce.number().min(0, 'Must be positive'),
+  })).default([]),
   notes: z.string().max(1000, 'Notes too long (max 1000 chars)').optional().default(''),
   includePendingLoans: z.boolean().default(true).optional(),
 });
@@ -272,6 +284,9 @@ export const createSettlementSchema = settlementConfigSchema
   .omit({ employeeId: true }) // employeeId goes in URL/body differently
   .extend({
     employeeId: z.string().uuid('Invalid employee ID'),
+    leave_request_id: z.string().uuid().optional().nullable(),
+    hr_signature: z.string().optional().nullable(),
+    gm_signature: z.string().optional().nullable(),
   });
 
 /**
@@ -297,8 +312,14 @@ export const batchSettlementSchema = z.object({
         terminationDate: z.string().optional(),
         reason: z.enum(['resignation', 'termination', 'contract_expiry', 'death', 'retirement', 'mutual_agreement']).optional(),
         noticeServed: z.boolean().optional(),
-        additionalDeductions: z.coerce.number().min(0).optional().default(0),
-        additionalPayments: z.coerce.number().min(0).optional().default(0),
+        otherDeductions: z.array(z.object({
+          label: z.string().min(1),
+          amount: z.coerce.number().min(0),
+        })).optional().default([]),
+        otherAdditions: z.array(z.object({
+          label: z.string().min(1),
+          amount: z.coerce.number().min(0),
+        })).optional().default([]),
         notes: z.string().optional(),
       })
     )
@@ -317,24 +338,14 @@ export const settlementTemplateSchema = z.object({
     terminationDate: z.string().optional(),
     reason: z.enum(['resignation', 'termination', 'contract_expiry', 'death', 'retirement', 'mutual_agreement']).optional(),
     noticeServed: z.boolean().optional(),
-    additionalPayments: z.coerce.number().min(0).optional(),
-    additionalDeductions: z.coerce.number().min(0).optional(),
-    paymentCategories: z
-      .array(
-        z.object({
-          label: z.string(),
-          amount: z.coerce.number().min(0),
-        })
-      )
-      .optional(),
-    deductionCategories: z
-      .array(
-        z.object({
-          label: z.string(),
-          amount: z.coerce.number().min(0),
-        })
-      )
-      .optional(),
+    otherAdditions: z.array(z.object({
+      label: z.string().min(1),
+      amount: z.coerce.number().min(0),
+    })).optional().default([]),
+    otherDeductions: z.array(z.object({
+      label: z.string().min(1),
+      amount: z.coerce.number().min(0),
+    })).optional().default([]),
   }),
   is_default: z.boolean().default(false),
 });

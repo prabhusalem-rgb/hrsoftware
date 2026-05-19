@@ -15,6 +15,7 @@ import { useCompany } from '@/components/providers/CompanyProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import { useBatchSettlement, useCreateSettlement } from '@/hooks/queries/useSettlementMutations';
+import type { BatchSettlementConfig } from '@/types/settlement';
 
 // Settlement eligibility: only active employees can be settled (per API contract)
 const SETTLEMENT_ELIGIBLE_STATUSES = ['active'];
@@ -29,6 +30,7 @@ function SettlementPageContent() {
   // State
   const [showWizard, setShowWizard] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | undefined>();
+  const [selectedLeaveRequestId, setSelectedLeaveRequestId] = useState<string | undefined>();
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchEmployeeIds, setBatchEmployeeIds] = useState<string[]>([]);
 
@@ -42,8 +44,10 @@ function SettlementPageContent() {
   // Check for preselected employee from query params
   useEffect(() => {
     const empId = searchParams.get('employeeId');
+    const leaveId = searchParams.get('leaveRequestId');
     if (empId) {
       setSelectedEmployeeId(empId);
+      if (leaveId) setSelectedLeaveRequestId(leaveId);
       setShowWizard(true);
     }
   }, [searchParams]);
@@ -81,19 +85,8 @@ function SettlementPageContent() {
     router.push('/dashboard/settlement');
   };
 
-  const handleBatchSubmit = async (data: {
-    commonTerminationDate: string;
-    commonReason: string;
-    commonNoticeServed: boolean;
-    includePendingLoans?: boolean;
-    items: Array<{
-      employeeId: string;
-      additionalDeductions?: number;
-      notes?: string;
-    }>;
-    notes?: string;
-  }) => {
-    await batchSettle.mutateAsync(data as unknown as Parameters<typeof batchSettle.mutateAsync>[0]);
+  const handleBatchSubmit = async (data: BatchSettlementConfig) => {
+    await batchSettle.mutateAsync(data);
     handleBatchModalClose();
   };
 
@@ -115,6 +108,7 @@ function SettlementPageContent() {
                 employees={employees}
                 onProcess={createSettlement.mutateAsync}
                 preselectedEmployeeId={selectedEmployeeId}
+                preselectedLeaveRequestId={selectedLeaveRequestId}
               />
             </div>
           </div>

@@ -32,7 +32,19 @@ import { format } from 'date-fns';
 
 export default function WPSPage() {
   const { activeCompanyId, activeCompany, userId } = useCompany();
-  const employeesQuery = useEmployees({ companyId: activeCompanyId });
+  const wpsSelect = `
+      id, emp_code, name_en, email, status, category, department, designation,
+      join_date, rejoin_date, leave_settlement_date, company_id,
+      bank_name, bank_bic, bank_iban, is_salary_held, salary_hold_reason,
+      basic_salary, housing_allowance, transport_allowance, food_allowance,
+      special_allowance, site_allowance, other_allowance, gross_salary,
+      nationality, gender, religion, family_status, id_type, civil_id,
+      passport_no, passport_expiry, visa_no, visa_expiry
+    `.trim().replace(/\s+/g, ' ');
+  const employeesQuery = useEmployees({
+    companyId: activeCompanyId,
+    select: wpsSelect,
+  });
   const employees: Employee[] = (employeesQuery.data ?? []) as Employee[];
   const payrollRunsQuery = usePayrollRuns(activeCompanyId);
   const payrollRuns: PayrollRun[] = (payrollRunsQuery.data ?? []) as PayrollRun[];
@@ -53,7 +65,10 @@ export default function WPSPage() {
   const filteredExports = wpsExports;
 
   const handleGenerate = async () => {
-    if (!selectedRunId) return;
+    if (!selectedRunId) {
+      toast.error('No payroll run selected');
+      return;
+    }
     if (!activeCompanyId) {
       toast.error('No active company selected');
       return;
@@ -63,6 +78,10 @@ export default function WPSPage() {
     const { data: freshExports } = await refetchExports();
     const currentExports = (freshExports ?? []) as WPSExport[];
 
+    // Refetch employees to get latest status/leave_settlement_date updates
+    await employeesQuery.refetch();
+    const freshEmployees = (employeesQuery.data ?? []) as Employee[];
+
     const run = completedRuns.find(r => r.id === selectedRunId);
     if (!run) { toast.error('Payroll run not found'); return; }
 
@@ -70,7 +89,7 @@ export default function WPSPage() {
 
     if (runItems.length === 0) { toast.error('No payroll records found for this run'); return; }
 
-    const employeeMap = new Map(employees.map(e => [e.id, e]));
+    const employeeMap = new Map(freshEmployees.map(e => [e.id, e]));
 
     // Determine exportable items with partial payment support
     // Include: pending items, and 'paid' items where paid_amount < net_salary (partial remaining)
@@ -102,7 +121,7 @@ export default function WPSPage() {
     if (!activeCompany.cr_number) { toast.error('Company CR Number is missing'); return; }
     if (!activeCompany.iban) { toast.error('Company Payment IBAN is missing'); return; }
 
-    const runEmployees = employees.filter(e => itemsToExport.some(i => i.employee_id === e.id));
+    const runEmployees = freshEmployees.filter(e => itemsToExport.some(i => i.employee_id === e.id));
 
     const missingID = runEmployees.filter(e => !e.civil_id && !e.passport_no);
     if (missingID.length > 0) {
@@ -117,7 +136,7 @@ export default function WPSPage() {
     }
 
     // Generate SIF using only the exportable items
-    const result = generateWPSSIF(activeCompany, employees, itemsToExport, run.year, run.month, run.type as PayrollRunType);
+    const result = generateWPSSIF(activeCompany, freshEmployees, itemsToExport, run.year, run.month, run.type as PayrollRunType);
     const sifContent = result.sifContent;
     const exportedAmounts = result.exportedAmounts;
 

@@ -512,6 +512,7 @@ export default function ContractRenewalDetailsPage() {
                   <SignaturePad
                     onSave={handleManagerSign}
                     placeholder="Sign as Manager / HOD"
+                    height="h-56"
                   />
                 </div>
               )}
@@ -534,6 +535,7 @@ export default function ContractRenewalDetailsPage() {
                   <SignaturePad
                     onSave={handleHRApprove}
                     placeholder="Sign as HR Representative"
+                    height="h-56"
                   />
                 </div>
               )}

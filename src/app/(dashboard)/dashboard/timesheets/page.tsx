@@ -37,7 +37,15 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { CalendarIcon, Copy, Link as LinkIcon, Plus, RefreshCw, Search, Download, Edit, Trash2, FileSpreadsheet, FileDown, Clock, TrendingUp, Users } from 'lucide-react';
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxField,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxTrigger,
+} from '@/components/ui/combobox';
+import { CalendarIcon, Copy, Link as LinkIcon, Plus, RefreshCw, Search, Download, Edit, Trash2, FileSpreadsheet, FileDown, Clock, TrendingUp, Users, User, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isWithinInterval, parseISO } from 'date-fns';
 import {
@@ -63,6 +71,7 @@ import { DayTypeLabels } from '@/lib/validations/schemas';
 const dayTypeColors: Record<string, string> = {
   working_day: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   working_holiday: 'bg-amber-100 text-amber-700 border-amber-200',
+  holiday_overtime: 'bg-orange-100 text-orange-700 border-orange-200',
   absent: 'bg-red-100 text-red-700 border-red-200',
 };
 
@@ -99,14 +108,16 @@ export default function TimesheetsDashboard() {
     overtime_hours: 0,
     reason: '',
   });
-  const [projectForm, setProjectForm] = useState({ name: '', description: '', status: 'active' as 'active' | 'completed' | 'on_hold' });
+  const [formEmployeeSearchQuery, setFormEmployeeSearchQuery] = useState('');
+  const [formEmployeeId, setFormEmployeeId] = useState<string>('');
+  const [projectForm, setProjectForm] = useState({ name: '', description: '', email: '', status: 'active' as 'active' | 'completed' | 'on_hold' });
 
   const employeesQuery = useEmployees({ companyId: activeCompanyId || '', statuses: ['active'] });
   const timesheetsQuery = useTimesheets({
     companyId: activeCompanyId || '',
     employeeId: selectedEmployeeId || undefined,
     projectId: selectedProjectId || undefined,
-    dayType: selectedDayType === 'all' || selectedDayType === null ? undefined : (selectedDayType as 'working_day' | 'working_holiday' | 'absent'),
+    dayType: selectedDayType === 'all' || selectedDayType === null ? undefined : (selectedDayType as 'working_day' | 'working_holiday' | 'holiday_overtime' | 'absent'),
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
   });
@@ -191,6 +202,8 @@ export default function TimesheetsDashboard() {
       overtime_hours: 0,
       reason: '',
     });
+    setFormEmployeeId('');
+    setFormEmployeeSearchQuery('');
     setDialogOpen(true);
   };
 
@@ -205,15 +218,36 @@ export default function TimesheetsDashboard() {
       overtime_hours: ts.overtime_hours || 0,
       reason: ts.reason || '',
     });
+    setFormEmployeeId(ts.employee_id);
+    setFormEmployeeSearchQuery('');
     setDialogOpen(true);
   };
 
   const handleSaveTimesheet = async () => {
+    // Validation
+    if (!formEmployeeId) {
+      toast.error('Please select an employee');
+      return;
+    }
+    if (!form.project_id) {
+      toast.error('Please select a project');
+      return;
+    }
+    if (!form.date) {
+      toast.error('Please select a date');
+      return;
+    }
+
+    const payload = {
+      ...form,
+      employee_id: formEmployeeId,
+    };
+
     try {
       if (editingTimesheet) {
-        await updateTimesheet(editingTimesheet.id, form);
+        await updateTimesheet(editingTimesheet.id, payload);
       } else {
-        await createTimesheet(form);
+        await createTimesheet(payload);
       }
       setDialogOpen(false);
     } catch (e: any) {
@@ -233,22 +267,27 @@ export default function TimesheetsDashboard() {
   // Project handlers
   const openNewProject = () => {
     setEditingProject(null);
-    setProjectForm({ name: '', description: '', status: 'active' });
+    setProjectForm({ name: '', description: '', email: '', status: 'active' });
     setProjectDialogOpen(true);
   };
 
   const openEditProject = (proj: Project) => {
     setEditingProject(proj);
-    setProjectForm({ name: proj.name, description: proj.description, status: proj.status });
+    setProjectForm({ name: proj.name, description: proj.description, email: proj.email || '', status: proj.status });
     setProjectDialogOpen(true);
   };
 
   const handleSaveProject = async () => {
     try {
       if (editingProject) {
-        await updateProject(editingProject.id, projectForm);
+        await updateProject(editingProject.id, {
+          name: projectForm.name,
+          description: projectForm.description,
+          status: projectForm.status,
+          email: projectForm.email
+        });
       } else {
-        await createProject(activeCompanyId!, projectForm.name, projectForm.description);
+        await createProject(activeCompanyId!, projectForm.name, projectForm.description, projectForm.email);
       }
       setProjectDialogOpen(false);
     } catch (e: any) {
@@ -508,6 +547,7 @@ export default function TimesheetsDashboard() {
                     <SelectItem value="all">All Types</SelectItem>
                     <SelectItem value="working_day">Working Day</SelectItem>
                     <SelectItem value="working_holiday">Working Holiday</SelectItem>
+                    <SelectItem value="holiday_overtime">Holiday Overtime</SelectItem>
                     <SelectItem value="absent">Absent</SelectItem>
                   </SelectContent>
                 </Select>
@@ -648,6 +688,7 @@ export default function TimesheetsDashboard() {
                       <TableHead>Name</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Email Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -662,6 +703,38 @@ export default function TimesheetsDashboard() {
                           <Badge variant={proj.status === 'active' ? 'default' : 'secondary'}>
                             {proj.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {proj.email ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant={
+                                    proj.email_status === 'sent' ? 'default' :
+                                    proj.email_status === 'failed' ? 'destructive' :
+                                    'outline'
+                                  }
+                                  className="text-xs"
+                                >
+                                  {proj.email_status === 'sent' ? '✓ Sent' :
+                                   proj.email_status === 'failed' ? '✗ Failed' :
+                                   '○ Pending'}
+                                </Badge>
+                              </div>
+                              {proj.email_sent_at && (
+                                <div className="text-xs text-muted-foreground">
+                                  {new Date(proj.email_sent_at).toLocaleDateString()}
+                                </div>
+                              )}
+                              {proj.email_error && (
+                                <div className="text-xs text-red-600 truncate max-w-[200px]" title={proj.email_error}>
+                                  {proj.email_error}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -731,7 +804,7 @@ export default function TimesheetsDashboard() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Regenerating will invalidate the old link immediately.
+                      A new link will be generated. Previous links remain active.
                     </p>
                   </div>
                 ) : (
@@ -794,7 +867,13 @@ export default function TimesheetsDashboard() {
       )}
 
       {/* ===== TIMESHEET EDIT MODAL ===== */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setFormEmployeeId('');
+          setFormEmployeeSearchQuery('');
+        }
+        setDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>{editingTimesheet ? 'Edit Timesheet' : 'Add Timesheet Entry'}</DialogTitle>
@@ -807,16 +886,68 @@ export default function TimesheetsDashboard() {
             {/* Employee */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Employee *</Label>
-              <select
-                value={form.employee_id}
-                onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <Combobox
+                value={formEmployeeId}
+                onValueChange={(value) => {
+                  setFormEmployeeId(value || '');
+                  setFormEmployeeSearchQuery('');
+                }}
+                itemToStringLabel={(itemValue) => {
+                  const emp = employees.find(e => e.id === itemValue);
+                  return emp ? `${emp.name_en} (${emp.emp_code})` : '';
+                }}
               >
-                <option value="">Select employee</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name_en} ({emp.emp_code})</option>
-                ))}
-              </select>
+                <ComboboxField className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <ComboboxInput
+                    placeholder="Search employee by name or code..."
+                    className="pl-10"
+                    onChange={(e) => setFormEmployeeSearchQuery(e.target.value)}
+                  />
+                  <ComboboxTrigger hasValue={!!formEmployeeId} onClear={() => {
+                    setFormEmployeeId('');
+                    setFormEmployeeSearchQuery('');
+                  }} />
+                </ComboboxField>
+                <ComboboxContent>
+                  <div className="py-2">
+                    {employees
+                      .filter(emp => {
+                        const query = formEmployeeSearchQuery || '';
+                        if (!query.trim()) return true;
+                        const search = query.toLowerCase();
+                        return (
+                          (emp.name_en || '').toLowerCase().includes(search) ||
+                          (emp.emp_code || '').toLowerCase().includes(search)
+                        );
+                      })
+                      .map(emp => (
+                        <ComboboxItem key={emp.id} value={emp.id} className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium shrink-0">
+                            {emp.name_en?.charAt(0) || '?'}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{emp.name_en}</span>
+                            <span className="text-xs text-muted-foreground truncate">{emp.emp_code}</span>
+                          </div>
+                        </ComboboxItem>
+                      ))}
+                    {employees.length === 0 && (
+                      <div className="px-3 py-8 text-center text-muted-foreground">
+                        <User className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                        <p className="text-sm">No employees found</p>
+                      </div>
+                    )}
+                  </div>
+                </ComboboxContent>
+              </Combobox>
+              {form.employee_id && !formEmployeeId && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Selected: {employees.find(e => e.id === form.employee_id)?.name_en || 'Unknown employee'}
+                </p>
+              )}
             </div>
 
             {/* Date */}
@@ -834,7 +965,7 @@ export default function TimesheetsDashboard() {
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Day Type *</Label>
               <div className="flex flex-wrap gap-4">
-                {(['working_day', 'working_holiday', 'absent'] as DayType[]).map((dt) => (
+                {(['working_day', 'working_holiday', 'holiday_overtime', 'absent'] as DayType[]).map((dt) => (
                   <label key={dt} className="flex items-center space-x-2">
                     <input
                       type="radio"
@@ -845,6 +976,13 @@ export default function TimesheetsDashboard() {
                         const newForm = { ...form, day_type: dt };
                         if (dt === 'absent') {
                           newForm.hours_worked = 0;
+                          newForm.overtime_hours = 0;
+                        } else if (dt === 'holiday_overtime') {
+                          newForm.hours_worked = 0;
+                          newForm.overtime_hours = 1;
+                        } else {
+                          // working_day or working_holiday
+                          newForm.hours_worked = 8;
                           newForm.overtime_hours = 0;
                         }
                         setForm(newForm);
@@ -860,76 +998,107 @@ export default function TimesheetsDashboard() {
             {/* Hours & Project (if not absent) */}
             {form.day_type !== 'absent' && (
               <>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Regular Hours *</Label>
-                  <div className="flex flex-wrap gap-4">
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="radio"
-                        name="hours_worked"
-                        value="8"
-                        checked={form.hours_worked === 8}
-                        onChange={() => setForm({ ...form, hours_worked: 8 })}
-                        className="h-4 w-4 text-blue-600"
-                      />
-                      <span className="text-sm">8 Hours (Full-day)</span>
-                    </label>
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="radio"
-                        name="hours_worked"
-                        value="4"
-                        checked={form.hours_worked === 4}
-                        onChange={() => setForm({ ...form, hours_worked: 4 })}
-                        className="h-4 w-4 text-blue-600"
-                      />
-                      <span className="text-sm">4 Hours (Half-day)</span>
-                    </label>
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="radio"
-                        name="hours_worked"
-                        value="custom"
-                        checked={typeof form.hours_worked === 'number' && form.hours_worked !== 8 && form.hours_worked !== 4}
-                        onChange={() => setForm({ ...form, hours_worked: 0 })}
-                        className="h-4 w-4 text-blue-600"
-                      />
-                      <span className="text-sm">Custom Regular</span>
-                    </label>
-                  </div>
-                  {(typeof form.hours_worked === 'number' && form.hours_worked !== 8 && form.hours_worked !== 4) && (
-                    <div className="mt-2">
-                      <Input
-                        type="number"
-                        step="0.5"
-                        min="0.5"
-                        max="8"
-                        value={form.hours_worked === 0 ? '' : form.hours_worked}
-                        onChange={(e) => setForm({ ...form, hours_worked: parseFloat(e.target.value) || 0 })}
-                        placeholder="Regular hours (max 8)"
-                      />
+                {/* Regular Hours — hidden for holiday_overtime */}
+                {form.day_type !== 'holiday_overtime' && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Regular Hours *</Label>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="hours_worked"
+                          value="8"
+                          checked={form.hours_worked === 8}
+                          onChange={() => setForm({ ...form, hours_worked: 8 })}
+                          className="h-4 w-4 text-blue-600"
+                        />
+                        <span className="text-sm">8 Hours (Full-day)</span>
+                      </label>
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="hours_worked"
+                          value="4"
+                          checked={form.hours_worked === 4}
+                          onChange={() => setForm({ ...form, hours_worked: 4 })}
+                          className="h-4 w-4 text-blue-600"
+                        />
+                        <span className="text-sm">4 Hours (Half-day)</span>
+                      </label>
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="hours_worked"
+                          value="custom"
+                          checked={typeof form.hours_worked === 'number' && form.hours_worked !== 8 && form.hours_worked !== 4}
+                          onChange={() => setForm({ ...form, hours_worked: 0 })}
+                          className="h-4 w-4 text-blue-600"
+                        />
+                        <span className="text-sm">Custom Regular</span>
+                      </label>
                     </div>
-                  )}
-                </div>
+                    {(typeof form.hours_worked === 'number' && form.hours_worked !== 8 && form.hours_worked !== 4) && (
+                      <div className="mt-2">
+                        <Input
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          max="8"
+                          value={form.hours_worked === 0 ? '' : form.hours_worked}
+                          onChange={(e) => setForm({ ...form, hours_worked: parseFloat(e.target.value) || 0 })}
+                          placeholder="Regular hours (max 8)"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {/* Overtime Hours */}
-                <div className="space-y-1.5 pt-3 border-t">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Overtime Hours <span className="text-muted-foreground text-xs">(optional)</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="16"
-                    value={form.overtime_hours}
-                    onChange={(e) => setForm({ ...form, overtime_hours: parseFloat(e.target.value) || 0 })}
-                    placeholder="0"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Hours worked beyond regular shift. Reason is required if overtime is recorded.
-                  </p>
-                </div>
+                {/* Holiday Overtime Hours — shown only for holiday_overtime */}
+                {form.day_type === 'holiday_overtime' && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Holiday Overtime Hours <span className="text-red-500">*</span>
+                    </Label>
+                    <select
+                      value={form.overtime_hours}
+                      onChange={(e) => setForm({ ...form, overtime_hours: parseFloat(e.target.value) || 1 })}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value={1}>1 hour</option>
+                      <option value={2}>2 hours</option>
+                      <option value={3}>3 hours</option>
+                      <option value={4}>4 hours</option>
+                      <option value={5}>5 hours</option>
+                      <option value={6}>6 hours</option>
+                      <option value={7}>7 hours</option>
+                      <option value={8}>8 hours</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      Select hours worked on the holiday. All hours paid at holiday overtime rate.
+                    </p>
+                  </div>
+                )}
+
+                {/* Overtime Hours — shown for working_day and working_holiday */}
+                {form.day_type !== 'holiday_overtime' && (
+                  <div className="space-y-1.5 pt-3 border-t">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Overtime Hours <span className="text-muted-foreground text-xs">(optional)</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="16"
+                      value={form.overtime_hours}
+                      onChange={(e) => setForm({ ...form, overtime_hours: parseFloat(e.target.value) || 0 })}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Hours worked beyond regular shift. Reason is required if overtime is recorded.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project *</Label>
@@ -996,6 +1165,18 @@ export default function TimesheetsDashboard() {
             <div className="space-y-1.5">
               <Label>Description</Label>
               <Input value={projectForm.description} onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email (for daily reports)</Label>
+              <Input
+                type="email"
+                placeholder="project-email@example.com"
+                value={projectForm.email}
+                onChange={(e) => setProjectForm({ ...projectForm, email: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Daily timesheet reports will be sent to this email at 11:59 PM
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label>Status</Label>

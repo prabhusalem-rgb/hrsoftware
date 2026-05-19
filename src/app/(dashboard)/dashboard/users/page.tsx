@@ -50,6 +50,7 @@ const roleColors: Record<UserRole, string> = {
   finance: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200',
   viewer: 'bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300 border-slate-200',
   foreman: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border-orange-200',
+  operations: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border-purple-200',
 };
 
 const roleLabels: Record<UserRole, string> = {
@@ -59,6 +60,7 @@ const roleLabels: Record<UserRole, string> = {
   finance: 'Finance',
   viewer: 'Viewer',
   foreman: 'Foreman',
+  operations: 'Operations Manager',
 };
 
 export default function UsersPage() {
@@ -148,6 +150,7 @@ export default function UsersPage() {
       finance: 'employee',
       viewer: 'employee',
       foreman: 'foreman',
+      operations: 'operations',
     };
 
     try {

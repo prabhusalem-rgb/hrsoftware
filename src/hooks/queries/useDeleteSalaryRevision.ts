@@ -21,17 +21,7 @@ export function useDeleteSalaryRevision() {
         throw new Error('Revision not found');
       }
 
-      // Check if effective date is in the past — if so, deletion would require reversal
-      const effectiveDate = new Date(revision.effective_date);
-      const today = new Date();
-      effectiveDate.setHours(0, 0, 0, 0);
-      today.setHours(0, 0, 0, 0);
-
-      if (effectiveDate < today) {
-        throw new Error('Cannot delete a revision that has already been applied. Create a new appraisal to reverse this change.');
-      }
-
-      // Delete the revision
+      // Delete the revision (no date restrictions)
       const { error: deleteError } = await supabase
         .from('salary_revisions')
         .delete()

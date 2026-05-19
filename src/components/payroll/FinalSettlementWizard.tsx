@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calculator, Briefcase, Calendar, User, ChevronRight, ChevronLeft, CheckCircle2, AlertTriangle, Landmark, ShieldCheck, Ticket } from 'lucide-react';
-import { Employee, Loan, LeaveBalance } from '@/types';
+import { Calculator, Briefcase, Calendar, User, ChevronRight, ChevronLeft, CheckCircle2, AlertTriangle, Landmark, ShieldCheck, Ticket, Plus, X } from 'lucide-react';
+import type { Employee, Loan } from '@/types';
 import { calculateEOSB } from '@/lib/calculations/eosb';
 import { calculateLeaveEncashment, calculateLeaveEncashmentValue } from '@/lib/calculations/leave';
 import { differenceInDays } from 'date-fns';
@@ -20,6 +20,8 @@ import { useAirTicketBalance } from '@/hooks/queries/useAirTicketBalance';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useQuery } from '@tanstack/react-query';
+import { LeaveRequestSelector } from './LeaveRequestSelector';
+import { SignaturePad } from '@/components/hr/SignaturePad';
 
 interface FinalSettlementWizardProps {
   isOpen: boolean;
@@ -27,19 +29,27 @@ interface FinalSettlementWizardProps {
   employees: Employee[];
   onProcess: (data: any) => Promise<any>;
   preselectedEmployeeId?: string;
+  preselectedLeaveRequestId?: string;
 }
 
-export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, preselectedEmployeeId }: FinalSettlementWizardProps) {
+type LineItem = { id: string; label: string; amount: number };
+
+export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, preselectedEmployeeId, preselectedLeaveRequestId }: FinalSettlementWizardProps) {
   const { activeCompany } = useCompany();
   const [step, setStep] = useState(1);
   const [selectedEmpId, setSelectedEmpId] = useState(preselectedEmployeeId || '');
   const [terminationDate, setTerminationDate] = useState(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState('resignation');
   const [noticeServed, setNoticeServed] = useState(true);
-  const [additionalPayments, setAdditionalPayments] = useState(0);
-  const [additionalDeductions, setAdditionalDeductions] = useState(0);
+  const [otherAdditions, setOtherAdditions] = useState<LineItem[]>([]);
+  const [otherDeductions, setOtherDeductions] = useState<LineItem[]>([
+    { id: 'default', label: 'Other Deductions', amount: 0 }
+  ]);
   const [includePendingLoans, setIncludePendingLoans] = useState(true);
   const [notes, setNotes] = useState('');
+  const [selectedLeaveRequestId, setSelectedLeaveRequestId] = useState<string | null>(preselectedLeaveRequestId || null);
+  const [hrSignature, setHrSignature] = useState('');
+  const [gmSignature, setGmSignature] = useState('');
 
   // Data fetching
   const activeEmployees = employees.filter(e => e.status !== 'terminated');
@@ -74,7 +84,20 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
   const activeLoanBalance = activeLoans.reduce((sum, l) => sum + Number(l.balance_remaining), 0);
   const pendingLoanBalance = pendingLoans.reduce((sum, l) => sum + Number(l.balance_remaining), 0);
   const totalLoanBalance = activeLoanBalance + (includePendingLoans ? pendingLoanBalance : 0);
-  
+
+  // Line item management helpers
+  const addOtherAddition = () => setOtherAdditions([...otherAdditions, { id: uuidv4(), label: '', amount: 0 }]);
+  const removeOtherAddition = (id: string) => setOtherAdditions(otherAdditions.filter(i => i.id !== id));
+  const updateOtherAddition = (id: string, field: 'label' | 'amount', value: string | number) => {
+    setOtherAdditions(otherAdditions.map(a => a.id === id ? { ...a, [field]: value } : a));
+  };
+
+  const addOtherDeduction = () => setOtherDeductions([...otherDeductions, { id: uuidv4(), label: '', amount: 0 }]);
+  const removeOtherDeduction = (id: string) => setOtherDeductions(otherDeductions.filter(i => i.id !== id));
+  const updateOtherDeduction = (id: string, field: 'label' | 'amount', value: string | number) => {
+    setOtherDeductions(otherDeductions.map(d => d.id === id ? { ...d, [field]: value } : d));
+  };
+
   // Air ticket quantity (informational only — NOT a monetary credit)
   // Air tickets are a separate travel entitlement; unused tickets are NOT paid out in settlement
   const airTicketQuantity = useMemo(() => {
@@ -112,8 +135,11 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
     return Math.round(raw * 1000) / 1000;
   }, [employee, terminationDate]);
 
-  const totalEarnings = (eosb?.totalGratuity || 0) + leaveEncashAmount + finalMonthSalary + Number(additionalPayments);
-  const totalDeductions = totalLoanBalance + Number(additionalDeductions);
+  const additionsSum = otherAdditions.reduce((s, a) => s + Number(a.amount || 0), 0);
+  const deductionsSum = otherDeductions.reduce((s, d) => s + Number(d.amount || 0), 0);
+
+  const totalEarnings = (eosb?.totalGratuity || 0) + leaveEncashAmount + finalMonthSalary + additionsSum;
+  const totalDeductions = totalLoanBalance + deductionsSum;
   const netSettlement = Math.round((totalEarnings - totalDeductions) * 1000) / 1000;
 
   const handleNext = () => {
@@ -146,7 +172,7 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
       absent_days: 0,
       absence_deduction: 0,
       loan_deduction: totalLoanBalance,
-      other_deduction: Number(additionalDeductions),
+      other_deduction: deductionsSum,
       total_deductions: totalDeductions,
       social_security_deduction: 0,
       pasi_company_share: 0,
@@ -159,6 +185,11 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
       settlement_date: terminationDate,
       type: 'final_settlement',
       includePendingLoans,
+      leave_request_id: selectedLeaveRequestId,
+      hr_signature: hrSignature,
+      gm_signature: gmSignature,
+      other_additions: otherAdditions.filter(a => a.label && a.amount > 0),
+      other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
     };
 
     await onProcess(settlementData);
@@ -247,6 +278,25 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {selectedEmpId && (
+                      <div className="space-y-3 animate-in fade-in duration-500">
+                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Link to Approved Leave Request</Label>
+                        <LeaveRequestSelector 
+                          employeeId={selectedEmpId} 
+                          onSelect={(req) => {
+                            if (req) {
+                              setSelectedLeaveRequestId(req.id);
+                              setTerminationDate(req.start_date);
+                              setNotes(`Leave settlement for ${req.leave_type} (${req.sector})`);
+                              // Optionally set end date if needed for pro-rata
+                            } else {
+                              setSelectedLeaveRequestId(null);
+                            }
+                          }} 
+                        />
+                      </div>
+                    )}
 
                     {employee && (
                       <div className="grid grid-cols-2 gap-4 p-8 rounded-[2rem] bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 relative overflow-hidden group">
@@ -344,6 +394,33 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                              <span className="opacity-60 text-xs italic">Partial Salary Est.:</span>
                              <span className="font-bold font-mono opacity-80">{finalMonthSalary.toFixed(3)}</span>
                            </div>
+                           {/* Other Additions - dynamic list */}
+                           {otherAdditions.map(item => (
+                             <div key={item.id} className="flex justify-between items-center text-sm">
+                               <div className="flex items-center gap-2">
+                                 <Input
+                                   value={item.label}
+                                   onChange={e => updateOtherAddition(item.id, 'label', e.target.value)}
+                                   placeholder="Label"
+                                   className="h-6 w-32 rounded text-xs font-mono bg-white/10 border-white/20 text-white p-1"
+                                 />
+                               </div>
+                               <div className="flex items-center gap-2">
+                                 <Input
+                                   type="number" step="0.001" min="0"
+                                   value={item.amount}
+                                   onChange={e => updateOtherAddition(item.id, 'amount', Number(e.target.value))}
+                                   className="h-6 w-20 rounded text-right font-mono text-xs p-1"
+                                 />
+                                 <Button variant="ghost" size="icon" onClick={() => removeOtherAddition(item.id)} className="h-6 w-6 text-white hover:text-red-400">
+                                   <X className="w-3 h-3" />
+                                 </Button>
+                               </div>
+                             </div>
+                           ))}
+                           <Button variant="ghost" size="sm" onClick={addOtherAddition} className="text-xs text-white/60 hover:text-white p-0 h-6">
+                             <Plus className="w-3 h-3 mr-1" /> Add Addition
+                           </Button>
                            <div className="pt-3 border-t border-white/5 flex justify-between items-center font-black">
                              <span className="text-[10px] uppercase">Total Credits</span>
                              <span className="text-emerald-400 font-mono">{totalEarnings.toFixed(3)}</span>
@@ -378,14 +455,33 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                              <span className="font-black font-mono text-red-600">{pendingLoanBalance.toFixed(3)}</span>
                            </div>
                            )}
-                           <div className="flex justify-between items-center text-sm">
-                             <span className="opacity-60 text-red-900">Other Ad-hoc:</span>
-                             <Input
-                                type="number" step="0.001" value={additionalDeductions}
-                                onChange={e => setAdditionalDeductions(Number(e.target.value))}
-                                className="h-7 w-24 rounded-lg text-right font-mono text-xs p-1"
-                             />
-                           </div>
+                           {/* Other Deductions - dynamic list */}
+                           {otherDeductions.map(item => (
+                             <div key={item.id} className="flex justify-between items-center text-sm">
+                               <div className="flex items-center gap-2">
+                                 <Input
+                                   value={item.label}
+                                   onChange={e => updateOtherDeduction(item.id, 'label', e.target.value)}
+                                   placeholder="Label"
+                                   className="h-6 w-32 rounded text-xs font-mono bg-white border-slate-200 p-1"
+                                 />
+                               </div>
+                               <div className="flex items-center gap-2">
+                                 <Input
+                                   type="number" step="0.001" min="0"
+                                   value={item.amount}
+                                   onChange={e => updateOtherDeduction(item.id, 'amount', Number(e.target.value))}
+                                   className="h-6 w-20 rounded text-right font-mono text-xs p-1"
+                                 />
+                                 <Button variant="ghost" size="icon" onClick={() => removeOtherDeduction(item.id)} className="h-6 w-6 text-slate-400 hover:text-red-500">
+                                   <X className="w-3 h-3" />
+                                 </Button>
+                               </div>
+                             </div>
+                           ))}
+                           <Button variant="ghost" size="sm" onClick={addOtherDeduction} className="text-xs text-slate-500 hover:text-red-600 p-0 h-6">
+                             <Plus className="w-3 h-3 mr-1" /> Add Deduction
+                           </Button>
                            <div className="pt-10 flex justify-between items-center font-black text-red-900">
                              <span className="text-[10px] uppercase">Total Debits</span>
                              <span className="font-mono">{totalDeductions.toFixed(3)}</span>
@@ -427,11 +523,13 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         housing_allowance: finalMonthSalary * (Number(employee!.housing_allowance) / Number(employee!.gross_salary)),
                         transport_allowance: finalMonthSalary * (Number(employee!.transport_allowance) / Number(employee!.gross_salary)),
                         loan_deduction: totalLoanBalance,
-                        other_deduction: Number(additionalDeductions),
+                        other_deduction: deductionsSum,
                         eosb_amount: eosb?.totalGratuity || 0,
                         leave_encashment: leaveEncashAmount,
                         final_total: netSettlement
                       }}
+                      otherAdditions={otherAdditions.map(a => ({ label: a.label, amount: a.amount }))}
+                      otherDeductions={otherDeductions.map(d => ({ label: d.label, amount: d.amount }))}
                       notes={notes}
                     />
                   </div>
@@ -462,6 +560,27 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         <p className="text-3xl font-black text-primary font-mono italic">{netSettlement.toFixed(3)} OMR</p>
                      </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                         <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">HR Signature</Label>
+                         <SignaturePad
+                            onSave={(url) => setHrSignature(url)}
+                            onClear={() => setHrSignature('')}
+                            placeholder="HR Representative Signature"
+                            height="h-56"
+                         />
+                      </div>
+                      <div className="space-y-3">
+                         <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">GM / CEO Signature</Label>
+                         <SignaturePad
+                            onSave={(url) => setGmSignature(url)}
+                            onClear={() => setGmSignature('')}
+                            placeholder="GM/CEO Authorization Signature"
+                            height="h-56"
+                         />
+                      </div>
+                   </div>
 
                   {/* Air Ticket Balance - Informational Only */}
                   {airTicketQuantity > 0 && (

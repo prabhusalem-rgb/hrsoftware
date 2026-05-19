@@ -3,8 +3,13 @@
 // Uses Resend API. If RESEND_API_KEY is not configured, falls back to console.log.
 // ============================================================
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@yourcompany.com';
+function getResendApiKey(): string | undefined {
+  return process.env.RESEND_API_KEY;
+}
+
+function getResendFromEmail(): string {
+  return process.env.RESEND_FROM_EMAIL || 'noreply@yourcompany.com';
+}
 
 // Normalize APP_URL to ensure it's a valid absolute URL without trailing slash
 function getAppUrl(): string {
@@ -110,7 +115,10 @@ View PDF: ${APP_URL}${data.pdfUrl}
 This is an automated notification from the HR & Payroll system.
   `;
 
-  if (!RESEND_API_KEY) {
+  const apiKey = getResendApiKey();
+  const fromEmail = getResendFromEmail();
+
+  if (!apiKey) {
     console.log('[Email] Resend API key not configured. Would send email with subject:', subject);
     console.log('[Email] To:', data.toEmail || 'hr@company.com');
     return;
@@ -120,11 +128,11 @@ This is an automated notification from the HR & Payroll system.
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: RESEND_FROM_EMAIL,
+        from: fromEmail,
         to: data.toEmail ? [data.toEmail] : ['hr@company.com'],
         subject,
         html: htmlBody,
@@ -204,7 +212,10 @@ Login here: ${APP_URL}/auth/login
 Please change your password after your first login.
   `;
 
-  if (!RESEND_API_KEY) {
+  const apiKey = getResendApiKey();
+  const fromEmail = getResendFromEmail();
+
+  if (!apiKey) {
     console.log('[Email] Resend API key not configured. Welcome email details:');
     console.log('[Email] To:', email, '| Pass:', password);
     return;
@@ -214,11 +225,11 @@ Please change your password after your first login.
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: RESEND_FROM_EMAIL,
+        from: fromEmail,
         to: [email],
         subject,
         html: htmlBody,
@@ -321,7 +332,10 @@ Sign here: ${data.signingLink}
 This link is secure and unique to you. Please complete within 30 days.
   `;
 
-  if (!RESEND_API_KEY) {
+  const apiKey = getResendApiKey();
+  const fromEmail = getResendFromEmail();
+
+  if (!apiKey) {
     console.log('[Email] Resend API key not configured. Would send renewal request email to:', data.toEmail || 'employee@company.com');
     return;
   }
@@ -330,11 +344,11 @@ This link is secure and unique to you. Please complete within 30 days.
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: RESEND_FROM_EMAIL,
+        from: fromEmail,
         to: data.toEmail ? [data.toEmail] : ['hr@company.com'],
         subject,
         html: htmlBody,
@@ -397,7 +411,10 @@ export async function sendContractSignedNotificationEmail(data: {
     </html>
   `;
 
-  if (!RESEND_API_KEY) {
+  const apiKey = getResendApiKey();
+  const fromEmail = getResendFromEmail();
+
+  if (!apiKey) {
     console.log('[Email] Resend API key not configured. Would send signed notification email.');
     return;
   }
@@ -406,11 +423,11 @@ export async function sendContractSignedNotificationEmail(data: {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: RESEND_FROM_EMAIL,
+        from: fromEmail,
         to: data.toEmail ? [data.toEmail] : ['hr@company.com'],
         subject,
         html: htmlBody,
@@ -474,7 +491,10 @@ export async function sendContractApprovedEmail(data: {
     </html>
   `;
 
-  if (!RESEND_API_KEY) {
+  const apiKey = getResendApiKey();
+  const fromEmail = getResendFromEmail();
+
+  if (!apiKey) {
     console.log('[Email] Resend API key not configured. Would send approval email.');
     return;
   }
@@ -483,11 +503,11 @@ export async function sendContractApprovedEmail(data: {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: RESEND_FROM_EMAIL,
+        from: fromEmail,
         to: data.toEmail ? [data.toEmail] : ['hr@company.com'],
         subject,
         html: htmlBody,
@@ -497,3 +517,150 @@ export async function sendContractApprovedEmail(data: {
     console.error('[Email] Error sending approval email:', error);
   }
 }
+
+// ============================================
+// Project Timesheet Report Emails
+// ============================================
+
+export interface ProjectTimesheetReportEmailData {
+  projectName: string;
+  reportDate: string;
+  timesheetCount: number;
+  totalRegularHours: number;
+  totalOvertimeHours: number;
+  employeeCount: number;
+  pdfBuffer: Buffer;
+  companyName?: string;
+  toEmail?: string;
+}
+
+/**
+ * Send daily timesheet summary report email to a project's email address.
+ * The PDF report contains all timesheets submitted for the project on the given date.
+ */
+export async function sendProjectTimesheetReportEmail(data: ProjectTimesheetReportEmailData): Promise<void> {
+  const formattedDate = new Date(data.reportDate).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const subject = `Daily Timesheet Report — ${data.projectName} — ${formattedDate}`;
+
+  const htmlBody = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #1f2937; max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #1e293b; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+          .content { background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; }
+          .summary { margin: 20px 0; }
+          .summary table { width: 100%; border-collapse: collapse; }
+          .summary th, .summary td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+          .summary th { color: #6b7280; font-weight: 600; font-size: 13px; text-transform: uppercase; }
+          .highlight { background: #fef3c7; padding: 12px; border-radius: 6px; margin: 16px 0; }
+          .highlight strong { color: #92400e; }
+          .footer { background: #f1f5f9; padding: 16px; border-radius: 0 0 8px 8px; font-size: 12px; color: #6b7280; text-align: center; }
+          .btn { display: inline-block; background: #1e293b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px; font-weight: 600; }
+          .note { font-size: 12px; color: #6b7280; margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 6px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2 style="margin: 0;">Daily Timesheet Report</h2>
+          <p style="margin: 4px 0 0; opacity: 0.8;">${data.companyName || 'HR & Payroll System'}</p>
+        </div>
+        <div class="content">
+          <p>Please find attached the daily timesheet summary for the following project:</p>
+
+          <div class="summary">
+            <table>
+              <tr><th>Project</th><td>${data.projectName}</td></tr>
+              <tr><th>Report Date</th><td>${formattedDate}</td></tr>
+              <tr><th>Employees</th><td>${data.employeeCount} worker(s)</td></tr>
+              <tr><th>Timesheet Entries</th><td>${data.timesheetCount} entry(ies)</td></tr>
+              <tr><th>Total Regular Hours</th><td>${data.totalRegularHours.toFixed(1)} hours</td></tr>
+              <tr><th>Total Overtime Hours</th><td>${data.totalOvertimeHours.toFixed(1)} hours</td></tr>
+            </table>
+          </div>
+
+          <div class="note">
+            <strong>Note:</strong> This report includes all timesheet entries submitted for the project on ${formattedDate}.
+            The attached PDF contains detailed breakdowns for each employee including hours worked, overtime, and reasons.
+          </div>
+
+          <p style="margin-top: 20px; font-size: 13px; color: #6b7280;">
+            This is an automated notification from the HR & Payroll system.
+            For any queries, please contact the HR department.
+          </p>
+        </div>
+        <div class="footer">
+          © ${new Date().getFullYear()} — ${data.companyName || 'HR & Payroll System'}
+        </div>
+      </body>
+    </html>
+  `;
+
+  const textBody = `
+Daily Timesheet Report — ${data.projectName}
+
+Project: ${data.projectName}
+Report Date: ${formattedDate}
+Employees: ${data.employeeCount}
+Timesheet Entries: ${data.timesheetCount}
+Total Regular Hours: ${data.totalRegularHours.toFixed(1)} hours
+Total Overtime Hours: ${data.totalOvertimeHours.toFixed(1)} hours
+
+The detailed timesheet report is attached as a PDF.
+
+---
+This is an automated notification from the HR & Payroll system.
+  `;
+
+  const apiKey = getResendApiKey();
+  const fromEmail = getResendFromEmail();
+
+  if (!apiKey) {
+    console.log('[Email] Resend API key not configured. Would send project timesheet report email to:', data.toEmail || 'project@company.com');
+    console.log('[Email] Project:', data.projectName, '| Date:', formattedDate, '| Timesheets:', data.timesheetCount);
+    return;
+  }
+
+  try {
+    // Convert Buffer to base64 for Resend attachment
+    const pdfBase64 = data.pdfBuffer.toString('base64');
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: data.toEmail ? [data.toEmail] : ['hr@company.com'],
+        subject,
+        html: htmlBody,
+        text: textBody,
+        attachments: [
+          {
+            filename: `timesheet-report-${data.projectName.replace(/\s+/g, '-').toLowerCase()}-${data.reportDate}.pdf`,
+            content: pdfBase64,
+            type: 'application/pdf',
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[Email] Failed to send project timesheet report:', response.status, errorData);
+    } else {
+      console.log('[Email] Project timesheet report sent to:', data.toEmail || 'hr@company.com', '| Project:', data.projectName);
+    }
+  } catch (error) {
+    console.error('[Email] Error sending project timesheet report:', error);
+  }
+}
+

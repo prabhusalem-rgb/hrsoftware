@@ -62,6 +62,21 @@ export function calculateEOSB(input: EOSBInput): EOSBResult {
   const joinDate = new Date(input.joinDate);
   const terminationDate = new Date(input.terminationDate);
 
+  // Guard: termination before join is invalid - return zero
+  if (terminationDate < joinDate) {
+    return {
+      totalYears: 0,
+      totalDays: 0,
+      fullYears: 0,
+      remainingDays: 0,
+      dailyRate: 0,
+      gratuityForFullYears: 0,
+      gratuityForPartialYear: 0,
+      totalGratuity: 0,
+      appliedRule: 'full',
+    };
+  }
+
   // Guard against invalid basic salary
   const lastBasicSalary = isNaN(Number(input.lastBasicSalary)) ? 0 : Number(input.lastBasicSalary);
 

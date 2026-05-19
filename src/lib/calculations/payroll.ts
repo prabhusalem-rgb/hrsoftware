@@ -5,7 +5,7 @@ import { calculateOvertimePay, type OvertimeRate } from './overtime';
 export interface TimesheetRecord {
   employee_id: string;
   date: string;
-  day_type: 'working_day' | 'working_holiday' | 'absent';
+  day_type: 'working_day' | 'working_holiday' | 'holiday_overtime' | 'absent';
   hours_worked: number;
   overtime_hours: number;
   project_id?: string | null;
@@ -151,8 +151,8 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
       let segmentStart = currentStartDay;
       let usePreviousRates = false;
 
-      if ((isRejoiningThisMonth || isJoiningThisMonth) && currentStartDay < revDay) {
-        // Rejoin/join date is before this revision: apply previous rates from start date to day before revision
+      if (currentStartDay < revDay) {
+        // Revision occurs after current start: apply previous rates from start date to day before revision
         segmentStart = currentStartDay;
         endDay = revDay - 1;
         usePreviousRates = true;
@@ -227,23 +227,27 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
     }
   }
 
-  // --- Overtime from Timesheets ---
-  // Timesheet OT: working_day OT @ 1.0, working_holiday all hours @ 1.0
+  // --- Overtime from Timesheets + Legacy Attendance ---
+  // OT paid at 1x hourly wage based on basic salary (per revised policy)
+  // Hourly rate = basicSalary / 208 (8 hrs/day × 26 working days/month)
   let overtimeHours = 0;
   let overtimePay = 0;
-  const hourlyRate = Number(employee.gross_salary || 0) / 30 / 8;
+  const hourlyRate = basicSalary / 208;
 
+  // Sum OT from timesheets (new system)
   if (timesheetRecords && timesheetRecords.length > 0) {
     for (const ts of timesheetRecords) {
       const ot = Number(ts.overtime_hours || 0);
       if (ot > 0) {
         overtimeHours += ot;
-        // Both working_day OT and working_holiday hours paid at 1.0 rate
         overtimePay += ot * hourlyRate * 1.0;
       }
     }
-  } else {
-    // Fallback to legacy attendance data
+  }
+
+  // Also sum OT from legacy attendance (for backward compatibility)
+  // This allows old attendance OT records to still be included in payroll
+  if (attendanceRecords && attendanceRecords.length > 0) {
     for (const record of attendanceRecords) {
       if (record.overtime_hours > 0 && record.overtime_type !== 'none') {
         overtimeHours += Number(record.overtime_hours);

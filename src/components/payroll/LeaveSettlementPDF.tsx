@@ -18,8 +18,12 @@ interface LeaveSettlementPDFProps {
     settlement_date: string;
     earnings: { label: string; full: number; actual: number; isHours?: boolean }[];
     deductions: { label: string; actual: number }[];
+    other_deductions?: Array<{label: string; amount: number}>;
+    other_additions?: Array<{label: string; amount: number}>;
     net_pay: number;
     notes?: string;
+    hr_signature_url?: string;
+    gm_signature_url?: string;
   };
   showLogo?: boolean;
   primaryColor?: string;
@@ -32,7 +36,7 @@ export function LeaveSettlementPDF({
   showLogo = true,
   primaryColor = '#1a1a1a'
 }: LeaveSettlementPDFProps) {
-  const { leave_from, leave_to, days_in_month, leave_days, working_days, last_salary_month, earnings, deductions, net_pay, notes } = settlementData;
+  const { leave_from, leave_to, days_in_month, leave_days, working_days, last_salary_month, earnings, deductions, other_deductions, other_additions, net_pay, notes } = settlementData;
 
   const formatOMR = (val: number) => Number(val || 0).toFixed(3);
 
@@ -184,6 +188,36 @@ export function LeaveSettlementPDF({
               ))}
             </View>
           )}
+          {/* Other Additions Section */}
+          {other_additions && other_additions.length > 0 && (
+            <View>
+              <View style={styles.tableTitleRow}>
+                <Text style={[styles.tableTitleText, { color: '#059669' }]}>OTHER ADDITIONS</Text>
+              </View>
+              {other_additions.map((item, idx) => (
+                <View key={idx} style={styles.tableRow}>
+                  <Text style={[styles.tableCell, { flex: 2.5, fontWeight: 500 }]}>{item.label}</Text>
+                  <Text style={[styles.tableCell, styles.mono, { flex: 1 }]}></Text>
+                  <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', fontWeight: 700, color: '#059669' }]}>+{formatOMR(item.amount)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {/* Other Deductions Section */}
+          {other_deductions && other_deductions.length > 0 && (
+            <View>
+              <View style={styles.tableTitleRow}>
+                <Text style={[styles.tableTitleText, { color: '#DC2626' }]}>OTHER DEDUCTIONS</Text>
+              </View>
+              {other_deductions.map((item, idx) => (
+                <View key={idx} style={styles.tableRow}>
+                  <Text style={[styles.tableCell, { flex: 2.5, fontWeight: 500 }]}>{item.label}</Text>
+                  <Text style={[styles.tableCell, styles.mono, { flex: 1 }]}></Text>
+                  <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', fontWeight: 700, color: '#DC2626' }]}>-{formatOMR(item.amount)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           {/* Total Row */}
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { flex: 2.5 }]}>NET SETTLEMENT</Text>
@@ -218,19 +252,30 @@ export function LeaveSettlementPDF({
         <View style={styles.signatureSection}>
           <View style={styles.sigRow}>
             <View style={styles.sigCol}>
+              <View style={styles.sigSpace}>
+                {settlementData.hr_signature_url ? (
+                  <Image src={settlementData.hr_signature_url} style={styles.sigImage} />
+                ) : null}
+              </View>
               <View style={styles.sigLine} />
-              <Text style={styles.sigLabel}>Prepared By</Text>
-              <Text style={styles.sigRole}>HR Department</Text>
+              <Text style={styles.sigLabel}>HR Representative</Text>
+              <Text style={styles.sigRole}>Digitally Signed</Text>
             </View>
             <View style={styles.sigCol}>
+              <View style={styles.sigSpace}>
+                {settlementData.gm_signature_url ? (
+                  <Image src={settlementData.gm_signature_url} style={styles.sigImage} />
+                ) : null}
+              </View>
               <View style={styles.sigLine} />
-              <Text style={styles.sigLabel}>Verified By</Text>
-              <Text style={styles.sigRole}>Finance Department</Text>
+              <Text style={styles.sigLabel}>GM / CEO Approval</Text>
+              <Text style={styles.sigRole}>Management Authorization</Text>
             </View>
             <View style={styles.sigCol}>
+              <View style={styles.sigSpace} />
               <View style={styles.sigLine} />
-              <Text style={styles.sigLabel}>Approved By</Text>
-              <Text style={styles.sigRole}>Management</Text>
+              <Text style={styles.sigLabel}>Employee Acknowledgement</Text>
+              <Text style={styles.sigRole}>Sign on Receipt</Text>
             </View>
           </View>
         </View>
@@ -546,6 +591,15 @@ const getStyles = (primaryColor: string) =>
     sigCol: {
       width: '30%',
       alignItems: 'center',
+    },
+    sigSpace: {
+      height: 25,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    sigImage: {
+      height: 20,
+      width: 'auto',
     },
     sigLine: {
       width: '100%',

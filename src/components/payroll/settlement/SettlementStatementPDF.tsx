@@ -30,21 +30,19 @@ export function SettlementStatementPDF({
     { label: 'Basic Salary (Pro-Rata)',           amount: settlement.final_month_salary },
     { label: `Leave Encashment (${settlement.leave_days}d)`, amount: settlement.leave_encashment },
     { label: 'End of Service Gratuity (EOSB)',    amount: settlement.eosb_amount },
-    ...(settlement.additional_payments > 0
-      ? [{ label: 'Additional Payments', amount: settlement.additional_payments }]
-      : []),
+    ...(settlement.other_additions || []),
   ].filter(e => e.amount > 0);
 
   const deductions = [
     ...(settlement.loan_deduction  > 0 ? [{ label: 'Loan Recovery',    amount: settlement.loan_deduction  }] : []),
-    ...(settlement.other_deduction > 0 ? [{ label: 'Other Deductions', amount: settlement.other_deduction }] : []),
+    ...(settlement.other_deductions || []),
   ];
 
   const totalEarnings   = earnings.reduce((s, e) => s + e.amount, 0);
   const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0);
 
-  // Fixed number of rows so table height is always predictable
-  const MAX_ROWS = 4;
+  // Dynamic row count to accommodate all items (min 4 for consistent layout)
+  const MAX_ROWS = Math.max(earnings.length, deductions.length, 4);
   const rows = Array.from({ length: MAX_ROWS }).map((_, i) => ({
     earning:   earnings[i]   || null,
     deduction: deductions[i] || null,
@@ -284,15 +282,23 @@ export function SettlementStatementPDF({
           ══════════════════════════════════════════════════════ */}
           <View style={s.sigRow}>
             <View style={s.sigBlock}>
-              <View style={s.sigSpace} />
+              <View style={s.sigSpace}>
+                {settlement.hr_signature_url ? (
+                  <Image src={settlement.hr_signature_url} style={s.sigImage} />
+                ) : null}
+              </View>
               <View style={s.sigLine} />
-              <Text style={s.sigLabel}>Employee Acknowledgement</Text>
-              <Text style={s.sigSub}>Accepted and satisfied with this settlement</Text>
+              <Text style={s.sigLabel}>HR Representative</Text>
+              <Text style={s.sigSub}>Digitally Signed</Text>
             </View>
             <View style={s.sigBlock}>
-              <View style={s.sigSpace} />
+              <View style={s.sigSpace}>
+                {settlement.gm_signature_url ? (
+                  <Image src={settlement.gm_signature_url} style={s.sigImage} />
+                ) : null}
+              </View>
               <View style={s.sigLine} />
-              <Text style={s.sigLabel}>Authorized Signatory</Text>
+              <Text style={s.sigLabel}>GM / CEO Approval</Text>
               <Text style={s.sigSub}>On behalf of {company.name_en}</Text>
             </View>
           </View>
@@ -684,6 +690,12 @@ const s = StyleSheet.create({
   },
   sigSpace: {
     height: 35,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sigImage: {
+    height: 30,
+    width: 'auto',
   },
   sigLine: {
     width: '100%',

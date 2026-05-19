@@ -1,6 +1,6 @@
 'use client';
 
-import { Document, Page, Text, View, StyleSheet, Font, Image } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, PayrollItem, Company } from '@/types';
 import { toOmaniWords } from '@/lib/utils/currency';
 
@@ -111,8 +111,12 @@ export function PayslipPDF({
     { label: 'OTHER DEDUCTIONS', amount: item.other_deduction || 0 },
   ].filter(d => d.amount > 0);
 
-  const totalEarnings = earnings.reduce((sum, e) => sum + Number(e.actual), 0);
-  const totalDeductions = deductions.reduce((sum, d) => sum + Number(d.amount), 0);
+  // Itemized other additions and deductions from payroll item
+  const otherAdditions = (item.other_additions || []).filter(a => a.label && a.amount > 0);
+  const otherDeductions = (item.other_deductions || []).filter(d => d.label && d.amount > 0);
+
+  const totalEarnings = earnings.reduce((sum, e) => sum + Number(e.actual), 0) + otherAdditions.reduce((s, a) => s + Number(a.amount), 0);
+  const totalDeductions = deductions.reduce((sum, d) => sum + Number(d.amount), 0) + otherDeductions.reduce((s, d) => s + Number(d.amount), 0);
   const netPay = Number(item.net_salary);
 
   const styles = getStyles(primaryColor);
@@ -305,6 +309,48 @@ export function PayslipPDF({
           </View>
         )}
 
+        {/* Other Additions Table */}
+        {otherAdditions.length > 0 && (
+          <View style={styles.tableSection}>
+            <Text style={[styles.tableTitle, { backgroundColor: '#047857' }]}>OTHER ADDITIONS</Text>
+            <View style={styles.table}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Description</Text>
+                <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'right' }]}>Amount (OMR)</Text>
+              </View>
+              {otherAdditions.map((addition, idx) => (
+                <View key={idx} style={[styles.tableRow, idx % 2 === 0 ? styles.tableRowAlt : {}]}>
+                  <Text style={[styles.tableCell, { flex: 2 }]}>{addition.label}</Text>
+                  <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', color: '#047857', fontWeight: 'bold' }]}>
+                    +{formatOMR(addition.amount)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Other Deductions Table */}
+        {otherDeductions.length > 0 && (
+          <View style={styles.tableSection}>
+            <Text style={[styles.tableTitle, { backgroundColor: '#B91C1C' }]}>OTHER DEDUCTIONS</Text>
+            <View style={styles.table}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Description</Text>
+                <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'right' }]}>Amount (OMR)</Text>
+              </View>
+              {otherDeductions.map((deduction, idx) => (
+                <View key={idx} style={[styles.tableRow, idx % 2 === 0 ? styles.tableRowAlt : {}]}>
+                  <Text style={[styles.tableCell, { flex: 2 }]}>{deduction.label}</Text>
+                  <Text style={[styles.tableCell, styles.mono, { flex: 1, textAlign: 'right', color: '#B91C1C', fontWeight: 'bold' }]}>
+                    -{formatOMR(deduction.amount)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Adjustment Notes Section */}
         {(item.allowance_note || item.deduction_note) && (
           <View style={styles.notesSection}>
@@ -355,7 +401,7 @@ export function PayslipPDF({
             })}
           </Text>
           <Text style={styles.footerHash}>
-            Ref: {company?.wps_mol_id || 'PRO-OM-' + Date.now().toString(16).toUpperCase()}
+            Ref: {company?.wps_mol_id || 'PRO-OM-' + (/* eslint-disable react-hooks/purity */ Date.now()).toString(16).toUpperCase()}
           </Text>
         </View>
       </Page>

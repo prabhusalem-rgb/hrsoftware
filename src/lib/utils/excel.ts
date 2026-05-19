@@ -2,7 +2,7 @@
 
 import { Employee, EmployeeFormData, IdType, EmployeeCategory, EmployeeStatus } from '@/types';
 
-const HEADERS = [
+export const HEADERS = [
   { header: 'Employee Code', key: 'emp_code', width: 15 },
   { header: 'Full Name (English)', key: 'name_en', width: 25 },
   { header: 'Login Email', key: 'email', width: 25 },
@@ -161,6 +161,7 @@ export async function parseEmployeeExcel(buffer: ArrayBuffer): Promise<EmployeeF
   const fieldMappings: Record<string, string[]> = {
     emp_code: ['employee code', 'emp code', 'employeeid', 'empid', 'employee_id', 'code', 'staff id', 'staff id number', 'employee number'],
     name_en: ['full name (english)', 'full name', 'name (english)', 'name_en', 'employee name', 'name', 'english name'],
+    email: ['login email', 'email', 'e-mail', 'email address', 'user email', 'employee email'],
     id_type: ['id type', 'idtype', 'document type', 'id document type'],
     civil_id: ['civil id', 'civil id number', 'civilid', 'national id', 'id number', 'emirates id', 'civil_id', 'civild id', 'cid', 'cid number', 'civid', 'civil id no', 'civil id no.', 'id no', 'id number', 'national id number'],
     passport_no: ['passport number', 'passport', 'passport no', 'passportno', 'passport_id', 'passport no.'],

@@ -153,8 +153,10 @@ export async function POST(request: NextRequest) {
       const terminationDate = item.terminationDate || commonTerminationDate;
       const reason = item.reason || commonReason;
       const noticeServed = item.noticeServed ?? commonNoticeServed;
-      const additionalPayments = item.additionalPayments || 0;
-      const additionalDeductions = item.additionalDeductions || 0;
+      const otherAdditions = item.otherAdditions || [];
+      const otherDeductions = item.otherDeductions || [];
+      const additionsSum = otherAdditions.reduce((s: number, a: {amount: number}) => s + Number(a.amount || 0), 0);
+      const deductionsSum = otherDeductions.reduce((s: number, d: {amount: number}) => s + Number(d.amount || 0), 0);
       const itemNotes = item.notes || notes || '';
 
       try {
@@ -227,9 +229,9 @@ export async function POST(request: NextRequest) {
           eosbResult.totalGratuity +
           leaveEncashment +
           finalMonthSalary +
-          additionalPayments;
+          additionsSum;
 
-        const totalDebits = loanBalance + additionalDeductions;
+        const totalDebits = loanBalance + deductionsSum;
 
         const netTotal = Math.round((totalCredits - totalDebits) * 1000) / 1000;
         batchTotal += netTotal;
@@ -250,7 +252,9 @@ export async function POST(request: NextRequest) {
           transport_allowance: finalMonthSalary * (transportAllowance / grossSalary),
           gross_salary: finalMonthSalary,
           loan_deduction: loanBalance,
-          other_deduction: additionalDeductions,
+          other_deduction: deductionsSum,
+          other_deductions: otherDeductions,
+          other_additions: otherAdditions,
           total_deductions: totalDebits,
           net_salary: netTotal,
           eosb_amount: eosbResult.totalGratuity,
@@ -345,6 +349,8 @@ export async function POST(request: NextRequest) {
             airTicketQty, // Store accrued quantity for records (non-monetary)
             finalMonthSalary,
             loanDeductions: loanBalance,
+            otherDeductions,
+            otherAdditions,
           },
           payrollItem: payrollItemPayload,
           meta: {

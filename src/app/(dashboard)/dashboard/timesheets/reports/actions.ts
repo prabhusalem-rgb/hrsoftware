@@ -12,7 +12,9 @@ export async function getTimesheetReports(companyId: string, month: string) {
   if (!companyId || !month) return null;
 
   const startDate = `${month}-01`;
-  const endDate = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).toISOString().split('T')[0];
+  const [year, monthNum] = month.split('-').map(Number);
+  const lastDay = new Date(year, monthNum, 0).getDate();
+  const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
 
   console.log('[getTimesheetReports] Fetching data for:', { companyId, month, startDate, endDate });
 

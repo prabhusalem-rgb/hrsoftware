@@ -10,11 +10,13 @@ interface FinalSettlementStatementProps {
   employee: Employee;
   item: Partial<PayrollItem> & { settlement_date?: string };
   notes?: string;
+  otherAdditions?: Array<{label: string; amount: number}>;
+  otherDeductions?: Array<{label: string; amount: number}>;
 }
 
-export function FinalSettlementStatement({ company, employee, item, notes }: FinalSettlementStatementProps) {
+export function FinalSettlementStatement({ company, employee, item, notes, otherAdditions, otherDeductions }: FinalSettlementStatementProps) {
   const settlementDate = item.settlement_date ? new Date(item.settlement_date) : new Date();
-  
+
   // Earnings & Deductions breakdown (estimated from the item)
   const earnings = [
     { label: 'Basic Salary (Partial)', value: item.basic_salary || 0 },
@@ -22,11 +24,12 @@ export function FinalSettlementStatement({ company, employee, item, notes }: Fin
     { label: 'Transport Allowance', value: item.transport_allowance || 0 },
     { label: 'Leave Encashment', value: item.leave_encashment || 0 },
     { label: 'End of Service Gratuity (EOSB)', value: item.eosb_amount || 0 },
+    ...(otherAdditions || []).map(a => ({ label: a.label, value: a.amount })),
   ].filter(e => e.value > 0);
 
   const deductions = [
     { label: 'Loan Recovery', value: item.loan_deduction || 0 },
-    { label: 'Other Deductions', value: item.other_deduction || 0 },
+    ...(otherDeductions || []).map(d => ({ label: d.label, value: d.amount })),
   ].filter(d => d.value > 0);
 
   return (
