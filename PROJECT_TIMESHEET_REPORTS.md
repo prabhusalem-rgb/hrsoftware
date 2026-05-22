@@ -60,7 +60,7 @@ Add to `vercel.json`:
 }
 ```
 
-Set the `CRON_SECRET_TOKEN` environment variable in Vercel. The cron request will include the secret token automatically when configured in vercel.json.
+Set the `CRON_SECRET_TOKEN` environment variable in your `.env` file and in Vercel project settings. Vercel will automatically include the secret token in the Authorization header for cron requests.
 
 #### Option B: External Scheduler (crontab, AWS EventBridge, etc.)
 
