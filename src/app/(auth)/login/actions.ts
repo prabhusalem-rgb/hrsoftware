@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 
 export async function login(formData: FormData) {
-  const email = formData.get('email') as string;
+  const email = (formData.get('email') as string)?.toLowerCase().trim();
   const password = formData.get('password') as string;
 
   const supabase = await createClient();

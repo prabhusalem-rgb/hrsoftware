@@ -11,20 +11,22 @@ const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Si
 function convertGroup(num: number): string {
   let res = '';
   if (num >= 100) {
-    res += ones[Math.floor(num / 100)] + ' Hundred ';
+    res += ones[Math.floor(num / 100)] + ' Hundred';
     num %= 100;
+    if (num > 0) res += ' ';
   }
   if (num >= 20) {
-    res += tens[Math.floor(num / 10)] + ' ';
+    res += tens[Math.floor(num / 10)];
     num %= 10;
+    if (num > 0) res += ' ';
   } else if (num >= 10) {
-    res += teens[num - 10] + ' ';
+    res += teens[num - 10];
     num = 0;
   }
   if (num > 0) {
-    res += ones[num] + ' ';
+    res += ones[num];
   }
-  return res.trim();
+  return res;
 }
 
 export function toOmaniWords(amount: number): string {
@@ -45,16 +47,20 @@ export function toOmaniWords(amount: number): string {
     } else if (rials >= 1000) {
       result += convertGroup(Math.floor(rials / 1000)) + ' Thousand ';
       const rest = rials % 1000;
-      if (rest > 0) result += convertGroup(rest);
+      if (rest > 0) result += convertGroup(rest);  // "Thousand " already has trailing space
     } else {
       result += convertGroup(rials);
     }
-    result += ' Omani Rial' + (rials === 1 ? '' : 's');
+    result = result.trim() + ' Omani Rial' + (rials === 1 ? '' : 's');
   }
 
   if (baiza > 0) {
-    if (result) result += ' and ';
-    result += convertGroup(baiza) + ' Baiza';
+    const baizaPart = convertGroup(baiza) + ' Baiza';
+    if (result) {
+      result += ' and ' + baizaPart;
+    } else {
+      result = baizaPart;
+    }
   }
 
   return result.trim() + ' Only';
@@ -196,18 +202,19 @@ export function formatDate(
     if (isNaN(date.getTime())) return '-';
 
     const day = date.getDate().toString().padStart(2, '0');
-    const month = date.toLocaleString('en-US', { month: 'short' });
+    const monthNum = (date.getMonth() + 1).toString().padStart(2, '0');
+    const monthShort = date.toLocaleString('en-US', { month: 'short' });
     const year = date.getFullYear();
 
     switch (formatStr) {
       case 'dd MMM yyyy':
-        return `${day} ${month} ${year}`;
+        return `${day} ${monthShort} ${year}`;
       case 'yyyy-MM-dd':
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        return `${year}-${monthNum}-${day}`;
       case 'MMM yyyy':
-        return `${month} ${year}`;
+        return `${monthShort} ${year}`;
       default:
-        return `${day} ${month} ${year}`;
+        return `${day} ${monthShort} ${year}`;
     }
   } catch {
     return '-';

@@ -24,7 +24,8 @@ import {
   Shield,
   Bug,
   Clock,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     { label: 'Contract Renewals', href: '/dashboard/contract-renewal', icon: ClipboardCheck },
     { type: 'separator' as const, label: 'HR Operations' },
     { label: 'Leave Management', href: '/dashboard/leaves', icon: CalendarDays },
+    { label: 'Leave Requests', href: '/dashboard/leave-requests', icon: ClipboardCheck },
     { label: 'Loan Management', href: '/dashboard/loans', icon: Wallet },
     { label: 'Air Tickets', href: '/dashboard/air-tickets', icon: Plane },
     { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
@@ -59,6 +61,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     { type: 'separator' as const, label: 'Analytics' },
     { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
     { label: 'Timesheet Reports', href: '/dashboard/timesheets/reports', icon: FileSpreadsheet },
+    { label: 'Attendance Reports', href: '/dashboard/attendance-reports', icon: FileText },
     ...(isSuperAdmin ? [
       { type: 'separator' as const, label: 'Audit & Compliance' },
       { label: 'Audit Logs', href: '/dashboard/audit-logs', icon: Shield },

@@ -45,10 +45,13 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/auth') ||
     pathname.startsWith('/renew-contract') ||
     pathname.startsWith('/timesheet') ||
+    pathname.startsWith('/leave-request') ||
     isPublicContractRenewalAPI ||
     isPublicTimesheetAPI ||
     isDebugDB ||
-    pathname === '/';
+    pathname === '/' ||
+    pathname.startsWith('/api/timesheet/projects/daily-report') ||
+    pathname.startsWith('/api/test-pdf');
 
   if (!user && !isExempt) {
     const url = request.nextUrl.clone();

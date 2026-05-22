@@ -66,11 +66,18 @@ export async function POST(request: NextRequest) {
       terminationDate,
       reason,
       noticeServed,
-      additionalPayments,
-      additionalDeductions,
+      otherAdditions,
+      otherDeductions,
       notes,
       includePendingLoans,
+      leave_request_id,
+      hr_signature,
+      gm_signature,
     } = parsed.data;
+
+    // Compute sums from itemized arrays
+    const additionsSum = (otherAdditions || []).reduce((s: number, a: {amount: number}) => s + Number(a.amount || 0), 0);
+    const deductionsSum = (otherDeductions || []).reduce((s: number, d: {amount: number}) => s + Number(d.amount || 0), 0);
 
     const supabase = (await createClient())!;
 
@@ -174,9 +181,9 @@ export async function POST(request: NextRequest) {
       eosbResult.totalGratuity +
       leaveEncashment +
       finalMonthSalary +
-      additionalPayments;
+      additionsSum;
 
-    const totalDebits = loanBalance + additionalDeductions;
+    const totalDebits = loanBalance + deductionsSum;
 
     const netTotal = Math.round((totalCredits - totalDebits) * 1000) / 1000;
 
@@ -231,19 +238,51 @@ export async function POST(request: NextRequest) {
       absent_days: 0,
       absence_deduction: 0,
       loan_deduction: loanBalance,
-      other_deduction: additionalDeductions,
+      other_deduction: deductionsSum,
+      other_deductions: otherDeductions,
+      other_additions: otherAdditions,
       total_deductions: totalDebits,
       social_security_deduction: 0,
       pasi_company_share: 0,
       net_salary: netTotal,
       eosb_amount: eosbResult.totalGratuity,
       leave_encashment: leaveEncashment,
-      air_ticket_balance: 0, // Air tickets are not monetized in settlement
-      final_total: netTotal,
       payout_status: 'pending' as const,
       notes,
       settlement_date: terminationDate,
+      leave_request_id,
     };
+
+    // Upload signatures if provided
+    if (hr_signature && hr_signature.startsWith('data:image')) {
+      const fileName = `settlement_hr_${employeeId}_${Date.now()}.png`;
+      const buffer = Buffer.from(hr_signature.split(',')[1], 'base64');
+      const { data: uploadData } = await supabase.storage
+        .from('leave-signatures')
+        .upload(fileName, buffer, { contentType: 'image/png' });
+      
+      if (uploadData) {
+        const { data: { publicUrl } } = supabase.storage.from('leave-signatures').getPublicUrl(fileName);
+        (payrollItemPayload as any).hr_signature_url = publicUrl;
+        (payrollItemPayload as any).hr_id = authRequest.userId;
+        (payrollItemPayload as any).hr_approved_at = new Date().toISOString();
+      }
+    }
+
+    if (gm_signature && gm_signature.startsWith('data:image')) {
+      const fileName = `settlement_gm_${employeeId}_${Date.now()}.png`;
+      const buffer = Buffer.from(gm_signature.split(',')[1], 'base64');
+      const { data: uploadData } = await supabase.storage
+        .from('leave-signatures')
+        .upload(fileName, buffer, { contentType: 'image/png' });
+      
+      if (uploadData) {
+        const { data: { publicUrl } } = supabase.storage.from('leave-signatures').getPublicUrl(fileName);
+        (payrollItemPayload as any).gm_signature_url = publicUrl;
+        (payrollItemPayload as any).gm_id = authRequest.userId;
+        (payrollItemPayload as any).gm_approved_at = new Date().toISOString();
+      }
+    }
 
     const { data: payrollItem, error: itemError } = await supabase
       .from('payroll_items')
@@ -252,14 +291,20 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (itemError) {
-      // Check for missing column error (schema not migrated)
+      console.error('Payroll item creation error:', itemError);
       const msg = itemError.message || '';
       if (msg.includes('column') && (msg.includes('does not exist') || msg.includes('missing'))) {
-        console.error('DATABASE SCHEMA ERROR: Migration 036_add_type_to_payroll_items.sql has not been applied.');
         return jsonError('Database schema incomplete. Please run: supabase db push', 500);
       }
-      console.error('Payroll item creation error:', itemError);
       return jsonError('Failed to create payroll item', 500);
+    }
+
+    // Update leave request status if linked
+    if (leave_request_id) {
+      await supabase
+        .from('leave_requests')
+        .update({ status: 'settled' })
+        .eq('id', leave_request_id);
     }
 
     // 7. Update employee status to final_settled
@@ -347,6 +392,8 @@ export async function POST(request: NextRequest) {
         airTicketQty, // Store quantity for records (not monetary)
         finalMonthSalary: finalMonthSalary,
         loanDeductions: loanBalance,
+        otherDeductions: otherDeductions,
+        otherAdditions: otherAdditions,
       },
       payrollItem: {
         basic_salary: finalMonthSalary * (Number(employee.basic_salary) / Number(employee.gross_salary)),
@@ -355,7 +402,9 @@ export async function POST(request: NextRequest) {
         other_allowance: 0,
         gross_salary: finalMonthSalary,
         loan_deduction: loanBalance,
-        other_deduction: additionalDeductions,
+        other_deduction: deductionsSum,
+        other_deductions: otherDeductions,
+        other_additions: otherAdditions,
         total_deductions: totalDebits,
         eosb_amount: eosbResult.totalGratuity,
         leave_encashment: leaveEncashment,
@@ -363,7 +412,7 @@ export async function POST(request: NextRequest) {
         final_total: netTotal,
         settlement_date: terminationDate,
         notes: notes || '',
-        additional_payments: additionalPayments,
+        additional_payments: additionsSum,
       },
       meta: {
         terminationDate,
@@ -438,8 +487,10 @@ export async function POST(request: NextRequest) {
       airTicketQty, // Accrued quantity (not monetary)
       finalMonthSalary: finalMonthSalary,
       loanDeduction: loanBalance,
-      otherDeduction: additionalDeductions,
-      additionalPayments,
+      otherDeduction: deductionsSum,
+      otherAdditions: otherAdditions,
+      otherDeductions: otherDeductions,
+      additionalPayments: additionsSum,
       totalCredits,
       totalDebits,
       pdfUrl,

@@ -22,8 +22,8 @@ export interface SettlementConfig {
   terminationDate: string; // ISO date: YYYY-MM-DD
   reason: SettlementReason;
   noticeServed: boolean;
-  additionalPayments: number;
-  additionalDeductions: number;
+  otherAdditions: Array<{label: string; amount: number}>;
+  otherDeductions: Array<{label: string; amount: number}>;
   notes: string;
   includePendingLoans?: boolean; // Include loans with balance_remaining > 0 (not just active)
 }
@@ -32,8 +32,8 @@ export interface SettlementConfigFormData {
   terminationDate: string;
   reason: SettlementReason;
   noticeServed: boolean;
-  additionalPayments: number;
-  additionalDeductions: number;
+  otherAdditions: Array<{label: string; amount: number}>;
+  otherDeductions: Array<{label: string; amount: number}>;
   notes: string;
   includePendingLoans?: boolean;
 }
@@ -49,7 +49,8 @@ export interface SettlementBreakdown {
   airTicketQty: number;      // Accrued ticket quantity (not monetary)
   finalMonthSalary: number;
   loanDeductions: number;
-  otherDeductions: number;
+  otherDeductions: Array<{label: string; amount: number}>;
+  otherAdditions: Array<{label: string; amount: number}>;
   additionalPayments: number;
   totalCredits: number;
   totalDebits: number;
@@ -129,6 +130,8 @@ export interface SettlementSnapshot {
     airTicketQty: number;      // Accrued ticket quantity (non-monetary)
     finalMonthSalary: number;
     loanDeductions: number;
+    otherDeductions: Array<{label: string; amount: number}>;
+    otherAdditions: Array<{label: string; amount: number}>;
   };
   // Settlement-specific fields (mirrors payroll_items subset)
   payrollItem: {
@@ -193,12 +196,17 @@ export interface SettlementStatementData {
     final_month_salary: number;
     loan_deduction: number;
     other_deduction: number;
+    other_deductions: Array<{label: string; amount: number}>;
+    other_additions: Array<{label: string; amount: number}>;
     additional_payments: number;
     final_total: number;
     notes?: string;
     processed_at: string;
     processed_by_name: string;
     reference_number: string;
+    leave_request_id?: string;
+    hr_signature_url?: string;
+    gm_signature_url?: string;
   };
 }
 
@@ -211,8 +219,8 @@ export interface BatchSettlementItem {
   terminationDate?: string; // overrides batch default
   reason?: SettlementReason; // overrides batch default
   noticeServed?: boolean; // overrides batch default
-  additionalDeductions?: number;
-  additionalPayments?: number;
+  otherDeductions?: Array<{label: string; amount: number}>;
+  otherAdditions?: Array<{label: string; amount: number}>;
   notes?: string;
 }
 
@@ -299,8 +307,8 @@ export interface CreateSettlementRequest {
   terminationDate: string;
   reason: SettlementReason;
   noticeServed: boolean;
-  additionalPayments: number;
-  additionalDeductions: number;
+  otherAdditions: Array<{label: string; amount: number}>;
+  otherDeductions: Array<{label: string; amount: number}>;
   notes?: string;
   includePendingLoans?: boolean;
 }
@@ -319,6 +327,8 @@ export interface CreateSettlementResponse {
   finalMonthSalary: number;
   loanDeduction: number;
   otherDeduction: number;
+  otherAdditions: Array<{label: string; amount: number}>;
+  otherDeductions: Array<{label: string; amount: number}>;
   additionalPayments: number;
   totalCredits: number;
   totalDebits: number;
@@ -375,8 +385,8 @@ export interface SettlementUIState {
   terminationDate: string;
   reason: SettlementReason;
   noticeServed: boolean;
-  additionalPayments: number;
-  additionalDeductions: number;
+  otherAdditions: Array<{label: string; amount: number}>;
+  otherDeductions: Array<{label: string; amount: number}>;
   notes: string;
 }
 
@@ -416,6 +426,8 @@ export interface SettlementPayrollPayload {
   absence_deduction: number;
   loan_deduction: number;
   other_deduction: number;
+  other_deductions_json?: Array<{label: string; amount: number}>;
+  other_additions_json?: Array<{label: string; amount: number}>;
   total_deductions: number;
   social_security_deduction: number;
   pasi_company_share: number;

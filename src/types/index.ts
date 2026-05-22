@@ -26,7 +26,7 @@ export interface Company {
 }
 
 // --- User / Profile ---
-export type UserRole = 'super_admin' | 'company_admin' | 'hr' | 'finance' | 'viewer' | 'foreman';
+export type UserRole = 'super_admin' | 'company_admin' | 'hr' | 'finance' | 'viewer' | 'foreman' | 'operations';
 
 export interface Profile {
   id: string;
@@ -161,6 +161,75 @@ export interface Leave {
   updated_at: string;
   employee?: Employee;
   leave_type?: LeaveType;
+}
+
+// --- Leave Request (Public/Customer-Facing) ---
+export type LeaveRequestStatus = 'pending' | 'hr_approved' | 'ops_approved' | 'gm_approved' | 'approved' | 'rejected';
+
+export interface LeaveRequest {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  leave_type: 'Annual Leave' | 'Unpaid Leave';
+  start_date: string;
+  end_date: string;
+  days: number;
+  sector: string;
+  status: LeaveRequestStatus;
+  secure_token: string;
+
+  // Employee signature
+  employee_signature_url: string | null;
+  employee_signed_at: string | null;
+
+  // HR approval
+  hr_id: string | null;
+  hr_signature_url: string | null;
+  hr_remarks: string | null;
+  hr_approved_at: string | null;
+
+  // Operations Manager approval
+  ops_id: string | null;
+  ops_signature_url: string | null;
+  ops_remarks: string | null;
+  ops_approved_at: string | null;
+
+  // GM/CEO approval
+  gm_id: string | null;
+  gm_signature_url: string | null;
+  gm_remarks: string | null;
+  gm_approved_at: string | null;
+
+  // Links to settlement
+  leave_settlement_id: string | null;
+  final_settlement_id: string | null;
+
+  // Original request reference (for approved copies)
+  original_leave_request_id: string | null;
+
+  created_at: string;
+  updated_at: string;
+
+  // Joined relations
+  employee?: Employee;
+  company?: Company;
+}
+
+export interface LeaveRequestFormData {
+  companyId: string;
+  companyName: string;
+  employees: Pick<Employee, 'id' | 'name_en' | 'emp_code'>[];
+}
+
+export interface LeaveRequestSubmitData {
+  companyId: string;
+  employeeId: string;
+  leaveType: 'Annual Leave' | 'Unpaid Leave';
+  startDate: string;
+  endDate: string;
+  days: number;
+  sector: string;
+  signatureDataUrl: string;
 }
 
 // --- Loan ---
@@ -384,7 +453,7 @@ export interface Attendance {
 }
 
 // --- Timesheet ---
-export type DayType = 'working_day' | 'working_holiday' | 'absent';
+export type DayType = 'working_day' | 'working_holiday' | 'holiday_overtime' | 'absent';
 
 export interface Project {
   id: string;
@@ -392,6 +461,7 @@ export interface Project {
   name: string;
   description: string;
   status: 'active' | 'completed' | 'on_hold';
+  email: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -516,6 +586,8 @@ export interface PayrollItem {
   loan_deduction: number;
   loan_schedule_id?: string | null;  // Optional: link to loan_schedule for status tracking
   other_deduction: number;
+  other_deductions?: Array<{label: string; amount: number}>;
+  other_additions?: Array<{label: string; amount: number}>;
   total_deductions: number;
   social_security_deduction: number;
   pasi_company_share: number;
@@ -551,6 +623,11 @@ export interface PayrollItem {
   // Manual adjustment notes
   allowance_note?: string | null;
   deduction_note?: string | null;
+  // Frontend control fields (not stored in DB)
+  includePendingLoans?: boolean;
+  includeActiveLoans?: boolean;
+  date?: string; // Temporary frontend field
+  company_id?: string; // Temporary frontend field
   created_at: string;
   employee?: Employee;
 }
@@ -975,4 +1052,191 @@ export interface ContractRenewalApprovalPayload {
   signature_data_url?: string;
   comments?: string;
   rejection_reason?: string;
+}
+
+// ============================================================
+// ATTENDANCE REPORT SYSTEM — Monthly Attendance Reports
+// ============================================================
+
+// --- Company Holiday ---
+export interface CompanyHoliday {
+  id: string;
+  company_id: string;
+  date: string;           // ISO date: YYYY-MM-DD
+  name: string;           // e.g., "Independence Day", "Diwali", "Eid"
+  holiday_type: 'public' | 'company' | 'restricted';
+  is_paid: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Project-Employee Assignment ---
+export interface ProjectEmployeeAssignment {
+  id: string;
+  company_id: string;
+  project_id: string;
+  employee_id: string;
+  join_date: string;               // When employee started on this project
+  exit_date: string | null;        // When employee left the project (NULL = still assigned)
+  is_primary: boolean;             // Primary project assignment flag
+  allocation_percentage: number;   // For part-time/shared assignments (e.g., 50, 75, 100)
+  created_at: string;
+  updated_at: string;
+  project?: Pick<Project, 'id' | 'name'>;
+  employee?: Pick<Employee, 'id' | 'emp_code' | 'name_en' | 'designation' | 'join_date' | 'status' | 'termination_date'>;
+}
+
+// --- Attendance Mark Types ---
+// P = Present, A = Absent, L = Leave, H = Holiday, W = Weekend, '' = No data/not applicable
+export type AttendanceMark = 'P' | 'A' | 'L' | 'H' | 'W' | '';
+
+// --- Employee Daily Attendance Detail (for table rows) ---
+export interface EmployeeAttendanceRow {
+  employee_id: string;
+  emp_code: string;
+  name_en: string;
+  designation: string;
+  join_date: string;
+  exit_date?: string | null;       // If employee exited mid-month
+  allocation_percentage: number;   // Allocation % on this project
+
+  // Daily marks: { "1": "P", "2": "A", "3": "L", ... "31": "W" }
+  daily_marks: Record<string, AttendanceMark>;
+
+  // Totals
+  total_present: number;           // Days marked Present
+  total_absent: number;            // Days marked Absent
+  total_leave: number;             // Days on approved leave
+  total_holiday: number;           // Company holidays
+  total_weekend: number;           // Saturdays & Sundays
+  total_working_days: number;      // Present + Leave days
+  total_hours_worked: number;      // Sum of hours_worked from timesheets
+
+  // Calculated
+  attendance_percentage: number;   // (Present / Billable days) * 100
+  total_billable_days: number;     // Billable days for this employee (excluding weekends/holidays)
+
+  remarks: string;                 // e.g., "Exited mid-month", "Joined mid-month"
+}
+
+// --- Project Attendance Report (Main Report Object) ---
+export interface ProjectAttendanceReport {
+  project_id: string;
+  project_name: string;
+  month: number;
+  year: number;
+  employees: EmployeeAttendanceRow[];
+  generated_at: string;
+
+  // Summary across all employees
+  summary: {
+    total_employees: number;
+    total_man_days: number;         // Sum of present days
+    total_hours: number;            // Sum of hours worked
+    total_billable_hours: number;   // Billable hours (8 hours * billable days)
+    average_attendance: number;     // Average attendance % across employees
+    total_present_days: number;
+    total_absent_days: number;
+    total_leave_days: number;
+    total_holiday_days: number;
+    total_weekend_days: number;
+  };
+
+  // Filters used to generate
+  filters: {
+    month: number;
+    year: number;
+    project_ids: string[];
+    employee_ids: string[];
+    include_exited: boolean;
+  };
+}
+
+// --- Report Filters ---
+export interface AttendanceReportFilters {
+  month: number;
+  year: number;
+  project_ids: string[];        // Multi-select: which projects to include
+  employee_ids?: string[];      // Optional: filter specific employees
+  include_exited?: boolean;     // Include employees who exited during month
+  include_weekends?: boolean;   // Include weekend days in export
+}
+
+// --- Cached Report Record ---
+export interface CachedAttendanceReport {
+  id: string;
+  company_id: string;
+  project_id?: string | null;
+  report_month: number;
+  report_year: number;
+  report_type: 'project_wise' | 'employee_wise' | 'company_wide';
+  generated_by: string;
+  generated_at: string;
+  total_employees: number;
+  total_man_days: number;
+  total_hours: number;
+  average_attendance: number;
+  file_url?: string | null;
+  file_type?: 'excel' | 'pdf' | 'print' | null;
+  filters: Record<string, unknown>;
+  created_at: string;
+}
+
+// --- Report Detail Record ---
+export interface AttendanceReportDetail {
+  id: string;
+  report_id: string;
+  employee_id: string;
+  emp_code: string;
+  employee_name: string;
+  designation: string;
+  join_date: string | null;
+  exit_date: string | null;
+  daily_marks: Record<string, 'P' | 'A' | 'L' | 'H' | 'W'>;
+  total_present: number;
+  total_absent: number;
+  total_leave: number;
+  total_holiday: number;
+  total_weekend: number;
+  total_working_days: number;
+  total_hours_worked: number;
+  attendance_pct: number;
+  remarks: string;
+  created_at: string;
+}
+
+// --- Export Options ---
+export type ExportFormat = 'excel' | 'pdf' | 'print';
+
+export interface ExportOptions {
+  format: ExportFormat;
+  include_header: boolean;
+  include_summary: boolean;
+  include_weekends: boolean;
+  company_logo_url?: string;
+  company_name?: string;
+}
+
+// --- Attendance Report Form Data (for mutations) ---
+export type AttendanceReportFormData = {
+  month: number;
+  year: number;
+  project_ids: string[];
+  employee_ids?: string[];
+  include_exited?: boolean;
+};
+
+// --- Project Select Option ---
+export interface ProjectOption {
+  value: string;
+  label: string;
+  client_name?: string;
+}
+
+// --- Employee Select Option ---
+export interface EmployeeOption {
+  value: string;
+  label: string;
+  emp_code: string;
+  designation: string;
 }

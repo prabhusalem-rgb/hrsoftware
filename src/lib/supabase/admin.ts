@@ -33,9 +33,6 @@ const loadEnv = () => {
 let _adminClient: SupabaseClient | null = null;
 
 function getAdminClient(): SupabaseClient | null {
-  // Always create fresh client for now (debugging)
-  // if (_adminClient) return _adminClient;
-
   loadEnv();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -50,7 +47,8 @@ function getAdminClient(): SupabaseClient | null {
     return null;
   }
 
-  console.log('[supabaseAdmin] Creating admin client, key prefix:', key.substring(0, 20));
+  console.log('[supabaseAdmin] Creating admin client, key prefix:', key.substring(0, 8), '...');
+  console.log('[supabaseAdmin] URL:', url);
 
   const client = createClient(url, key, {
     auth: {
@@ -59,7 +57,7 @@ function getAdminClient(): SupabaseClient | null {
     },
   });
 
-  // _adminClient = client; // skip caching for now
+  console.log('[supabaseAdmin] Client created:', !!client);
   return client;
 }
 

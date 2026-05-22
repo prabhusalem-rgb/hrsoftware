@@ -54,7 +54,10 @@ export function useTimesheets(params: {
       }
       if (filters.month) {
         const startDate = `${filters.month}-01`;
-        const endDate = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).toISOString().split('T')[0];
+        // Get last day of month without timezone shift
+        const [year, monthNum] = filters.month.split('-').map(Number);
+        const lastDay = new Date(year, monthNum, 0).getDate();
+        const endDate = `${filters.month}-${String(lastDay).padStart(2, '0')}`;
         query = query.gte('date', startDate).lte('date', endDate);
       }
 
@@ -109,7 +112,9 @@ export function useTimesheetStats(companyId: string, month?: string) {
       let dateFilter: any = {};
       if (month) {
         const startDate = `${month}-01`;
-        const endDate = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).toISOString().split('T')[0];
+        const [year, monthNum] = month.split('-').map(Number);
+        const lastDay = new Date(year, monthNum, 0).getDate();
+        const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
         dateFilter = { gte: startDate, lte: endDate };
       }
 
@@ -134,7 +139,7 @@ export function useTimesheetStats(companyId: string, month?: string) {
         stats.totalEntries += 1;
         stats.totalHours += Number(ts.hours_worked || 0);
         if (ts.day_type === 'working_day') stats.workingDays += 1;
-        else if (ts.day_type === 'working_holiday') stats.workingHolidays += 1;
+        else if (ts.day_type === 'working_holiday' || ts.day_type === 'holiday_overtime') stats.workingHolidays += 1;
         else if (ts.day_type === 'absent') stats.absentDays += 1;
 
         // Overtime from explicit field

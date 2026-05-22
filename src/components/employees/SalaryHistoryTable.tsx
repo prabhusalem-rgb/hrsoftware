@@ -89,12 +89,8 @@ export function SalaryHistoryTable({ revisions, isLoading, onRevisionDeleted }: 
                                Number(rev.new_special || 0) + Number(rev.new_site || 0) +
                                Number(rev.new_other);
               const effectiveDate = new Date(rev.effective_date);
-              const today = new Date();
-              // Can only delete if effective date is today or in the future (past appraisals are locked)
-              // Compare date-only (ignore time) to handle midnight vs current time edge case
-              const effectiveDateOnly = new Date(effectiveDate.getFullYear(), effectiveDate.getMonth(), effectiveDate.getDate());
-              const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-              const canDelete = effectiveDateOnly >= todayOnly;
+              // Allow deletion of any appraisal (past or future)
+              const canDelete = true;
 
               return (
                 <TableRow key={rev.id} className="hover:bg-slate-50/30 transition-colors">

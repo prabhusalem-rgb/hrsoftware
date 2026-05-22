@@ -4,7 +4,7 @@
 // leave balance management.
 // ============================================================
 
-import { differenceInCalendarDays, differenceInMonths } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 /**
  * Helper: Convert date to year*12 + month index (1-12) matching PostgreSQL DATE_PART('year')*12 + DATE_PART('month')
@@ -133,9 +133,21 @@ export function calculateLeaveEncashment(
 
 /**
  * Calculate leave days between two dates (inclusive)
+ * Uses UTC to avoid timezone-related off-by-one errors
  */
 export function calculateLeaveDays(startDate: string, endDate: string): number {
-  return differenceInCalendarDays(new Date(endDate), new Date(startDate)) + 1;
+  // Parse YYYY-MM-DD strings directly to UTC
+  const parse = (s: string) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return { y, m, d };
+  };
+  const s = parse(startDate);
+  const e = parse(endDate);
+  const startUtc = Date.UTC(s.y, s.m - 1, s.d);
+  const endUtc = Date.UTC(e.y, e.m - 1, e.d);
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const diff = Math.floor((endUtc - startUtc) / msPerDay) + 1;
+  return diff >= 1 ? diff : 0;
 }
 /**
  * Calculate the monetary value of unused leave days (Encashment).

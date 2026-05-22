@@ -73,7 +73,14 @@ export async function GET(
           basic_salary,
           company_id
         ),
-        processed_by_profile:profiles(id, full_name, email)
+        processed_by_profile:profiles(id, full_name, email),
+        payroll_item:payroll_items(
+          id,
+          hr_signature_url,
+          gm_signature_url,
+          leave_request_id,
+          leave_request:leave_requests(sector, leave_type)
+        )
         `
       )
       .eq('payroll_item_id', id)
@@ -137,13 +144,20 @@ export async function GET(
         air_ticket_qty: Number(breakdown?.airTicketQty) || 0,
         final_month_salary: Number(breakdown?.finalMonthSalary) || 0,
         loan_deduction: Number(breakdown?.loanDeductions) || 0,
-        other_deduction: Number(breakdown?.otherDeductions) || 0,
+        other_deduction: Number(breakdown?.otherDeductionsSum) || 0,
+        other_deductions: (breakdown?.otherDeductions as Array<{label:string,amount:number}>) || [],
+        other_additions: (breakdown?.otherAdditions as Array<{label:string,amount:number}>) || [],
         additional_payments: Number(payrollItem?.additional_payments) || 0,
         final_total: Number(payrollItem?.final_total) || 0,
-        notes: history.notes || payrollItem?.notes || '',
         processed_at: history.created_at,
         processed_by_name: history.processed_by_profile?.full_name || 'HR System',
         reference_number: `SET-${history.id.slice(0, 8).toUpperCase()}`,
+        hr_signature_url: (history as any).payroll_item?.hr_signature_url,
+        gm_signature_url: (history as any).payroll_item?.gm_signature_url,
+        leave_request_id: (history as any).payroll_item?.leave_request_id,
+        notes: (history as any).payroll_item?.leave_request ? 
+          `Sector: ${(history as any).payroll_item.leave_request.sector}. ${history.notes || ''}` : 
+          history.notes || payrollItem?.notes || '',
       },
     };
 

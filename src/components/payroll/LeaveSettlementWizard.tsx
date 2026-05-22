@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -9,7 +7,6 @@ import { EmployeePicker } from '@/components/employees/EmployeePicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
@@ -21,7 +18,7 @@ import { calculateAirTicketBalance } from '@/lib/calculations/air_ticket';
 import type { TicketBalance } from '@/lib/calculations/air_ticket';
 import { downloadLeaveSettlementPDF } from '@/lib/pdf-utils';
 import { formatOMR } from '@/lib/utils/currency';
-import { Employee, Leave, LeaveBalance, Loan } from '@/types';
+import { Employee } from '@/types';
 import {
   User,
   Calendar,
@@ -34,28 +31,51 @@ import {
   CheckCircle2,
   Download,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  X
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { v4 as uuidv4 } from 'uuid';
 
 interface LeaveSettlementWizardProps {
   isOpen: boolean;
   onClose: () => void;
   employees: Employee[];
-  onProcess: (data: any) => Promise<any>;
+  onProcess: (data: any) => Promise<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  preselectedEmployeeId?: string | null;
+  preselectedLeaveId?: string | null;
 }
 
-export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }: LeaveSettlementWizardProps) {
+export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, preselectedEmployeeId, preselectedLeaveId }: LeaveSettlementWizardProps) {
   const { activeCompany } = useCompany();
   const [step, setStep] = useState(1);
   const [selectedEmpId, setSelectedEmpId] = useState<string>('');
   const [selectedLeaveId, setSelectedLeaveId] = useState<string | null>(null);
-  const [settlementDate, setSettlementDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [settlementDate, setSettlementDate] = useState(format(new Date(), 'yyyy-MM-dd')); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [notes, setNotes] = useState('');
   const [includeActiveLoans, setIncludeActiveLoans] = useState(true);
   const [includePendingLoans, setIncludePendingLoans] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Itemized other additions and deductions
+  const [otherAdditions, setOtherAdditions] = useState<Array<{id: string; label: string; amount: number}>>([]);
+  const [otherDeductions, setOtherDeductions] = useState<Array<{id: string; label: string; amount: number}>>([{id: uuidv4(), label: '', amount: 0}]);
+
+  // Computed sums for itemized additions and deductions
+  const additionsSum = useMemo(() => otherAdditions.reduce((s, a) => s + Number(a.amount || 0), 0), [otherAdditions]);
+  const deductionsSum = useMemo(() => otherDeductions.reduce((s, d) => s + Number(d.amount || 0), 0), [otherDeductions]);
+
+  // Auto-apply preselection when dialog opens
+  useEffect(() => {
+    if (isOpen && preselectedEmployeeId) {
+      setSelectedEmpId(preselectedEmployeeId);
+      if (preselectedLeaveId) {
+        setSelectedLeaveId(preselectedLeaveId);
+      }
+    }
+  }, [isOpen, preselectedEmployeeId, preselectedLeaveId]);
 
   // Filter and Memoize eligible employees
   const eligibleEmployees = useMemo(() => {
@@ -154,8 +174,8 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
   // Add Leave Encashment
   earningsBreakdown.push({ label: 'Leave Encashment', full: leaveSalaryBasis, actual: vacationSalary });
 
-  const totalIncome = earningsBreakdown.reduce((sum, e) => sum + e.actual, 0);
-  const totalDeductions = totalLoanBalance;
+  const totalIncome = earningsBreakdown.reduce((sum, e) => sum + e.actual, 0) + additionsSum;
+  const totalDeductions = totalLoanBalance + deductionsSum;
   const netPay = Math.round((totalIncome - totalDeductions) * 1000) / 1000;
 
   // Air ticket balance
@@ -222,6 +242,8 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
         working_days_salary: workingSalary,
         air_ticket_balance: typeof airTicketBalance === 'object' ? airTicketBalance.available : airTicketBalance,
         loan_deduction: totalLoanBalance,
+        other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
+        other_additions: otherAdditions.filter(a => a.label && a.amount > 0),
         includeActiveLoans: includeActiveLoans,
         includePendingLoans: includePendingLoans,
         final_total: netPay,
@@ -232,8 +254,11 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
       await onProcess(settlementData);
       toast.success('Leave settlement processed successfully');
       handleClose();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to process settlement');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error('Leave settlement failed', {
+        description: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -265,6 +290,8 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
           last_salary_month: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'MMM yyyy'),
           earnings: earningsBreakdown.map(e => ({ label: e.label, full: e.full, actual: e.actual })),
           deductions,
+          other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
+          other_additions: otherAdditions.filter(a => a.label && a.amount > 0),
           net_pay: netPay,
           notes,
           settlement_date: settlementDate
@@ -293,6 +320,46 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
   useEffect(() => {
     setSelectedLeaveId('');
   }, [selectedEmpId]);
+
+  // Reset itemized entries when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setOtherAdditions([]);
+      setOtherDeductions([{ id: uuidv4(), label: '', amount: 0 }]);
+    }
+  }, [isOpen]);
+
+  // Helper functions for other additions
+  const addOtherAddition = () => {
+    setOtherAdditions([...otherAdditions, { id: uuidv4(), label: '', amount: 0 }]);
+  };
+
+  const removeOtherAddition = (id: string) => {
+    setOtherAdditions(otherAdditions.filter(item => item.id !== id));
+  };
+
+  const updateOtherAddition = (id: string, field: 'label' | 'amount', value: string | number) => {
+    setOtherAdditions(otherAdditions.map(item =>
+      item.id === id ? { ...item, [field]: value } : item
+    ));
+  };
+
+  // Helper functions for other deductions
+  const addOtherDeduction = () => {
+    setOtherDeductions([...otherDeductions, { id: uuidv4(), label: '', amount: 0 }]);
+  };
+
+  const removeOtherDeduction = (id: string) => {
+    if (otherDeductions.length > 1) {
+      setOtherDeductions(otherDeductions.filter(item => item.id !== id));
+    }
+  };
+
+  const updateOtherDeduction = (id: string, field: 'label' | 'amount', value: string | number) => {
+    setOtherDeductions(otherDeductions.map(item =>
+      item.id === id ? { ...item, [field]: value } : item
+    ));
+  };
 
   if (!isOpen) return null;
 
@@ -632,6 +699,109 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess }:
                       </CardContent>
                     </Card>
                   )}
+
+                  {/* Other Additions Section */}
+                  <Card className="border-2 border-emerald-200 bg-emerald-50/30">
+                    <CardHeader className="pb-2 pt-3">
+                      <CardTitle className="text-sm font-bold flex items-center gap-2 text-emerald-700">
+                        <Plus className="w-4 h-4" />
+                        Other Additions
+                        <span className="text-xs font-normal text-emerald-600 ml-auto">
+                          Total: +{formatOMR(additionsSum, 3)}
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {otherAdditions.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">No additional payments added</p>
+                      ) : (
+                        otherAdditions.map((item) => (
+                          <div key={item.id} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-emerald-100">
+                            <Input
+                              value={item.label}
+                              onChange={(e) => updateOtherAddition(item.id, 'label', e.target.value)}
+                              placeholder="Label (e.g., Bonus)"
+                              className="h-8 text-xs flex-1"
+                            />
+                            <Input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              value={item.amount}
+                              onChange={(e) => updateOtherAddition(item.id, 'amount', parseFloat(e.target.value) || 0)}
+                              className="h-8 text-xs w-24 font-mono"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500"
+                              onClick={() => removeOtherAddition(item.id)}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addOtherAddition}
+                        className="w-full border-dashed text-emerald-600 hover:bg-emerald-100"
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Add Item
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Other Deductions Section */}
+                  <Card className="border-2 border-red-200 bg-red-50/30">
+                    <CardHeader className="pb-2 pt-3">
+                      <CardTitle className="text-sm font-bold flex items-center gap-2 text-red-700">
+                        <DollarSign className="w-4 h-4" />
+                        Other Deductions
+                        <span className="text-xs font-normal text-red-600 ml-auto">
+                          Total: -{formatOMR(deductionsSum, 3)}
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {otherDeductions.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-red-100">
+                          <Input
+                            value={item.label}
+                            onChange={(e) => updateOtherDeduction(item.id, 'label', e.target.value)}
+                            placeholder="Label (e.g., Damage)"
+                            className="h-8 text-xs flex-1"
+                          />
+                          <Input
+                            type="number"
+                            step="0.001"
+                            min="0"
+                            value={item.amount}
+                            onChange={(e) => updateOtherDeduction(item.id, 'amount', parseFloat(e.target.value) || 0)}
+                            className="h-8 text-xs w-24 font-mono"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500"
+                            onClick={() => removeOtherDeduction(item.id)}
+                            disabled={otherDeductions.length === 1}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addOtherDeduction}
+                        className="w-full border-dashed text-red-600 hover:bg-red-100"
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Add Item
+                      </Button>
+                    </CardContent>
+                  </Card>
 
                   {/* Earnings Breakdown Table */}
                   <div>

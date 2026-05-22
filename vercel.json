@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/timesheet/projects/daily-report",
+      "schedule": "59 23 * * *",
+      "cron_secret": "1+p6kXu7cBOWFCNlEVDM8J0bxTYJz0o2FfP4Ld9rOok="
+    }
+  ]
+}

@@ -8,7 +8,7 @@
 let pendingLog: { type: string; error: any; ts: number }[] = [];
 let logTimeout: NodeJS.Timeout | null = null;
 
-async function logGlobalError(error: Error | string | Event, type: 'unhandledrejection' | 'error') {
+export async function logGlobalError(error: Error | string | Event, type: 'unhandledrejection' | 'error') {
   const message = error instanceof Error ? error.message : String(error);
   const stack = error instanceof Error ? error.stack : undefined;
 
@@ -34,24 +34,24 @@ async function logGlobalError(error: Error | string | Event, type: 'unhandledrej
   logTimeout = setTimeout(flushLogs, 2000);
 }
 
-async function flushLogs() {
+export async function flushLogs() {
   if (pendingLog.length === 0) return;
 
   const logs = [...pendingLog];
   pendingLog = [];
 
   // Send logs to our logging endpoint
-  // Note: We use navigator.sendBeacon for reliability, but fallback to fetch
+  // Use navigator.sendBeacon for reliability, fallback to fetch
   for (const log of logs) {
     try {
-      const blob = new Blob([JSON.stringify(log.error)], { type: 'application/json' });
+      const payload = JSON.stringify(log.error);
 
       if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/client-error', log.error);
+        navigator.sendBeacon('/api/client-error', payload);
       } else {
         await fetch('/api/client-error', {
           method: 'POST',
-          body: blob,
+          body: payload,
           headers: { 'Content-Type': 'application/json' },
           keepalive: true,
         });

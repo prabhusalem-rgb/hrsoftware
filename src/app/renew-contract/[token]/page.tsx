@@ -263,6 +263,7 @@ export default function RenewContractPage() {
                 <SignaturePad
                   onSave={handleSign}
                   placeholder="Sign here to confirm renewal"
+                  height="h-56"
                 />
 
                 {submitting && (

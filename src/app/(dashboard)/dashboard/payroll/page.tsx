@@ -5,7 +5,7 @@
 // and final settlement with EOSB calculation.
 // ============================================================
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +39,7 @@ import { calculateEmployeePayroll, getWorkingDaysInMonth } from '@/lib/calculati
 import { calculateEOSB } from '@/lib/calculations/eosb';
 import { calculateLeaveEncashment } from '@/lib/calculations/leave';
 import dynamic from 'next/dynamic';
+import { useQueryClient } from '@tanstack/react-query';
 const PayslipModal = dynamic(() => import('@/components/payroll/PayslipModal').then(mod => mod.PayslipModal), { ssr: false });
 const LeaveSettlementWizard = dynamic(() => import('@/components/payroll/LeaveSettlementWizard').then(mod => mod.LeaveSettlementWizard), { ssr: false });
 const LeaveEncashmentWizard = dynamic(() => import('@/components/payroll/LeaveEncashmentWizard').then(mod => mod.LeaveEncashmentWizard), { ssr: false });
@@ -81,6 +82,7 @@ export default function PayrollPage() {
   const { createWPSExport } = useWPSMutations(activeCompanyId);
   const { processPayroll, deletePayrollRun } = usePayrollMutations(activeCompanyId);
   const { batchProcess, setWpsOverride } = usePayoutMutations(activeCompanyId);
+  const queryClient = useQueryClient();
 
   const router = useRouter();
 
@@ -101,6 +103,25 @@ export default function PayrollPage() {
   const [sifProgress, setSifProgress] = useState(0);
   const [showSIFProgress, setShowSIFProgress] = useState(false);
   const [processCategory, setProcessCategory] = useState<string | null>('all');
+
+  // Auto-open Leave Settlement Wizard when accessed with leaveRequestId query param
+  // Using window.location to avoid useSearchParams Suspense requirement
+  const [queryLeaveRequestId, setQueryLeaveRequestId] = useState<string | null>(null);
+  const [queryEmployeeId, setQueryEmployeeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      setQueryLeaveRequestId(params.get('leaveRequestId'));
+      setQueryEmployeeId(params.get('employeeId'));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (queryLeaveRequestId) {
+      setLeaveSettlementOpen(true);
+    }
+  }, [queryLeaveRequestId]);
 
   // Timesheet data for payroll calculation
   const timesheetMonth = `${processYear}-${String(processMonth).padStart(2, '0')}`;
@@ -253,10 +274,11 @@ export default function PayrollPage() {
     }
 
     // Filter employees by category and status
-    // Monthly payroll includes: active, probation, and on_leave employees.
-    // 'on_leave' employees are paid with leave deductions applied.
-    // EXCLUDED: 'leave_settled' (already settled, not yet rejoined) and 'final_settled' (terminated)
-    const eligibleStatuses = ['active', 'probation', 'on_leave'];
+    // Monthly payroll includes: active and probation employees.
+    // 'on_leave' and 'leave_settled' employees are excluded from payroll
+    // (they receive 0.100 OMR via the WPS vacation line instead).
+    // EXCLUDED: 'on_leave', 'leave_settled' (not yet rejoined) and 'final_settled' (terminated)
+    const eligibleStatuses = ['active', 'probation'];
 
     const normalizeCat = (cat: string | null): string => {
       if (!cat) return 'INDIRECT_STAFF';
@@ -310,9 +332,10 @@ export default function PayrollPage() {
     setProcessing(true);
     setProcessingProgress(0);
     try {
-      // Monthly payroll includes active, probation, and on_leave employees
+      // Monthly payroll includes active and probation employees
+      // on_leave employees are excluded (paid via WPS vacation line)
       // leave_settled employees are excluded until they rejoin
-      const eligibleStatuses = ['active', 'probation', 'on_leave'];
+      const eligibleStatuses = ['active', 'probation'];
 
       // Use fresh data from the query (handleProcessPayroll already refetched)
       const currentEmployees = employeesQuery.data ?? [];
@@ -577,6 +600,11 @@ export default function PayrollPage() {
           throw mutationErr;
         }
       }
+
+      // Invalidate employee cache to reflect status/leave_settlement_date changes
+      // Refetch immediately to ensure fresh data for any subsequent operations
+      await queryClient.invalidateQueries({ queryKey: ['employees'], exact: false });
+      await queryClient.refetchQueries({ queryKey: ['employees'], exact: false, type: 'active' });
 
       toast.success('Settlement processed successfully');
       return runData;
@@ -1227,6 +1255,8 @@ export default function PayrollPage() {
         onClose={() => setLeaveSettlementOpen(false)}
         employees={employees}
         onProcess={handleSettlementProcess}
+        preselectedEmployeeId={queryEmployeeId}
+        preselectedLeaveId={queryLeaveRequestId}
       />
 
       <LeaveEncashmentWizard
@@ -1259,8 +1289,8 @@ export default function PayrollPage() {
         isOpen={adjustmentModalOpen}
         onClose={() => setAdjustmentModalOpen(false)}
         employees={employees.filter(e => {
-          // Match the same eligible statuses as the payroll processing
-          const eligibleStatuses = ['active', 'probation', 'on_leave'];
+          // Match the same eligible statuses as the payroll processing (exclude on_leave)
+          const eligibleStatuses = ['active', 'probation'];
           const normalizeCat = (cat: string | null): string => {
             if (!cat) return 'INDIRECT_STAFF';
             const c = (cat || '').toUpperCase();

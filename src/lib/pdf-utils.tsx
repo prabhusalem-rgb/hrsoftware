@@ -4,8 +4,10 @@
 // to ensure heavy PDF logic is not included in the initial bundle.
 import { format } from 'date-fns';
 
-import { Employee, PayrollItem, Company } from '@/types';
+import { Employee, PayrollItem, Company, Project } from '@/types';
 import { SettlementStatementData } from '@/types/settlement';
+import { Timesheet } from '@/types';
+import type { LeaveRequest } from '@/types';
 
 export interface PDFOptions {
   employee: Employee;
@@ -108,6 +110,8 @@ export interface LeaveSettlementPDFOptions {
       label: string;
       actual: number;
     }[];
+    other_deductions?: Array<{label: string; amount: number}>;
+    other_additions?: Array<{label: string; amount: number}>;
     net_pay: number;
     notes?: string;
   };
@@ -422,8 +426,8 @@ export async function generateSettlementPDF({
 
 export async function downloadSettlementPDF(options: SettlementPDFOptions): Promise<void> {
   const blob = await generateSettlementPDF(options);
-  
-  const downloadFileName = options.fileName || 
+
+  const downloadFileName = options.fileName ||
     `final-settlement-${options.data.employee.emp_code}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
 
   const url = URL.createObjectURL(blob);
@@ -435,3 +439,199 @@ export async function downloadSettlementPDF(options: SettlementPDFOptions): Prom
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// ============================================
+// TIMESHEET CONFIRMATION PDF
+// ============================================
+
+export interface TimesheetConfirmationPDFOptions {
+  timesheet: Timesheet & {
+    employees: Pick<Employee, 'id' | 'name_en' | 'emp_code' | 'basic_salary' | 'gross_salary'>;
+    projects: Pick<Project, 'id' | 'name'> | null;
+  };
+  company: Company;
+  submissionToken: string;
+}
+
+export async function generateTimesheetConfirmationPDF({
+  timesheet,
+  company,
+  submissionToken
+}: TimesheetConfirmationPDFOptions): Promise<Blob> {
+  const { TimesheetConfirmationPDF } = await import('@/components/timesheet/TimesheetConfirmationPDF');
+  const { pdf } = await import('@react-pdf/renderer');
+
+  const doc = (
+    <TimesheetConfirmationPDF
+      timesheet={timesheet}
+      company={company}
+      submissionToken={submissionToken}
+    />
+  );
+
+  const pdfBlob = await pdf(doc).toBlob();
+  return pdfBlob;
+}
+
+export async function downloadTimesheetConfirmationPDF({
+  timesheet,
+  company,
+  submissionToken,
+  fileName
+}: TimesheetConfirmationPDFOptions & { fileName?: string }): Promise<void> {
+  const blob = await generateTimesheetConfirmationPDF({
+    timesheet,
+    company,
+    submissionToken
+  });
+
+  const downloadFileName = fileName ||
+    `timesheet-confirmation-${timesheet.employees?.emp_code || 'emp'}-${timesheet.date}.pdf`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = downloadFileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function openTimesheetConfirmationPDFInNewTab(options: TimesheetConfirmationPDFOptions): Promise<void> {
+  const blob = await generateTimesheetConfirmationPDF(options);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+// ============================================
+// PROJECT TIMESHEET REPORT PDF
+// ============================================
+
+export interface ProjectTimesheetReportPDFOptions {
+  project: Pick<Project, 'id' | 'name' | 'description'>;
+  company: Company;
+  date: string; // YYYY-MM-DD format
+  timesheets: Array<Timesheet & {
+    employees: Pick<Employee, 'id' | 'name_en' | 'emp_code' | 'basic_salary' | 'gross_salary'>;
+  }>;
+}
+
+export async function generateProjectTimesheetReportPDF({
+  project,
+  company,
+  date,
+  timesheets
+}: ProjectTimesheetReportPDFOptions): Promise<Blob> {
+  const { ProjectTimesheetReportPDF } = await import('@/components/timesheet/ProjectTimesheetReportPDF');
+  const { pdf } = await import('@react-pdf/renderer');
+
+  const doc = (
+    <ProjectTimesheetReportPDF
+      project={project}
+      company={company}
+      date={date}
+      timesheets={timesheets}
+    />
+  );
+
+  const pdfBlob = await pdf(doc).toBlob();
+  return pdfBlob;
+}
+
+export async function downloadProjectTimesheetReportPDF({
+  project,
+  company,
+  date,
+  timesheets,
+  fileName
+}: ProjectTimesheetReportPDFOptions & { fileName?: string }): Promise<void> {
+  const blob = await generateProjectTimesheetReportPDF({
+    project,
+    company,
+    date,
+    timesheets
+  });
+
+  const formattedDate = new Date(date).toISOString().split('T')[0];
+  const downloadFileName = fileName ||
+    `project-timesheet-${project.name.replace(/\s+/g, '-').toLowerCase()}-${formattedDate}.pdf`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = downloadFileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function openProjectTimesheetReportPDFInNewTab(options: ProjectTimesheetReportPDFOptions): Promise<void> {
+  const blob = await generateProjectTimesheetReportPDF(options);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+// ============================================
+// LEAVE REQUEST PDF
+// ============================================
+
+export interface LeaveRequestPDFOptions {
+  leaveRequest: LeaveRequest & { employee: Employee; company: Company };
+  fileName?: string;
+  showLogo?: boolean;
+  primaryColor?: string;
+}
+
+export async function generateLeaveRequestPDF({
+  leaveRequest,
+  showLogo = true,
+  primaryColor = '#1e3a5f'
+}: LeaveRequestPDFOptions): Promise<Blob> {
+  const { LeaveRequestPDF } = await import('@/components/hr/LeaveRequestPDF');
+  const { pdf } = await import('@react-pdf/renderer');
+
+  const doc = (
+    <LeaveRequestPDF
+      leaveRequest={leaveRequest}
+      showLogo={showLogo}
+      primaryColor={primaryColor}
+    />
+  );
+
+  const pdfBlob = await pdf(doc).toBlob();
+  return pdfBlob;
+}
+
+export async function downloadLeaveRequestPDF({
+  leaveRequest,
+  fileName,
+  showLogo = true,
+  primaryColor = '#1e3a5f'
+}: LeaveRequestPDFOptions): Promise<void> {
+  const blob = await generateLeaveRequestPDF({
+    leaveRequest,
+    showLogo,
+    primaryColor
+  });
+
+  const downloadFileName = fileName ||
+    `leave-request-${leaveRequest.employee.emp_code}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = downloadFileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function openLeaveRequestPDFInNewTab(options: LeaveRequestPDFOptions): Promise<void> {
+  const blob = await generateLeaveRequestPDF(options);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+

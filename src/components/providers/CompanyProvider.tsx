@@ -153,8 +153,22 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
             .maybeSingle();
 
           if (pError || !pData) {
-            if (!skipLog) console.error('[CompanyProvider] Profile fetch failed:', pError);
+            // Log more details for debugging
+            const errorMsg = pError ? (pError.message || JSON.stringify(pError)) : 'No profile data found';
+            if (!skipLog) {
+              console.error('[CompanyProvider] Profile fetch failed:', {
+                error: pError,
+                errorMessage: pError?.message,
+                hasData: !!pData,
+                userId: user.id,
+                userIdPrefix: user.id?.substring(0, 8)
+              });
+            }
             // profileData remains null, companies empty
+            // This can happen if:
+            // 1. RLS policy blocks access to profiles table
+            // 2. Profile record doesn't exist for this user
+            // 3. Auth state not fully propagated yet
           } else {
             profileData = pData;
             try {
@@ -212,7 +226,20 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     }
     setAvailableCompanies(companies);
     if (companies.length > 0) {
-      setActiveCompanyIdState(prev => companies.some(c => c.id === prev) ? prev : companies[0].id);
+      // Determine active company: prioritize localStorage (persisted selection), then current active if still valid, else first company
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('active_company_id') : null;
+      const validStored = stored && companies.some(c => c.id === stored);
+      if (validStored) {
+        setActiveCompanyIdState(stored);
+      } else {
+        setActiveCompanyIdState(prev => {
+          // If current active is still valid, keep it; otherwise use first company
+          if (companies.some(c => c.id === prev)) {
+            return prev;
+          }
+          return companies[0].id;
+        });
+      }
     } else {
       setActiveCompanyIdState('');
     }
@@ -308,6 +335,19 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, [supabase, userId, reinitAuth, fetchProfile]);
+
+  // Persist active company ID to localStorage (for global users and super admins)
+  useEffect(() => {
+    if (activeCompanyIdState) {
+      try {
+        localStorage.setItem('active_company_id', activeCompanyIdState);
+      } catch {}
+    } else {
+      try {
+        localStorage.removeItem('active_company_id');
+      } catch {}
+    }
+  }, [activeCompanyIdState]);
 
   const activeCompany = useMemo(() =>
     availableCompanies.find(c => c.id === activeCompanyIdState),

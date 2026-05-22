@@ -316,6 +316,73 @@ export function generateWPSSIF(
     itemsWithAmounts.push({ item, employee, amounts });
   }
 
+  // ── Vacation employees: add 0.100 OMR if not already in payroll
+  // and no leave settlement / rejoin in the same month ──
+  // Status can be 'on_leave' (settlement pending) or 'leave_settled'
+  // (settlement done before vacation — common workflow). In both cases,
+  // employee is on leave and should get 0.100 OMR for the month,
+  // EXCEPT if settlement was processed in the export month (already paid)
+  // OR if employee rejoins in the export month (salary resumes).
+  const includedEmployeeIds = new Set(payrollItems.map(item => item.employee_id));
+
+  const isSameMonth = (dateStr: string | null | undefined, yr: number, mo: number): boolean => {
+    if (!dateStr) {
+      console.log(`[WPS] isSameMonth: dateStr is falsy, returning false`);
+      return false;
+    }
+    const d = new Date(dateStr);
+    const result = d.getFullYear() === yr && d.getMonth() + 1 === mo;
+    console.log(`[WPS] isSameMonth(dateStr=${dateStr}, yr=${yr}, mo=${mo}) → d={year:${d.getFullYear()}, month:${d.getMonth()+1}} → ${result}`);
+    return result;
+  };
+
+  console.log(`[WPS] Checking vacation employees: total employees=${employees.length}, payroll items=${payrollItems.length}, already included=${includedEmployeeIds.size}`);
+  for (const employee of employees) {
+    console.log(`[WPS] Employee ${employee.emp_code} (${employee.name_en}): status=${employee.status}, leave_settlement_date=${employee.leave_settlement_date}, rejoin_date=${employee.rejoin_date}`);
+    // Include both 'on_leave' and 'leave_settled' employees
+    // (leave_settled = leave already paid, but employee still on leave until rejoin)
+    if (!['on_leave', 'leave_settled'].includes(employee.status)) {
+      console.log(`[WPS]   -> SKIP: status not on_leave/leave_settled`);
+      continue;
+    }
+    if (includedEmployeeIds.has(employee.id)) {
+      console.log(`[WPS]   -> SKIP: already in payroll items`);
+      continue;
+    }
+    // Skip if leave settlement was done in the export month
+    if (isSameMonth(employee.leave_settlement_date, year, month)) {
+      console.log(`[WPS]   -> SKIP: leave_settlement_date in same month (${employee.leave_settlement_date})`);
+      continue;
+    }
+    // Skip if employee rejoins in the export month (salary resumes)
+    if (isSameMonth(employee.rejoin_date, year, month)) {
+      console.log(`[WPS]   -> SKIP: rejoin_date in same month (${employee.rejoin_date})`);
+      continue;
+    }
+    if (!isValidEmployee(employee)) {
+      console.warn(`[WPS] Vacation employee ${employee.name_en} missing required WPS fields, skipping 0.100 OMR addition`);
+      continue;
+    }
+
+    console.log(`[WPS] Adding vacation employee: ${employee.name_en} (${employee.id}) with 0.100 OMR`);
+    const vacationNet = 0.100;
+    const vacationAmounts = {
+      effectiveNet: vacationNet,
+      scaledBasic: vacationNet,  // Set basic = net so rawNet calculation yields correct total
+      scaledOvertime: 0,
+      scaledExtraIncome: 0,
+      scaledDeductions: 0,
+      scaledSocialSecurity: 0,
+      workingDays: 0,
+      notes: 'VACATION',
+    };
+    const vacationItem = { id: `vacation-${employee.id}`, employee_id: employee.id } as PayrollItem;
+    itemsWithAmounts.push({ item: vacationItem, employee, amounts: vacationAmounts as any });
+  }
+
+  console.log(`[WPS] After vacation addition: itemsWithAmounts count = ${itemsWithAmounts.length}`);
+
+
   if (itemsWithAmounts.length === 0) {
     throw new Error('No valid employees to export after filtering. Check hold/failed/fully-paid statuses.');
   }
@@ -453,4 +520,105 @@ export function generateWPSFileName(
   const seqPart = sequence.toString().padStart(3, '0');
   const cleanCR = crNumber.trim().replace(/[^A-Za-z0-9]/g, '').substring(0, 20);
   return `SIF_${cleanCR}_${bankCode}_${datePart}_${seqPart}.csv`;
+}
+
+// ============================================================
+// Simple WPS Contribution Calculator (for UI display / tests)
+// ============================================================
+
+export interface WPSContributionInput {
+  basicSalary: number;
+  housingAllowance: number;
+  transportAllowance: number;
+  grossSalary: number;
+  isOmani: boolean;
+}
+
+export interface WPSContributionResult {
+  employeeShare: number;
+  employerShare: number;
+  totalContribution: number;
+  capped: boolean;
+  applicable: boolean;
+}
+
+/**
+ * Calculate WPS contributions for an employee.
+ * Omani: employee 6.5%, employer 10.5% on gross salary (capped at 3000 OMR base).
+ * Non-Omani: no contributions.
+ */
+export function calculateWPS(input: WPSContributionInput): WPSContributionResult {
+  const { grossSalary, isOmani } = input;
+  if (!isOmani) {
+    return { employeeShare: 0, employerShare: 0, totalContribution: 0, capped: false, applicable: false };
+  }
+  const CAP = 3000;
+  const base = grossSalary > CAP ? CAP : grossSalary;
+  const capped = grossSalary > CAP;
+  const employeeShare = Math.round(base * 0.065 * 1000) / 1000;
+  const employerShare = Math.round(base * 0.105 * 1000) / 1000;
+  const total = Math.round((employeeShare + employerShare) * 1000) / 1000;
+  return { employeeShare, employerShare, totalContribution: total, capped, applicable: true };
+}
+
+export interface ValidationError {
+  field: string;
+  message: string;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  errors: ValidationError[];
+}
+
+/**
+ * Validate employee data for WPS export.
+ * Checks required fields, positive salary, IBAN format, and civil ID rules.
+ */
+export function validateWPSData(data: any): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  // Required fields
+  if (!data.employeeId) errors.push({ field: 'employeeId', message: 'Employee ID is required' });
+  if (!data.fullName) errors.push({ field: 'fullName', message: 'Full name is required' });
+  if (!data.civilId) errors.push({ field: 'civilId', message: 'Civil ID is required' });
+  if (data.basicSalary === undefined) errors.push({ field: 'basicSalary', message: 'Basic salary is required' });
+  if (!data.bankIban) errors.push({ field: 'bankIban', message: 'Bank IBAN is required' });
+
+  // Positive salary
+  if (data.basicSalary !== undefined && data.basicSalary <= 0) {
+    errors.push({ field: 'basicSalary', message: 'Salary must be positive' });
+  }
+
+  // IBAN format: must have digits and result in exactly 16 digits after formatting
+  if (data.bankIban) {
+    const numeric = data.bankIban.toString().replace(/[^0-9]/g, '');
+    if (numeric.length === 0) {
+      errors.push({ field: 'bankIban', message: 'IBAN must contain digits' });
+    } else {
+      const formatted = formatEmployeeAccount(data.bankIban);
+      if (formatted.length !== 16) {
+        errors.push({ field: 'bankIban', message: 'IBAN must be 16 digits after formatting' });
+      }
+    }
+  }
+
+  // Civil ID checks (if provided)
+  if (data.civilId) {
+    const numericId = data.civilId.toString().replace(/[^0-9]/g, '');
+    if (numericId.length === 0) {
+      errors.push({ field: 'civilId', message: 'Civil ID must be numeric' });
+    } else if (numericId[0] === '0') {
+      errors.push({ field: 'civilId', message: 'Civil ID cannot start with zero' });
+    } else if (numericId.length > 8) {
+      errors.push({ field: 'civilId', message: 'Civil ID cannot exceed 8 digits' });
+    }
+  }
+
+  // Name non-empty (if provided)
+  if (data.fullName && !data.fullName.trim()) {
+    errors.push({ field: 'fullName', message: 'Name is required' });
+  }
+
+  return { isValid: errors.length === 0, errors };
 }

@@ -8,7 +8,7 @@ export function usePayrollMutations(companyId: string) {
   const queryClient = useQueryClient();
 
   const processPayroll = useMutation({
-    mutationFn: async ({ run, items }: { run: any; items: any[] }) => {
+    mutationFn: async ({ run, items }: { run: any; items: PayrollItem[] }) => {
       console.log('[processPayroll] Inserting payroll run:', run);
       console.log('[processPayroll] Items to insert (first 3):', items.slice(0, 3).map(i => ({
         employee_id: i.employee_id,
@@ -85,13 +85,18 @@ export function usePayrollMutations(companyId: string) {
 
       if (['leave_settlement', 'final_settlement', 'leave_encashment'].includes(run.type)) {
         const item = items[0];
+        console.log('[processPayroll] Settlement type:', run.type, '| employee:', item.employee_id.substring(0,8), '| settlement_date:', item.settlement_date);
 
         if (run.type !== 'leave_encashment') {
           const newStatus = run.type === 'final_settlement' ? 'final_settled' : 'leave_settled';
           const updateData: any = { status: newStatus };
           if (run.type === 'final_settlement') {
             updateData.termination_date = item.settlement_date;
+          } else if (run.type === 'leave_settlement') {
+            // Store the leave settlement date to track when vacation payment was made
+            updateData.leave_settlement_date = item.settlement_date;
           }
+          console.log('[processPayroll] Updating employee with:', updateData);
 
           const { error: empError } = await supabase
             .from('employees')
@@ -99,6 +104,7 @@ export function usePayrollMutations(companyId: string) {
             .eq('id', item.employee_id);
 
           if (empError) throw new Error(empError.message || 'Failed to update employee');
+          console.log('[processPayroll] Employee update successful');
         }
 
         if (run.type === 'leave_settlement' && item.leave_id) {
@@ -343,6 +349,9 @@ export function usePayrollMutations(companyId: string) {
 
       // Step 4: Revert leave_settlement specific changes
       if (run.type === 'leave_settlement' && items.length > 0) {
+        // Capture employee IDs being settled BEFORE any loops that shadow `item`
+        const settledEmployeeIds = new Set<string>(items.map((i: PayrollItem) => i.employee_id));
+
         // Reset leave settlement_status for any associated leave
         for (const item of items) {
           if (item.leave_id) {
@@ -357,6 +366,8 @@ export function usePayrollMutations(companyId: string) {
 
         // Recalculate Annual Leave used from currently approved leaves
         const employeeIds = Array.from(new Set((items as any[]).map(i => i.employee_id).filter(Boolean)));
+        console.log('[processPayroll] settledEmployeeIds:', Array.from(settledEmployeeIds).map(id => id.substring(0,8)));
+        console.log('[processPayroll] employeeIds from items:', employeeIds.map((id: string) => id.substring(0,8)));
 
         const { data: annualLeaveType } = await supabase
           .from('leave_types')
@@ -405,7 +416,18 @@ export function usePayrollMutations(companyId: string) {
         }
 
         // Reset employee status based on remaining approved/pending leaves
+        // NOTE: Skip employees we just settled — they should keep their new status
+        // ('leave_settled' or 'final_settled') until they rejoin or are terminated.
+        console.log('[processPayroll] Resetting status for employeeIds:', employeeIds.map((id: string) => id.substring(0,8)));
+        console.log('[processPayroll] settledEmployeeIds:', Array.from(settledEmployeeIds).map(id => id.substring(0,8)));
         for (const empId of employeeIds) {
+          console.log(`[processPayroll] Checking empId ${empId.substring(0,8)}`);
+          // Skip employees whose settlement we just processed
+          if (settledEmployeeIds.has(empId)) {
+            console.log(`[processPayroll] ✅ Skipping status reset for ${empId.substring(0,8)} - in settledEmployeeIds`);
+            continue;
+          }
+
           const { data: activeLeaves } = await supabase
             .from('leaves')
             .select('id')

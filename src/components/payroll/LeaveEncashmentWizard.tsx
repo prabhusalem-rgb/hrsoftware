@@ -1,23 +1,24 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Calculator, Calendar, User, ChevronRight, ChevronLeft, CheckCircle2, Wallet, Loader2 } from 'lucide-react';
-import { Employee, LeaveBalance } from '@/types';
+import { Calendar, User, ChevronRight, CheckCircle2, Wallet, Loader2, Plus, X } from 'lucide-react';
+import { Employee } from '@/types';
 import { calculateLeaveEncashmentValue } from '@/lib/calculations/leave';
 import { EmployeePicker } from '@/components/employees/EmployeePicker';
 import { Badge } from '@/components/ui/badge';
 import { useLeaveBalances } from '@/hooks/queries/useLeaveBalances';
 import { toast } from 'sonner';
+import { v4 as uuidv4 } from 'uuid';
 
 interface LeaveEncashmentWizardProps {
   isOpen: boolean;
   onClose: () => void;
   employees: Employee[];
-  onProcess: (data: any) => Promise<any>;
+  onProcess: (data: any) => Promise<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }: LeaveEncashmentWizardProps) {
@@ -26,6 +27,8 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
   const [daysToEncash, setDaysToEncash] = useState(0);
   const [encashmentDate, setEncashmentDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  const [otherAdditions, setOtherAdditions] = useState<Array<{id: string; label: string; amount: number}>>([]);
+  const [otherDeductions, setOtherDeductions] = useState<Array<{id: string; label: string; amount: number}>>([{id: uuidv4(), label: '', amount: 0}]);
 
   // Filter and Memoize eligible employees
   const eligibleEmployees = useMemo(() => {
@@ -42,10 +45,55 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
     selectedEmpId || undefined
   );
 
-  useEffect(() => {
-    // Reset days when employee changes
+  const handleEmployeeChange = (id: string) => {
+    setSelectedEmpId(id);
     setDaysToEncash(0);
-  }, [selectedEmpId]);
+  };
+
+  const handleClose = () => {
+    setSelectedEmpId('');
+    setDaysToEncash(0);
+    setOtherAdditions([]);
+    setOtherDeductions([{ id: uuidv4(), label: '', amount: 0 }]);
+    setNotes('');
+    onClose();
+  };
+
+  // Helper functions for other additions
+  const addOtherAddition = () => {
+    setOtherAdditions([...otherAdditions, { id: uuidv4(), label: '', amount: 0 }]);
+  };
+
+  const removeOtherAddition = (id: string) => {
+    setOtherAdditions(otherAdditions.filter(item => item.id !== id));
+  };
+
+  const updateOtherAddition = (id: string, field: 'label' | 'amount', value: string | number) => {
+    setOtherAdditions(otherAdditions.map(item =>
+      item.id === id ? { ...item, [field]: value } : item
+    ));
+  };
+
+  // Helper functions for other deductions
+  const addOtherDeduction = () => {
+    setOtherDeductions([...otherDeductions, { id: uuidv4(), label: '', amount: 0 }]);
+  };
+
+  const removeOtherDeduction = (id: string) => {
+    if (otherDeductions.length > 1) {
+      setOtherDeductions(otherDeductions.filter(item => item.id !== id));
+    }
+  };
+
+  const updateOtherDeduction = (id: string, field: 'label' | 'amount', value: string | number) => {
+    setOtherDeductions(otherDeductions.map(item =>
+      item.id === id ? { ...item, [field]: value } : item
+    ));
+  };
+
+  // Compute sums
+  const additionsSum = otherAdditions.reduce((s, a) => s + Number(a.amount || 0), 0);
+  const deductionsSum = otherDeductions.reduce((s, d) => s + Number(d.amount || 0), 0);
   
   const annualBalance = allBalances?.find(b => b.leave_type?.name.toLowerCase().includes('annual'))?.balance || 0;
 
@@ -55,6 +103,7 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
   const isGrossSalaryBasis = isOmani || employee?.category === 'INDIRECT_STAFF';
   
   const encashmentValue = calculateLeaveEncashmentValue(employee, daysToEncash);
+  const netTotal = encashmentValue + additionsSum - deductionsSum;
 
   const handleNext = () => {
     if (step === 1 && !selectedEmpId) {
@@ -72,7 +121,9 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
 
   const handleSubmit = async () => {
     if (!employee) return;
-    
+
+    const netTotal = encashmentValue + additionsSum - deductionsSum;
+
     const encashmentData = {
       employee_id: employee.id,
       company_id: employee.company_id,
@@ -80,23 +131,30 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
       gross_salary: Number(employee.gross_salary) || 0,
       days: daysToEncash,
       leave_encashment: encashmentValue,
-      net_salary: encashmentValue,
-      final_total: encashmentValue,
+      other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
+      other_additions: otherAdditions.filter(a => a.label && a.amount > 0),
+      net_salary: netTotal,
+      final_total: netTotal,
       settlement_date: encashmentDate,
       notes,
       type: 'leave_encashment'
     };
 
-    await onProcess(encashmentData);
-    setStep(1);
-    setSelectedEmpId('');
-    setDaysToEncash(0);
-  };
-
-  if (!isOpen) return null;
+    try {
+      await onProcess(encashmentData);
+      setStep(1);
+      setSelectedEmpId('');
+      setDaysToEncash(0);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error('Leave encashment failed', {
+        description: message,
+      });
+    }
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-2xl p-0 rounded-3xl overflow-hidden shadow-2xl border-0">
         <DialogHeader className="bg-slate-50 dark:bg-slate-900 px-8 py-6 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between mb-4">
@@ -131,7 +189,7 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
                 <EmployeePicker
                   employees={eligibleEmployees}
                   selectedId={selectedEmpId}
-                  onSelect={setSelectedEmpId}
+                  onSelect={handleEmployeeChange}
                   placeholder="Search and select employee..."
                 />
               </div>
@@ -196,7 +254,85 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
                     <span className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Total Encashment</span>
                     <span className="text-2xl font-black font-mono text-indigo-400">{encashmentValue.toFixed(3)} OMR</span>
                   </div>
+                  {additionsSum > 0 && (
+                    <div className="flex justify-between items-center text-sm pt-2 border-t border-white/10">
+                      <span className="opacity-60">Other Additions</span>
+                      <span className="font-mono font-bold text-emerald-400">+{additionsSum.toFixed(3)}</span>
+                    </div>
+                  )}
+                  {deductionsSum > 0 && (
+                    <div className="flex justify-between items-center text-sm pt-1">
+                      <span className="opacity-60">Other Deductions</span>
+                      <span className="font-mono font-bold text-red-400">-{deductionsSum.toFixed(3)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-2 border-t border-white/20 mt-2">
+                    <span className="text-xs font-black uppercase tracking-widest text-white">Net Payable</span>
+                    <span className="text-2xl font-black font-mono text-white">{(encashmentValue + additionsSum - deductionsSum).toFixed(3)} OMR</span>
+                  </div>
                 </div>
+              </div>
+
+              {/* Other Additions */}
+              <div className="space-y-2">
+                <Label className="text-xs font-black uppercase text-slate-400 flex items-center gap-2">
+                  <Plus className="w-3 h-3" /> Other Additions (Optional)
+                </Label>
+                {otherAdditions.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2">
+                    <Input
+                      value={item.label}
+                      onChange={(e) => updateOtherAddition(item.id, 'label', e.target.value)}
+                      placeholder="Label (e.g., Bonus)"
+                      className="h-9 text-xs flex-1"
+                    />
+                    <Input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      value={item.amount}
+                      onChange={(e) => updateOtherAddition(item.id, 'amount', parseFloat(e.target.value) || 0)}
+                      className="h-9 text-xs w-28 font-mono"
+                    />
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-red-500" onClick={() => removeOtherAddition(item.id)}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button variant="outline" size="sm" onClick={addOtherAddition} className="w-full border-dashed text-emerald-600 hover:bg-emerald-50">
+                  <Plus className="w-4 h-4 mr-1" /> Add Addition
+                </Button>
+              </div>
+
+              {/* Other Deductions */}
+              <div className="space-y-2">
+                <Label className="text-xs font-black uppercase text-slate-400 flex items-center gap-2">
+                  <X className="w-3 h-3" /> Other Deductions (Optional)
+                </Label>
+                {otherDeductions.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2">
+                    <Input
+                      value={item.label}
+                      onChange={(e) => updateOtherDeduction(item.id, 'label', e.target.value)}
+                      placeholder="Label (e.g., Damage)"
+                      className="h-9 text-xs flex-1"
+                    />
+                    <Input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      value={item.amount}
+                      onChange={(e) => updateOtherDeduction(item.id, 'amount', parseFloat(e.target.value) || 0)}
+                      className="h-9 text-xs w-28 font-mono"
+                    />
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-red-500" onClick={() => removeOtherDeduction(item.id)} disabled={otherDeductions.length === 1}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button variant="outline" size="sm" onClick={addOtherDeduction} className="w-full border-dashed text-red-600 hover:bg-red-50">
+                  <Plus className="w-4 h-4 mr-1" /> Add Deduction
+                </Button>
               </div>
             </div>
           )}
@@ -214,8 +350,14 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
                     <p className="text-sm font-black text-slate-900">{employee?.name_en}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Encashment Amount</p>
-                    <p className="text-lg font-black text-emerald-600 font-mono">{encashmentValue.toFixed(3)}</p>
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Net Payable Amount</p>
+                    <p className="text-lg font-black text-emerald-600 font-mono">{netTotal.toFixed(3)} OMR</p>
+                    {additionsSum > 0 && (
+                      <p className="text-[10px] text-emerald-600">+{additionsSum.toFixed(3)} additions</p>
+                    )}
+                    {deductionsSum > 0 && (
+                      <p className="text-[10px] text-red-600">-{deductionsSum.toFixed(3)} deductions</p>
+                    )}
                   </div>
                 </div>
               </div>

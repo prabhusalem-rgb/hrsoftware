@@ -34,6 +34,9 @@ export function useEmployees({
 }: UseEmployeesOptions): UseQueryResult<Employee[], Error> {
   const supabase = createClient();
 
+  // Always log to debug the SELECT
+  console.log('[useEmployees] SELECT (full):', select);
+
   return useQuery<Employee[]>({
     queryKey: ['employees', companyId, limit, searchQuery, department, statuses, select],
     queryFn: async (): Promise<Employee[]> => {
@@ -82,6 +85,7 @@ export function useEmployees({
           console.error('useEmployees query error:', errorMessage);
           throw new Error(errorMessage);
         }
+        console.log('[useEmployees] returned', data?.length || 0, 'records. First record keys:', data?.[0] ? Object.keys(data[0]) : 'N/A');
         return (data || []) as Employee[];
       } catch (err) {
         console.error('useEmployees unexpected error:', err);

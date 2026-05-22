@@ -3,6 +3,8 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
+  // Keep pdfkit unbundled for proper __dirname resolution
+  serverExternalPackages: ['pdfkit'],
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },

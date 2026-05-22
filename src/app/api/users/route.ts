@@ -58,8 +58,8 @@ export async function POST(request: Request) {
     // 3. Normalize company_id — 'all' or empty = null (Global Access)
     const normalizedCompanyId = (!company_id || company_id === 'all' || company_id === '') ? null : company_id;
 
-    // 4. Map User ID to internal email
-    const email = userId.includes('@') ? userId : `${userId.trim().toLowerCase()}@hr.system`;
+    // 4. Map User ID to internal email (always lowercase for consistency)
+    const email = userId.includes('@') ? userId.trim().toLowerCase() : `${userId.trim().toLowerCase()}@hr.system`;
 
     // 5. Create user via Admin API
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -162,7 +162,7 @@ export async function PUT(request: Request) {
     // 5. Sync to Auth metadata so JWT is up-to-date
     const authUpdate: any = { user_metadata: {} };
     if (userId) {
-      const newEmail = userId.includes('@') ? userId : `${userId.trim().toLowerCase()}@hr.system`;
+      const newEmail = userId.includes('@') ? userId.trim().toLowerCase() : `${userId.trim().toLowerCase()}@hr.system`;
       authUpdate.email = newEmail;
       authUpdate.user_metadata.username = userId.trim().toLowerCase();
     }

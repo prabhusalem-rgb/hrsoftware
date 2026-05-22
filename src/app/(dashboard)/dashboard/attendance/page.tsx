@@ -5,7 +5,7 @@
 // All employees are present by default (Oman standard).
 // ============================================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Search, ClipboardCheck, Clock, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, ClipboardCheck, Clock, Pencil, Trash2, User, X } from 'lucide-react';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
 import { useAttendance } from '@/hooks/queries/useAttendance';
@@ -22,7 +22,14 @@ import { useAttendanceMutations } from '@/hooks/queries/useAttendanceMutations';
 import { Attendance, AttendanceStatus, OvertimeType } from '@/types';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
-import { useEffect } from 'react';
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxField,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxTrigger,
+} from '@/components/ui/combobox';
 
 export default function AttendancePage() {
   const { activeCompanyId } = useCompany();
@@ -38,6 +45,9 @@ export default function AttendancePage() {
   const [mode, setMode] = useState<'daily' | 'monthly'>('daily');
   const [editingRecord, setEditingRecord] = useState<Attendance | null>(null);
   const [form, setForm] = useState({ employee_id: '', date: '', status: 'absent' as AttendanceStatus, overtime_hours: 0, overtime_type: 'none' as OvertimeType, notes: '' });
+  // Modal employee combobox state
+  const [formEmployeeId, setFormEmployeeId] = useState('');
+  const [formEmployeeSearchQuery, setFormEmployeeSearchQuery] = useState('');
 
   const records = attendanceData;
 
@@ -58,19 +68,20 @@ export default function AttendancePage() {
   const getEmpName = (id: string | undefined) => employees.find(e => (e.id || '').trim() === (id || '').trim())?.name_en || id || 'Unknown';
 
   const handleSave = async () => {
-    if (!form.employee_id) { toast.error('Employee is required'); return; }
-    
+    if (!formEmployeeId) { toast.error('Employee is required'); return; }
+
     // For monthly mode, set date to 1st of the selected month
     const saveDate = mode === 'monthly' ? `${selectedMonth}-01` : form.date;
     if (!saveDate) { toast.error('Date is required'); return; }
 
-    const finalForm = { 
-      ...form, 
-      date: saveDate, 
+    const finalForm = {
+      ...form,
+      employee_id: formEmployeeId,
+      date: saveDate,
       status: mode === 'monthly' ? 'present' as AttendanceStatus : form.status,
       notes: mode === 'monthly' ? `[Monthly OT] ${form.notes}`.trim() : form.notes
     };
-    
+
     await saveAttendance.mutateAsync({ id: editingRecord?.id, formData: finalForm });
     setDialogOpen(false);
   };
@@ -91,6 +102,8 @@ export default function AttendancePage() {
       overtime_type: record.overtime_type as OvertimeType,
       notes: record.notes.replace('[Monthly OT]', '').trim()
     });
+    setFormEmployeeId(record.employee_id);
+    setFormEmployeeSearchQuery('');
     setDialogOpen(true);
   };
 
@@ -114,11 +127,13 @@ export default function AttendancePage() {
           <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
           <p className="text-muted-foreground text-sm">Mark absent (daily) or record total monthly overtime hours.</p>
         </div>
-        <Button onClick={() => { 
-          setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '' }); 
+        <Button onClick={() => {
+          setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '' });
+          setFormEmployeeId('');
+          setFormEmployeeSearchQuery('');
           setEditingRecord(null);
           setMode('daily');
-          setDialogOpen(true); 
+          setDialogOpen(true);
         }} className="gap-2 shadow-sm">
           <Plus className="w-4 h-4" /> Record Absent / OT
         </Button>
@@ -205,7 +220,13 @@ export default function AttendancePage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setFormEmployeeId('');
+          setFormEmployeeSearchQuery('');
+        }
+        setDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>{editingRecord ? 'Edit Record' : 'Record Absent / Overtime'}</DialogTitle>
@@ -221,18 +242,63 @@ export default function AttendancePage() {
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Employee *</Label>
-                <Select value={form.employee_id} onValueChange={(v: string | null) => { if (v) setForm({...form, employee_id: v}); }}>
-                  <SelectTrigger className="w-full text-left overflow-hidden">
-                    <SelectValue placeholder="Select an employee">
-                      {employees.find(e => (e.id || '').trim() === (form.employee_id || '').trim())?.name_en || form.employee_id}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.filter(e => e.status === 'active').map(e => (
-                      <SelectItem key={e.id} value={e.id}>{e.name_en} ({e.emp_code})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  value={formEmployeeId}
+                  onValueChange={(value) => {
+                    setFormEmployeeId(value || '');
+                    setFormEmployeeSearchQuery('');
+                  }}
+                  itemToStringLabel={(itemValue) => {
+                    const emp = employees.find(e => e.id === itemValue);
+                    return emp ? `${emp.name_en} (${emp.emp_code})` : '';
+                  }}
+                >
+                  <ComboboxField className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                      <Search className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <ComboboxInput
+                      placeholder="Search employee by name or code..."
+                      className="pl-10"
+                      onChange={(e) => setFormEmployeeSearchQuery(e.target.value)}
+                    />
+                    <ComboboxTrigger hasValue={!!formEmployeeId} onClear={() => {
+                      setFormEmployeeId('');
+                      setFormEmployeeSearchQuery('');
+                    }} />
+                  </ComboboxField>
+                  <ComboboxContent>
+                    <div className="py-2">
+                      {employees
+                        .filter(emp => {
+                          const query = formEmployeeSearchQuery || '';
+                          if (!query.trim()) return true;
+                          const search = query.toLowerCase();
+                          return (
+                            (emp.name_en || '').toLowerCase().includes(search) ||
+                            (emp.emp_code || '').toLowerCase().includes(search)
+                          );
+                        })
+                        .map(emp => (
+                          <ComboboxItem key={emp.id} value={emp.id} className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium shrink-0">
+                              {emp.name_en?.charAt(0) || '?'}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-medium truncate">{emp.name_en}</span>
+                              <span className="text-xs text-muted-foreground truncate">{emp.emp_code}</span>
+                            </div>
+                          </ComboboxItem>
+                        ))}
+                      {employees.length === 0 && (
+                        <div className="px-3 py-8 text-center text-muted-foreground">
+                          <User className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                          <p className="text-sm">No employees found</p>
+                        </div>
+                      )}
+                    </div>
+                  </ComboboxContent>
+                </Combobox>
               </div>
 
               {mode === 'daily' ? (
