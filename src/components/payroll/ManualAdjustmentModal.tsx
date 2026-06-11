@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Employee, Attendance, Loan, LoanRepayment, Leave, LeaveType } from '@/types';
-import { calculateEmployeePayroll, getWorkingDaysInMonth, type TimesheetRecord } from '@/lib/calculations/payroll';
+import { calculateEmployeePayroll, getWorkingDaysInMonth, type TimesheetRecord, parseNotesAdjustments } from '@/lib/calculations/payroll';
 import { Loader2, Save, Calculator, AlertCircle, Plus, Search, Trash2, UserPlus } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -56,14 +56,72 @@ export function ManualAdjustmentModal({
   const availableEmployees = activeEmployees.filter(e => !selectedIds.includes(e.id));
   const workingDays = getWorkingDaysInMonth(year, month);
 
-  // Clear state when modal closes
+  // Clear state and pre-populate from attendance data when modal opens
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      const initialSelected: string[] = [];
+      const initialAdjustments: Record<string, { allowance: number, deduction: number, allowanceNote?: string, deductionNote?: string }> = {};
+      const initialPreviews: Record<string, any> = {};
+
+      activeEmployees.forEach(emp => {
+        const empAttendance = attendanceData.filter(a => a.employee_id === emp.id && a.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
+        
+        let additions = 0;
+        let deductions = 0;
+        empAttendance.forEach(a => {
+          const parsed = parseNotesAdjustments(a.notes);
+          additions += parsed.additions;
+          deductions += parsed.deductions;
+        });
+
+        if (additions > 0 || deductions > 0) {
+          const allowanceNotes = empAttendance
+            .map(a => parseNotesAdjustments(a.notes).additionReason)
+            .filter(Boolean)
+            .join(', ');
+          const deductionNotes = empAttendance
+            .map(a => parseNotesAdjustments(a.notes).deductionReason)
+            .filter(Boolean)
+            .join(', ');
+
+          initialSelected.push(emp.id);
+          initialAdjustments[emp.id] = {
+            allowance: additions,
+            deduction: deductions,
+            allowanceNote: allowanceNotes || 'From Attendance Adjustments',
+            deductionNote: deductionNotes || 'From Attendance Adjustments'
+          };
+          
+          const empTimesheets = timesheetData.filter(ts => ts.employee_id === emp.id);
+          const empLoan = loansData.find(l => l.employee_id === emp.id && l.status === 'active');
+          const empRepayment = repaymentsData.find(r => r.loan_id === empLoan?.id && r.month === month && r.year === year);
+
+          initialPreviews[emp.id] = calculateEmployeePayroll({
+            employee: emp,
+            attendanceRecords: empAttendance,
+            timesheetRecords: empTimesheets,
+            leaveRecords: leaveRecords.filter(l => l.employee_id === emp.id),
+            leaveTypes,
+            activeLoan: empLoan || null,
+            loanRepayment: empRepayment || null,
+            workingDaysInMonth: workingDays,
+            month,
+            year,
+            manualOtherAllowance: additions,
+            manualOtherDeduction: deductions
+          });
+        }
+      });
+
+      setSelectedIds(initialSelected);
+      setAdjustments(initialAdjustments);
+      setPreviews(initialPreviews);
+    } else {
       setSelectedIds([]);
       setAdjustments({});
       setPreviews({});
     }
-  }, [isOpen]);
+  }, [isOpen, employees, attendanceData, year, month]);
 
   const addEmployee = (empId: string) => {
     if (selectedIds.includes(empId)) return;

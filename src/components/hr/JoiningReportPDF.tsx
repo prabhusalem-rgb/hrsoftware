@@ -20,7 +20,7 @@ export function JoiningReportPDF({
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'NOT RECORDED';
     try {
-      return format(new Date(dateStr), 'dd MMMM yyyy');
+      return format(new Date(dateStr), 'dd/MM/yyyy');
     } catch (e) {
       return dateStr;
     }

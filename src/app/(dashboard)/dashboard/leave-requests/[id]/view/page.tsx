@@ -313,7 +313,7 @@ export default function LeaveReviewPage() {
           />
         </div>
         <p className="text-xs text-slate-500">
-          Signed by {name} {date ? `on ${format(parseISO(date), 'dd MMM yyyy, HH:mm')}` : ''}
+          Signed by {name} {date ? `on ${format(parseISO(date), 'dd/MM/yyyy, HH:mm')}` : ''}
         </p>
       </div>
     );
@@ -415,7 +415,7 @@ export default function LeaveReviewPage() {
               <div>
                 <CardTitle className="text-2xl font-bold text-slate-900">Leave Request Review</CardTitle>
                 <CardDescription className="mt-1">
-                  Submitted on {format(parseISO(leaveRequest.created_at), 'dd MMMM yyyy, HH:mm')}
+                  Submitted on {format(parseISO(leaveRequest.created_at), 'dd/MM/yyyy, HH:mm')}
                 </CardDescription>
               </div>
               <div className="flex items-center gap-3">
@@ -499,7 +499,7 @@ export default function LeaveReviewPage() {
                     <div>
                       <p className="text-sm text-slate-600">Period</p>
                       <p className="font-medium">
-                        {format(startDate, 'dd MMM yyyy')} → {format(endDate, 'dd MMM yyyy')}
+                        {format(startDate, 'dd/MM/yyyy')} → {format(endDate, 'dd/MM/yyyy')}
                       </p>
                     </div>
                   </div>
@@ -579,7 +579,7 @@ export default function LeaveReviewPage() {
                 </div>
                 {leaveRequest.hr_approved_at && (
                   <p className="text-xs text-slate-500">
-                    Approved on {format(parseISO(leaveRequest.hr_approved_at), 'dd MMM yyyy, HH:mm')}
+                    Approved on {format(parseISO(leaveRequest.hr_approved_at), 'dd/MM/yyyy, HH:mm')}
                   </p>
                 )}
                 {leaveRequest.hr_remarks && (
@@ -611,7 +611,7 @@ export default function LeaveReviewPage() {
                 </div>
                 {leaveRequest.ops_approved_at && (
                   <p className="text-xs text-slate-500">
-                    Approved on {format(parseISO(leaveRequest.ops_approved_at), 'dd MMM yyyy, HH:mm')}
+                    Approved on {format(parseISO(leaveRequest.ops_approved_at), 'dd/MM/yyyy, HH:mm')}
                   </p>
                 )}
                 {leaveRequest.ops_remarks && (
@@ -643,7 +643,7 @@ export default function LeaveReviewPage() {
                 </div>
                 {leaveRequest.gm_approved_at && (
                   <p className="text-xs text-slate-500">
-                    Approved on {format(parseISO(leaveRequest.gm_approved_at), 'dd MMM yyyy, HH:mm')}
+                    Approved on {format(parseISO(leaveRequest.gm_approved_at), 'dd/MM/yyyy, HH:mm')}
                   </p>
                 )}
                 {leaveRequest.gm_remarks && (

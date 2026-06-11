@@ -42,7 +42,7 @@ export function FinalSettlementStatement({ company, employee, item, notes, other
         </div>
         <div className="text-right">
           <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Statement Date</p>
-          <p className="font-mono text-sm font-bold">{format(new Date(), 'dd MMMM yyyy')}</p>
+          <p className="font-mono text-sm font-bold">{format(new Date(), 'dd/MM/yyyy')}</p>
         </div>
       </div>
 
@@ -62,7 +62,7 @@ export function FinalSettlementStatement({ company, employee, item, notes, other
           <div className="flex items-center border-b border-slate-100 pb-1">
             <span className="w-32 font-bold text-slate-500 uppercase text-[9px] tracking-tight shrink-0">Joining Date</span>
             <span className="w-4 font-mono text-slate-400 shrink-0 text-center">:</span>
-            <span className="text-slate-900 font-bold">{employee.join_date ? format(new Date(employee.join_date), 'dd MMM yyyy') : '-'}</span>
+            <span className="text-slate-900 font-bold">{employee.join_date ? format(new Date(employee.join_date), 'dd/MM/yyyy') : '-'}</span>
           </div>
           <div className="flex items-center border-b border-slate-100 pb-1">
             <span className="w-32 font-bold text-slate-500 uppercase text-[9px] tracking-tight shrink-0">Department</span>
@@ -79,7 +79,7 @@ export function FinalSettlementStatement({ company, employee, item, notes, other
           <div className="flex items-center border-b border-slate-100 pb-1">
             <span className="w-32 font-bold text-slate-500 uppercase text-[9px] tracking-tight shrink-0">Termination Date</span>
             <span className="w-4 font-mono text-slate-400 shrink-0 text-center">:</span>
-            <span className="text-slate-900 font-black">{format(settlementDate, 'dd MMM yyyy')}</span>
+            <span className="text-slate-900 font-black">{format(settlementDate, 'dd/MM/yyyy')}</span>
           </div>
           <div className="flex items-center border-b border-slate-100 pb-1">
             <span className="w-32 font-bold text-slate-500 uppercase text-[9px] tracking-tight shrink-0">Designation</span>

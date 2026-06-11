@@ -271,8 +271,8 @@ describe('Payroll Calculations', () => {
       const result = calculateEmployeePayroll(input);
 
       expect(result.absentDays).toBe(2);
-      // Daily rate = (1500+300+150)/30 = 65
-      expect(result.absenceDeduction).toBe(130);
+      // Daily rate = (1500+300+150)/31 = 62.903
+      expect(result.absenceDeduction).toBe(125.806);
     });
 
     it('should apply salary revisions correctly', () => {
@@ -317,12 +317,12 @@ describe('Payroll Calculations', () => {
       const result = calculateEmployeePayroll(input);
 
       // May has 31 days. First 14 days at old rate, days 15-31 at new rate
-      // Old rate monthly total: 1000+200+100 = 1300, daily = 1300/30 = 43.333...
-      //  14 days × 43.333... = 606.667
-      // New rate monthly total: 1500+300+150 = 1950, daily = 1950/30 = 65
-      //  17 days × 65 = 1105
-      // Total = 606.667 + 1105 = 1711.667
-      expect(result.basicSalary + result.housingAllowance + result.transportAllowance).toBeCloseTo(1712, 0);
+      // Old rate monthly total: 1000+200+100 = 1300
+      //  14 days × 1300 / 31 = 587.097
+      // New rate monthly total: 1500+300+150 = 1950
+      //  17 days × 1950 / 31 = 1069.355
+      // Total = 587.097 + 1069.355 = 1656.452
+      expect(result.basicSalary + result.housingAllowance + result.transportAllowance).toBeCloseTo(1656, 0);
     });
 
     it('should apply pro-rata for joining during month', () => {
@@ -415,6 +415,118 @@ describe('Payroll Calculations', () => {
 
       expect(result.otherAllowance).toBe(200);
       expect(result.otherDeduction).toBe(100);
+    });
+
+    it('should not double-deduct leaves that fall before the employee rejoining date', () => {
+      const employee = createEmployee({
+        basic_salary: 310,
+        housing_allowance: 0,
+        transport_allowance: 0,
+        food_allowance: 80,
+        rejoin_date: '2026-05-14',
+        nationality: 'INDIAN',
+      });
+      const leaveType = createLeaveType({
+        id: 'unpaid-lt',
+        name: 'Unpaid Leave',
+        is_paid: false,
+        max_days: 90,
+      });
+      const leave: Leave = {
+        id: 'leave-1',
+        employee_id: 'emp-1',
+        leave_type_id: 'unpaid-lt',
+        start_date: '2026-05-01',
+        end_date: '2026-05-13',
+        days: 13,
+        status: 'approved',
+        settlement_status: 'none',
+        company_id: 'comp-1',
+        created_at: '2026-05-01',
+        updated_at: '2026-05-01',
+        notes: '',
+        return_date: '2026-05-14',
+      };
+
+      const input: PayrollInput = {
+        employee,
+        attendanceRecords: [],
+        timesheetRecords: [],
+        leaveRecords: [leave],
+        leaveTypes: [leaveType],
+        activeLoan: null,
+        loanRepayment: null,
+        workingDaysInMonth: 26,
+        month: 5,
+        year: 2026,
+      };
+
+      const result = calculateEmployeePayroll(input);
+
+      // Rejoined on May 14th, so worked 18 days out of 31 days in May
+      // Basic salary: 310 * (18 / 31) = 180.00
+      expect(result.basicSalary).toBeCloseTo(180.00, 2);
+      // Food Allowance: 80 * (18 / 31) = 46.45
+      expect(result.foodAllowance).toBeCloseTo(46.45, 2);
+      // Leave deduction for the unpaid leave BEFORE the rejoin date should be 0 (since it is already pro-rated out)
+      expect(result.leaveDeduction).toBe(0);
+      // Net should be 180 + 46.45 = 226.45 (no double deductions)
+      expect(result.netSalary).toBeCloseTo(226.45, 2);
+    });
+
+    it('should calculate days worked before and after leave if the leave falls within the month', () => {
+      const employee = createEmployee({
+        basic_salary: 100,
+        housing_allowance: 0,
+        transport_allowance: 0,
+        food_allowance: 0,
+        rejoin_date: '2026-06-15',
+        nationality: 'INDIAN', // Keep simple (no SPF)
+      });
+      const leaveType = createLeaveType({
+        id: 'unpaid-lt',
+        name: 'Unpaid Leave',
+        is_paid: false,
+        max_days: 90,
+      });
+      const leave: Leave = {
+        id: 'leave-1',
+        employee_id: 'emp-1',
+        leave_type_id: 'unpaid-lt',
+        start_date: '2026-06-05',
+        end_date: '2026-06-14',
+        days: 10,
+        status: 'approved',
+        settlement_status: 'none',
+        company_id: 'comp-1',
+        created_at: '2026-06-01',
+        updated_at: '2026-06-01',
+        notes: '',
+        return_date: '2026-06-15',
+      };
+
+      const input: PayrollInput = {
+        employee,
+        attendanceRecords: [],
+        timesheetRecords: [],
+        leaveRecords: [leave],
+        leaveTypes: [leaveType],
+        activeLoan: null,
+        loanRepayment: null,
+        workingDaysInMonth: 26,
+        month: 6,
+        year: 2026,
+      };
+
+      const result = calculateEmployeePayroll(input);
+
+      // June has 30 days. Worked June 1-4 (4 days) and June 15-30 (16 days) = 20 days.
+      // Basic salary before leave deduction is full: 100
+      expect(result.basicSalary).toBe(100);
+      // Unpaid leave deduction: 10 days * (100 / 30) = 33.333
+      expect(result.leaveDeduction).toBeCloseTo(33.333, 3);
+      // Net salary: 100 - 33.333 = 66.667
+      expect(result.netSalary).toBeCloseTo(66.667, 3);
     });
   });
 

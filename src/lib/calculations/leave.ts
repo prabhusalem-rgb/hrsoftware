@@ -162,10 +162,11 @@ export function calculateLeaveEncashmentValue(
   if (days <= 0 || !employee) return 0;
 
   const nationality = (employee.nationality || '').toUpperCase();
-  const isOmani = nationality === 'OMAN' || nationality === 'OMN' || nationality === 'OMANI' ||
-                  employee.category === 'OMANI_DIRECT_STAFF' || employee.category === 'OMANI_INDIRECT_STAFF';
+  const isOmani = nationality === 'OMAN' || nationality === 'OMN' || nationality === 'OMANI';
 
-  const isGrossSalaryBasis = isOmani || employee.category === 'INDIRECT_STAFF';
+  const isGrossSalaryBasis = isOmani || 
+                             employee.category === 'INDIRECT_STAFF' || 
+                             Number(employee.basic_salary || 0) > 250;
   const salaryBasis = isGrossSalaryBasis ? Number(employee.gross_salary || 0) : Number(employee.basic_salary || 0);
 
   if (isNaN(salaryBasis) || salaryBasis <= 0) return 0;

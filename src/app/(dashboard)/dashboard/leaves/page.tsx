@@ -9,11 +9,13 @@ import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Popover,
@@ -72,6 +74,7 @@ export default function LeavesPage() {
   const [employeeSearchOpen, setEmployeeSearchOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogEmployeeSearchOpen, setDialogEmployeeSearchOpen] = useState(false);
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [historyEmployeeId, setHistoryEmployeeId] = useState<string | null>(null);
@@ -84,6 +87,7 @@ export default function LeavesPage() {
   const [typeForm, setTypeForm] = useState({ name: '', is_paid: true, max_days: 30, carry_forward_max: 0, company_id: activeCompanyId });
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [currentBalance, setCurrentBalance] = useState<LeaveBalance | null>(null);
+  const [isHalfDay, setIsHalfDay] = useState(false);
 
   const { data: employeesData = [] } = useEmployees({ companyId: activeCompanyId });
   const { data: leavesData = [], isLoading: leavesLoading } = useLeaves(activeCompanyId);
@@ -226,6 +230,7 @@ export default function LeavesPage() {
   const openNew = () => {
     setEditing(null);
     setForm({ employee_id: '', leave_type_id: '', start_date: '', end_date: '', days: 0, notes: '', settlement_status: 'none' });
+    setIsHalfDay(false);
     setCurrentBalance(null);
     setDialogOpen(true);
   };
@@ -260,8 +265,8 @@ export default function LeavesPage() {
     });
 
     if (conflictingLeave) {
-      const conflictStart = format(new Date(conflictingLeave.start_date), 'dd MMM yyyy');
-      const conflictEnd = format(new Date(conflictingLeave.end_date), 'dd MMM yyyy');
+      const conflictStart = format(new Date(conflictingLeave.start_date), 'dd/MM/yyyy');
+      const conflictEnd = format(new Date(conflictingLeave.end_date), 'dd/MM/yyyy');
       toast.error(
         `Date conflict: Employee already has ${conflictingLeave.status} leave from ${conflictStart} to ${conflictEnd}. ` +
         `Cannot apply for overlapping dates.`
@@ -270,7 +275,7 @@ export default function LeavesPage() {
     }
 
     // Calculate days (inclusive)
-    const calculatedDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const calculatedDays = isHalfDay ? 0.5 : (Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
     // Use currentBalance from state (already fetched when leave type was selected)
     const balanceRecord = currentBalance;
@@ -386,7 +391,7 @@ export default function LeavesPage() {
                           <TableCell>
                             {leave.return_date ? (
                               <Badge className="bg-blue-100 text-blue-700 border-0">
-                                Returned {format(new Date(leave.return_date), 'dd MMM yyyy')}
+                                Returned {format(new Date(leave.return_date), 'dd/MM/yyyy')}
                               </Badge>
                             ) : (
                               <Badge className={`${statusColors[leave.status]} border-0`}>{leave.status}</Badge>
@@ -551,23 +556,25 @@ export default function LeavesPage() {
                   <Label className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
                     <CalendarDays className="w-3 h-3" /> From:
                   </Label>
-                  <Input
-                    type="date"
-                    value={historyDateFrom}
-                    onChange={e => setHistoryDateFrom(e.target.value)}
-                    className="w-[130px] h-8 text-xs"
-                  />
+                  <div className="w-[140px]">
+                    <DatePickerInput
+                      value={historyDateFrom}
+                      onChange={e => setHistoryDateFrom(e.target.value)}
+                      className="h-8 text-xs w-full"
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Label className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
                     <CalendarDays className="w-3 h-3" /> To:
                   </Label>
-                  <Input
-                    type="date"
-                    value={historyDateTo}
-                    onChange={e => setHistoryDateTo(e.target.value)}
-                    className="w-[130px] h-8 text-xs"
-                  />
+                  <div className="w-[140px]">
+                    <DatePickerInput
+                      value={historyDateTo}
+                      onChange={e => setHistoryDateTo(e.target.value)}
+                      className="h-8 text-xs w-full"
+                    />
+                  </div>
                 </div>
 
                 <div className="ml-auto flex items-center gap-2">
@@ -660,7 +667,7 @@ export default function LeavesPage() {
                           </TableCell>
                           <TableCell className="text-sm">
                             <div className="flex flex-col">
-                              <span>{format(new Date(leave.start_date), 'dd MMM yyyy')} — {format(new Date(leave.end_date), 'dd MMM yyyy')}</span>
+                              <span>{format(new Date(leave.start_date), 'dd/MM/yyyy')} — {format(new Date(leave.end_date), 'dd/MM/yyyy')}</span>
                               <span className="text-[10px] text-slate-400">{format(new Date(leave.created_at), 'dd/MM/yyyy')}</span>
                             </div>
                           </TableCell>
@@ -937,18 +944,55 @@ export default function LeavesPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-1.5">
               <Label>Employee *</Label>
-              <Select value={form.employee_id} onValueChange={(v: string | null) => { if (v) setForm({...form, employee_id: v}); }}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select employee">
-                    {employees.find(e => (e.id || '').trim() === (form.employee_id || '').trim())?.name_en || form.employee_id}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.filter(e => e.status === 'active').map(e => (
-                    <SelectItem key={e.id} value={e.id}>{e.name_en}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={dialogEmployeeSearchOpen} onOpenChange={setDialogEmployeeSearchOpen}>
+                <PopoverTrigger className="w-full">
+                  <div
+                    role="combobox"
+                    aria-expanded={dialogEmployeeSearchOpen}
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Search className="h-4 w-4 shrink-0 opacity-50" />
+                      {form.employee_id ? (
+                        <span className="truncate">
+                          {employees.find(e => (e.id || '').trim() === (form.employee_id || '').trim())?.name_en || form.employee_id}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Select employee...</span>
+                      )}
+                    </div>
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search employee by name or code..." className="h-9" />
+                    <CommandList>
+                      <CommandEmpty>No employee found.</CommandEmpty>
+                      <CommandGroup>
+                        {employees
+                          .filter(e => e.status === 'active')
+                          .map(emp => (
+                            <CommandItem
+                              key={emp.id}
+                              value={`${emp.name_en} ${emp.emp_code}`}
+                              onSelect={() => {
+                                setForm({ ...form, employee_id: emp.id });
+                                setDialogEmployeeSearchOpen(false);
+                              }}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${form.employee_id === emp.id ? 'opacity-100' : 'opacity-0'}`} />
+                              <div className="flex flex-col">
+                                <span>{emp.name_en}</span>
+                                <span className="text-xs text-muted-foreground">{emp.emp_code}</span>
+                              </div>
+                            </CommandItem>
+                          ))
+                        }
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1.5">
               <Label>Leave Type *</Label>
@@ -1084,22 +1128,62 @@ export default function LeavesPage() {
                 );
               })()}
             </div>
+            <div className="flex items-center space-x-2 py-1">
+              <Checkbox
+                id="is-half-day"
+                checked={isHalfDay}
+                onCheckedChange={(checked) => {
+                  const val = !!checked;
+                  setIsHalfDay(val);
+                  if (val) {
+                    const nextForm = {
+                      ...form,
+                      days: 0.5,
+                    };
+                    if (form.start_date) {
+                      nextForm.end_date = form.start_date;
+                    }
+                    setForm(nextForm);
+                  } else {
+                    if (form.start_date && form.end_date) {
+                      const start = new Date(form.start_date);
+                      const end = new Date(form.end_date);
+                      if (end >= start) {
+                        const calculatedDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                        setForm({ ...form, days: calculatedDays });
+                      }
+                    }
+                  }
+                }}
+              />
+              <Label htmlFor="is-half-day" className="text-sm font-medium cursor-pointer">
+                Half-Day Leave
+              </Label>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Start Date *</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={form.start_date}
                   onChange={e => {
                     const newStart = e.target.value;
-                    setForm({ ...form, start_date: newStart });
-                    // Recalculate days if end_date exists
-                    if (newStart && form.end_date) {
-                      const start = new Date(newStart);
-                      const end = new Date(form.end_date);
-                      if (end >= start) {
-                        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                        setForm(prev => ({ ...prev, days }));
+                    if (isHalfDay) {
+                      setForm({
+                        ...form,
+                        start_date: newStart,
+                        end_date: newStart,
+                        days: 0.5,
+                      });
+                    } else {
+                      setForm({ ...form, start_date: newStart });
+                      // Recalculate days if end_date exists
+                      if (newStart && form.end_date) {
+                        const start = new Date(newStart);
+                        const end = new Date(form.end_date);
+                        if (end >= start) {
+                          const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                          setForm(prev => ({ ...prev, days }));
+                        }
                       }
                     }
                   }}
@@ -1107,9 +1191,9 @@ export default function LeavesPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>End Date *</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={form.end_date}
+                  disabled={isHalfDay}
                   onChange={e => {
                     const newValue = e.target.value;
                     setForm({ ...form, end_date: newValue });

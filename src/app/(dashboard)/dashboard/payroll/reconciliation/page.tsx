@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -247,8 +248,8 @@ export default function BankReconciliationPage() {
                     <TableCell className="font-medium">{statement.bank_name}</TableCell>
                     <TableCell className="font-mono text-sm">{statement.account_number}</TableCell>
                     <TableCell className="text-sm">
-                      {format(parseISO(statement.statement_period_start), 'MMM dd')} -{' '}
-                      {format(parseISO(statement.statement_period_end), 'MMM dd, yyyy')}
+                      {format(parseISO(statement.statement_period_start), 'dd/MM')} -{' '}
+                      {format(parseISO(statement.statement_period_end), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(statement.opening_balance)}</TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(statement.closing_balance)}</TableCell>
@@ -338,16 +339,14 @@ export default function BankReconciliationPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Statement Start Date *</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={uploadForm.statement_period_start}
                   onChange={(e) => setUploadForm({ ...uploadForm, statement_period_start: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Statement End Date</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={uploadForm.statement_period_end}
                   onChange={(e) => setUploadForm({ ...uploadForm, statement_period_end: e.target.value })}
                 />

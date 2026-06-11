@@ -384,6 +384,16 @@ export class SupabaseQueryBuilder<T = any> {
     return this.execute().then(onfulfilled as any, onrejected as any);
   }
 
+  catch<TResult = never>(
+    onrejected?: ((reason: any) => TResult | Promise<TResult>) | null
+  ): Promise<SupabaseQueryResult<T> | TResult> {
+    return this.execute().catch(onrejected);
+  }
+
+  finally(onfinally?: (() => void) | null): Promise<SupabaseQueryResult<T>> {
+    return this.execute().finally(onfinally);
+  }
+
   // For chained inserts - stores values to be applied on execute()
   insert(values: Partial<T>): this {
     this._pendingInsert = values;

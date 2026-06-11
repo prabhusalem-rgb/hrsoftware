@@ -342,8 +342,8 @@ export default function LeaveRequestsPage() {
                           <TableCell>{req.leave_type}</TableCell>
                           <TableCell>
                             <div className="text-sm">
-                              <div>{format(start, 'dd MMM')}</div>
-                              <div className="text-slate-500">to {format(end, 'dd MMM yyyy')}</div>
+                              <div>{format(start, 'dd/MM')}</div>
+                              <div className="text-slate-500">to {format(end, 'dd/MM/yyyy')}</div>
                             </div>
                           </TableCell>
                           <TableCell className="font-mono">{days}</TableCell>
@@ -357,7 +357,7 @@ export default function LeaveRequestsPage() {
                           </TableCell>
                           <TableCell>{getStatusBadge(req.status)}</TableCell>
                           <TableCell className="text-slate-500 text-sm">
-                            {format(parseISO(req.created_at), 'dd MMM yy')}
+                            {format(parseISO(req.created_at), 'dd/MM/yyyy')}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button

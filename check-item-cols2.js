@@ -15,17 +15,12 @@ async function check() {
   // Check item columns directly
   const { data: item } = await sb.from('payroll_items')
     .select('*')
-    .eq('id', '458dcc07-c6c3-40ee-aa11-610ed1b1cb9d')
-    .single();
+    .limit(1);
 
-  if (item) {
-    const loanFields = {};
-    Object.keys(item).forEach(k => {
-      if (k.toLowerCase().includes('loan')) {
-        loanFields[k] = item[k];
-      }
-    });
-    console.log('Loan-related fields in item:', JSON.stringify(loanFields, null, 2));
+  if (item && item.length > 0) {
+    console.log('Columns in payroll_items:', Object.keys(item[0]).sort());
+  } else {
+    console.log('No payroll_items found, but select * returned:', item);
   }
 }
 check().catch(console.error);

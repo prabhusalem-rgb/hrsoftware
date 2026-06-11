@@ -204,18 +204,32 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
               <FileCheck className="w-4 h-4" />
             </Button>
             {emp.rejoin_date && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-xl"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenRejoiningReport(emp);
-                }}
-                title="Re-joining Report"
-              >
-                <UserCheck className="w-4 h-4" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-xl"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenRejoiningReport(emp);
+                  }}
+                  title="Re-joining Report"
+                >
+                  <UserCheck className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-amber-600 hover:bg-amber-50 rounded-xl"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenRejoin?.(emp);
+                  }}
+                  title="Edit Rejoining"
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </>
             )}
             <Button
               variant="ghost"

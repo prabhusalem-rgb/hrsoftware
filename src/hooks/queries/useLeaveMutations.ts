@@ -86,7 +86,7 @@ export function useLeaveMutations(companyId: string) {
       } else {
         const { data: newLeave, error } = await supabase.from('leaves').insert([formData]).select().single();
         if (error) {
-          console.error('[saveLeave] Insert error:', error);
+          console.error('[saveLeave] Insert error details:', error.message, 'details:', error.details, 'hint:', error.hint, 'code:', error.code);
           throw new Error(error.message || 'Failed');
         }
 
@@ -171,7 +171,7 @@ export function useLeaveMutations(companyId: string) {
       }
 
       // Employee status updates
-      if (status === 'approved' && data.previousStatus !== 'approved') {
+      if (status === 'approved' && data.previousStatus !== 'approved' && Number(data.days || 0) >= 1) {
         // Do not overwrite leave_settled or final_settled if the leave was already settled before approval
         const { data: currentEmp } = await supabase.from('employees').select('status').eq('id', data.employeeId).single();
         if (currentEmp && currentEmp.status !== 'leave_settled' && currentEmp.status !== 'final_settled') {
@@ -183,6 +183,7 @@ export function useLeaveMutations(companyId: string) {
           .select('id')
           .eq('employee_id', data.employeeId)
           .in('status', ['approved', 'pending'])
+          .gte('days', 1)
           .limit(1);
 
         const newStatus = remainingLeaves && remainingLeaves.length > 0 ? 'on_leave' : 'active';

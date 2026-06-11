@@ -373,7 +373,7 @@ export default function PayoutsPage() {
       employees: employees.filter((emp) =>
         paidItems.some((item) => item.employee_id === emp.id)
       ),
-      period: format(new Date(selectedRun.year, selectedRun.month - 1), 'MMMM yyyy'),
+      period: format(new Date(selectedRun.year, selectedRun.month - 1), 'MM/yyyy'),
     };
 
     const blob = await generatePayrollExcel(reportData, {
@@ -429,19 +429,27 @@ export default function PayoutsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-1.5 min-w-[200px]">
+          <div className="flex flex-wrap items-end gap-4 w-full">
+            <div className="space-y-1.5 w-full max-w-md">
               <Label>Payroll Period</Label>
               <Select
                 value={selectedRunId}
                 onValueChange={handleRunChange}
               >
-                <SelectTrigger className="h-12 rounded-2xl border-2">
-                  <SelectValue placeholder="Choose a payroll run...">
-                    {selectedRun && (
-                      format(new Date(selectedRun.year, selectedRun.month - 1), 'MMMM yyyy')
-                    )}
-                  </SelectValue>
+                <SelectTrigger className="h-16 rounded-2xl border-2 w-full">
+                  {selectedRun ? (
+                    <div className="flex flex-col items-start gap-1 text-left py-1 w-full">
+                      <span className="font-bold text-slate-900 text-sm">
+                        {format(new Date(selectedRun.year, selectedRun.month - 1), 'MMMM yyyy')}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono uppercase truncate leading-none">
+                        {selectedRun.type.replace('_', ' ')} • {selectedRun.total_employees} employees •{' '}
+                        {Number(selectedRun.total_amount).toFixed(3)} OMR
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">Choose a payroll run...</span>
+                  )}
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
                   {payrollRuns
@@ -452,8 +460,8 @@ export default function PayoutsPage() {
                     })
                     .map((run: PayrollRun) => (
                       <SelectItem key={run.id} value={run.id} className="py-3">
-                        <div className="flex flex-col">
-                          <span className="font-bold">
+                        <div className="flex flex-col text-left">
+                          <span className="font-bold text-sm">
                             {format(new Date(run.year, run.month - 1), 'MMMM yyyy')}
                           </span>
                           <span className="text-[10px] text-slate-500 font-mono uppercase">
@@ -507,7 +515,7 @@ export default function PayoutsPage() {
               <CardTitle className="text-base">
                 Payout Items — {selectedRun && (
                   <span className="text-primary font-black">
-                    {format(new Date(selectedRun.year, selectedRun.month - 1), 'MMMM yyyy')}
+                    {format(new Date(selectedRun.year, selectedRun.month - 1), 'MM/yyyy')}
                   </span>
                 )}
               </CardTitle>
@@ -775,7 +783,7 @@ export default function PayoutsPage() {
                             </TableCell>
                             <TableCell className="text-xs text-slate-500">
                               {item.payout_date
-                                ? format(new Date(item.payout_date), 'dd MMM yyyy')
+                                ? format(new Date(item.payout_date), 'dd/MM/yyyy')
                                 : '-'}
                             </TableCell>
                             <TableCell>

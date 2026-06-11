@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -190,6 +191,8 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
       gm_signature: gmSignature,
       other_additions: otherAdditions.filter(a => a.label && a.amount > 0),
       other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
+      reason,
+      notice_served: noticeServed,
     };
 
     await onProcess(settlementData);
@@ -339,7 +342,7 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-black uppercase text-slate-400">Termination Date</Label>
-                      <Input type="date" value={terminationDate} onChange={e => setTerminationDate(e.target.value)} className="h-14 rounded-2xl border-2 font-mono" />
+                      <DatePickerInput value={terminationDate} onChange={e => setTerminationDate(e.target.value)} className="h-14 rounded-2xl border-2 font-mono" />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px] font-black uppercase text-slate-400">Reason for Separation</Label>
@@ -560,27 +563,6 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         <p className="text-3xl font-black text-primary font-mono italic">{netSettlement.toFixed(3)} OMR</p>
                      </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                         <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">HR Signature</Label>
-                         <SignaturePad
-                            onSave={(url) => setHrSignature(url)}
-                            onClear={() => setHrSignature('')}
-                            placeholder="HR Representative Signature"
-                            height="h-56"
-                         />
-                      </div>
-                      <div className="space-y-3">
-                         <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">GM / CEO Signature</Label>
-                         <SignaturePad
-                            onSave={(url) => setGmSignature(url)}
-                            onClear={() => setGmSignature('')}
-                            placeholder="GM/CEO Authorization Signature"
-                            height="h-56"
-                         />
-                      </div>
-                   </div>
 
                   {/* Air Ticket Balance - Informational Only */}
                   {airTicketQuantity > 0 && (

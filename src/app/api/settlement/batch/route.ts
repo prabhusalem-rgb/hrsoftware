@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { batchSettlementSchema, BatchSettlementValues } from '@/lib/validations/schemas';
 import type { BatchSettlementResult } from '@/types/settlement';
 import { calculateEOSB } from '@/lib/calculations/eosb';
-import { calculateLeaveEncashment } from '@/lib/calculations/leave';
+import { calculateLeaveEncashmentValue } from '@/lib/calculations/leave';
 import { calculateAirTicketBalance } from '@/lib/calculations/air_ticket';
 import type { AirTicket } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -180,8 +180,8 @@ export async function POST(request: NextRequest) {
             (b) => b.leave_type?.name?.toLowerCase().includes('annual')
           )?.balance || 0;
 
-        const leaveEncashment = calculateLeaveEncashment(
-          Number(employee.basic_salary),
+        const leaveEncashment = calculateLeaveEncashmentValue(
+          employee,
           annualLeaveBalance
         );
 
@@ -312,8 +312,7 @@ export async function POST(request: NextRequest) {
 
         // Update leave balance
         if (leaveEncashment > 0) {
-          const basicSalary = Number(employee.basic_salary) || 1; // Avoid division by zero
-          const daysEncashed = Math.round(leaveEncashment / (basicSalary / 30));
+          const daysEncashed = annualLeaveBalance;
           const { data: balData } = await supabase
             .from('leave_balances')
             .select('id, used')

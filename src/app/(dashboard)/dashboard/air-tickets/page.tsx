@@ -346,7 +346,7 @@ export default function AirTicketsPage() {
                         <TableCell className="capitalize">{ticket.purpose || '—'}</TableCell>
                         <TableCell>{ticket.destination || '—'}</TableCell>
                         <TableCell className="text-sm">
-                          {ticket.created_at ? format(new Date(ticket.created_at), 'dd MMM yyyy') : '—'}
+                          {ticket.created_at ? format(new Date(ticket.created_at), 'dd/MM/yyyy') : '—'}
                         </TableCell>
                         <TableCell>
                           {ticket.ticket_number ? (

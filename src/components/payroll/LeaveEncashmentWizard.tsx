@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Calendar, User, ChevronRight, CheckCircle2, Wallet, Loader2, Plus, X } from 'lucide-react';
 import { Employee } from '@/types';
@@ -98,9 +99,10 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
   const annualBalance = allBalances?.find(b => b.leave_type?.name.toLowerCase().includes('annual'))?.balance || 0;
 
   const nationality = (employee?.nationality || '').toUpperCase();
-  const isOmani = nationality === 'OMAN' || nationality === 'OMN' || nationality === 'OMANI' || 
-                  employee?.category === 'OMANI_DIRECT_STAFF' || employee?.category === 'OMANI_INDIRECT_STAFF';
-  const isGrossSalaryBasis = isOmani || employee?.category === 'INDIRECT_STAFF';
+  const isOmani = nationality === 'OMAN' || nationality === 'OMN' || nationality === 'OMANI';
+  const isGrossSalaryBasis = isOmani || 
+                             employee?.category === 'INDIRECT_STAFF' || 
+                             Number(employee?.basic_salary || 0) > 250;
   
   const encashmentValue = calculateLeaveEncashmentValue(employee, daysToEncash);
   const netTotal = encashmentValue + additionsSum - deductionsSum;
@@ -367,8 +369,7 @@ export function LeaveEncashmentWizard({ isOpen, onClose, employees, onProcess }:
                   <Label className="text-xs font-black uppercase text-slate-400 flex items-center gap-2">
                     <Calendar className="w-3 h-3" /> Effective Date
                   </Label>
-                  <Input 
-                    type="date" 
+                  <DatePickerInput 
                     value={encashmentDate} 
                     onChange={e => setEncashmentDate(e.target.value)}
                     className="h-12 rounded-2xl border-2 focus:border-indigo-600 font-mono"

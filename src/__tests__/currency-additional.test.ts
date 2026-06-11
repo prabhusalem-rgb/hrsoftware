@@ -54,9 +54,9 @@ describe('getInitials', () => {
 });
 
 describe('formatDate', () => {
-  it('should format as dd MMM yyyy by default', () => {
+  it('should format as dd/MM/yyyy by default', () => {
     const result = formatDate('2025-05-03');
-    expect(result).toBe('03 May 2025');
+    expect(result).toBe('03/05/2025');
   });
 
   it('should format as yyyy-MM-dd', () => {
@@ -66,7 +66,7 @@ describe('formatDate', () => {
 
   it('should format as MMM yyyy', () => {
     const result = formatDate('2025-05-03', 'MMM yyyy');
-    expect(result).toBe('May 2025');
+    expect(result).toBe('05/2025');
   });
 
   it('should return - for null/undefined', () => {

@@ -294,6 +294,20 @@ describe('isValidEmployee', () => {
     const emp = createEmployee({ bank_iban: 'NoDigits' });
     expect(isValidEmployee(emp)).toBe(false);
   });
+
+  it('should accept valid non-Bank Muscat employee with any non-empty account number format', () => {
+    const empIBAN = createEmployee({
+      bank_bic: 'NBOBOMRX', // National Bank of Oman
+      bank_iban: 'OM12NBOB0000000000123456',
+    });
+    expect(isValidEmployee(empIBAN)).toBe(true);
+
+    const empShort = createEmployee({
+      bank_bic: 'NBOBOMRX',
+      bank_iban: '1040475077017', // 13 digits local account number
+    });
+    expect(isValidEmployee(empShort)).toBe(true);
+  });
 });
 
 describe('validateWPSData additional cases', () => {

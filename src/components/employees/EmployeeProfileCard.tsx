@@ -77,7 +77,7 @@ function EmployeeProfileCardImpl({
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'Not set';
     try {
-      return format(new Date(dateStr), 'MMM dd, yyyy');
+      return format(new Date(dateStr), 'dd/MM/yyyy');
     } catch {
       return dateStr;
     }
@@ -272,6 +272,15 @@ function EmployeeProfileCardImpl({
                 className="gap-1 rounded-2xl px-1.5 font-black h-9 border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 w-full text-[9px] justify-center"
               >
                 <User className="w-3.5 h-3.5 shrink-0" /> <span className="hidden sm:inline">Rejoin</span>
+              </Button>
+            ) : employee.rejoin_date ? (
+              <Button
+                variant="outline"
+                onClick={onRejoin}
+                className="gap-1 rounded-2xl px-1.5 font-black h-9 border-2 border-amber-200 text-amber-700 hover:bg-amber-50 w-full text-[9px] justify-center"
+                title="Edit recorded rejoining date"
+              >
+                <User className="w-3.5 h-3.5 shrink-0" /> <span className="hidden sm:inline">Edit Rejoin</span>
               </Button>
             ) : null}
           </div>

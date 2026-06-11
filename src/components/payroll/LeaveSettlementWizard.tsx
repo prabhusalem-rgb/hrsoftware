@@ -143,7 +143,9 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
     if (workingDays < 0) workingDays = 0;
   }
 
-  const isGrossSalaryBasis = employee?.nationality === 'OMANI' || employee?.category === 'INDIRECT_STAFF';
+  const isGrossSalaryBasis = employee?.nationality === 'OMANI' || 
+                             employee?.category === 'INDIRECT_STAFF' || 
+                             basicSalary > 250;
   const leaveSalaryBasis = isGrossSalaryBasis ? grossSalary : basicSalary;
 
   // Calculate amounts
@@ -287,7 +289,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
           days_in_month: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(),
           leave_days: vacationDays,
           working_days: workingDays,
-          last_salary_month: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'MMM yyyy'),
+          last_salary_month: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'MM/yyyy'),
           earnings: earningsBreakdown.map(e => ({ label: e.label, full: e.full, actual: e.actual })),
           deductions,
           other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
@@ -435,7 +437,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                   <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-0">
                     <InfoItem label="Department" value={employee.department} icon={<Calendar className="w-3.5 h-3.5" />} />
                     <InfoItem label="Designation" value={employee.designation} />
-                    <InfoItem label="Join Date" value={format(new Date(employee.join_date), 'dd MMM yyyy')} />
+                    <InfoItem label="Join Date" value={format(new Date(employee.join_date), 'dd/MM/yyyy')} />
                     <InfoItem
                       label="Annual Balance"
                       value={`${annualBalance.toFixed(1)} days`}
@@ -458,7 +460,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="h-3.5 w-3.5 text-primary" />
+                          <User className="w-3.5 h-3.5 text-primary" />
                         </div>
                         <div>
                           <p className="font-bold text-slate-900 text-sm">{employee.name_en}</p>
@@ -488,7 +490,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                     <SelectValue placeholder={leavesLoading ? "Loading leave requests..." : "Choose an approved annual leave..."}>
                       {selectedLeave ? (
                         <span>
-                          {format(new Date(selectedLeave.start_date), 'dd MMM yyyy')} — {format(new Date(selectedLeave.end_date), 'dd MMM yyyy')} ({selectedLeave.days} days)
+                          {format(new Date(selectedLeave.start_date), 'dd/MM/yyyy')} — {format(new Date(selectedLeave.end_date), 'dd/MM/yyyy')} ({selectedLeave.days} days)
                         </span>
                       ) : leavesLoading ? "Loading..." : "Choose an approved annual leave..."}
                     </SelectValue>
@@ -504,7 +506,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         .filter(l => l.settlement_status !== 'settled' && l.status === 'approved')
                         .map(leave => (
                           <SelectItem key={leave.id} value={leave.id} className="py-2">
-                            {format(new Date(leave.start_date), 'dd MMM yyyy')} — {format(new Date(leave.end_date), 'dd MMM yyyy')} • {leave.days} days
+                            {format(new Date(leave.start_date), 'dd/MM/yyyy')} — {format(new Date(leave.end_date), 'dd/MM/yyyy')} • {leave.days} days
                           </SelectItem>
                         ))
                     ) : (
@@ -525,7 +527,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                       Selected Leave Details
                     </h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-sm">
-                      <DetailItem label="Period" value={`${format(new Date(selectedLeave.start_date), 'dd MMM')} — ${format(new Date(selectedLeave.end_date), 'dd MMM')}`} />
+                      <DetailItem label="Period" value={`${format(new Date(selectedLeave.start_date), 'dd/MM')} — ${format(new Date(selectedLeave.end_date), 'dd/MM')}`} />
                       <DetailItem label="Days Applied" value={`${selectedLeave.days} days`} />
                       <DetailItem label="Status" value={selectedLeave.status} />
                       <DetailItem
@@ -566,7 +568,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                           <span className="text-slate-500 text-xs">days</span>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          Days worked in {format(new Date(selectedLeave.start_date), 'MMMM yyyy')} before leave started
+                          Days worked in {format(new Date(selectedLeave.start_date), 'MM/yyyy')} before leave started
                         </p>
                       </CardContent>
                     </Card>
@@ -631,18 +633,18 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Leave Period</p>
                       <p className="font-semibold text-slate-900 text-sm">
-                        {selectedLeave ? `${format(new Date(selectedLeave.start_date), 'dd MMM yyyy')} — ${format(new Date(selectedLeave.end_date), 'dd MMM yyyy')}` : '-'}
+                        {selectedLeave ? `${format(new Date(selectedLeave.start_date), 'dd/MM/yyyy')} — ${format(new Date(selectedLeave.end_date), 'dd/MM/yyyy')}` : '-'}
                       </p>
                       <p className="text-[11px] text-slate-500">{vacationDays} days applied</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Working Days</p>
                       <p className="font-semibold text-slate-900 text-sm">{workingDays} days</p>
-                      <p className="text-[11px] text-slate-500">Pro-rata for {format(new Date(selectedLeave?.start_date || new Date()), 'MMMM yyyy')}</p>
+                      <p className="text-[11px] text-slate-500">Pro-rata for {format(new Date(selectedLeave?.start_date || new Date()), 'MM/yyyy')}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Settlement Date</p>
-                      <p className="font-semibold text-slate-900 text-sm">{format(new Date(settlementDate), 'dd MMM yyyy')}</p>
+                      <p className="font-semibold text-slate-900 text-sm">{format(new Date(settlementDate), 'dd/MM/yyyy')}</p>
                     </div>
                   </div>
 
@@ -834,6 +836,17 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                     </div>
                   </div>
 
+                  {/* Settlement Date */}
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-slate-700">Settlement Date</Label>
+                    <Input
+                      type="date"
+                      value={settlementDate}
+                      onChange={e => setSettlementDate(e.target.value)}
+                      className="h-8 rounded-lg text-xs"
+                    />
+                  </div>
+
                   {/* Notes */}
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-slate-700">Settlement Notes</Label>
@@ -862,7 +875,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         <p className="text-sm font-bold text-slate-700">Leave Settlement</p>
                         <p className="text-xs text-slate-500 mt-1">
                           {employee?.name_en}<br/>
-                          {format(new Date(settlementDate), 'dd MMM yyyy')}
+                          {format(new Date(settlementDate), 'dd/MM/yyyy')}
                         </p>
                         <div className="mt-6 pt-6 border-t border-slate-100 italic text-[10px] text-slate-400">
                           Ready for download and signing

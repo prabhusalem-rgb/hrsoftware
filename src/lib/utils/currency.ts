@@ -189,11 +189,11 @@ export function getInitials(name: string): string {
 /**
  * Format a date string to display format.
  * @param dateString - ISO date string or date object
- * @param formatStr - Optional format (default: "dd MMM yyyy")
+ * @param formatStr - Optional format (default: "dd/MM/yyyy")
  */
 export function formatDate(
   dateString: string | Date | null | undefined,
-  formatStr: string = 'dd MMM yyyy'
+  formatStr: string = 'dd/MM/yyyy'
 ): string {
   if (!dateString) return '-';
 
@@ -203,18 +203,19 @@ export function formatDate(
 
     const day = date.getDate().toString().padStart(2, '0');
     const monthNum = (date.getMonth() + 1).toString().padStart(2, '0');
-    const monthShort = date.toLocaleString('en-US', { month: 'short' });
     const year = date.getFullYear();
 
     switch (formatStr) {
+      case 'dd/MM/yyyy':
       case 'dd MMM yyyy':
-        return `${day} ${monthShort} ${year}`;
+        return `${day}/${monthNum}/${year}`;
       case 'yyyy-MM-dd':
         return `${year}-${monthNum}-${day}`;
       case 'MMM yyyy':
-        return `${monthShort} ${year}`;
+      case 'MM/yyyy':
+        return `${monthNum}/${year}`;
       default:
-        return `${day} ${monthShort} ${year}`;
+        return `${day}/${monthNum}/${year}`;
     }
   } catch {
     return '-';

@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   if (!supabase) return NextResponse.json({ error: 'Admin client not available' }, { status: 500 });
 
   const auth = req.headers.get('authorization');
-  const secret = process.env.CRON_SECRET_TOKEN;
+  const secret = process.env.CRON_SECRET || process.env.CRON_SECRET_TOKEN;
   if (secret && (!auth || auth !== `Bearer ${secret}`)) {
     return NextResponse.json({ error: 'Unauthorized - invalid cron token' }, { status: 401 });
   }
@@ -231,12 +231,25 @@ export async function POST(req: NextRequest) {
             companyName: simpleCompany.name_en, toEmail: project.email!,
           });
 
+          // Update database status
+          await supabase.from('projects').update({
+            email_status: 'sent',
+            email_sent_at: new Date().toISOString(),
+            email_error: null
+          }).eq('id', project.id);
+
           console.log(`    ✓ Email sent`);
           totalSent++;
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err);
           console.error(`    ✗ Error: ${errorMessage}`);
           errors.push({ project: project.name, message: errorMessage });
+
+          // Update database failure status
+          await supabase.from('projects').update({
+            email_status: 'failed',
+            email_error: errorMessage
+          }).eq('id', project.id);
         }
       }
     }

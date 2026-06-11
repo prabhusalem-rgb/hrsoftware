@@ -267,6 +267,8 @@ export async function POST(request: NextRequest) {
         (payrollItemPayload as any).hr_id = authRequest.userId;
         (payrollItemPayload as any).hr_approved_at = new Date().toISOString();
       }
+    } else if (hr_signature && hr_signature.startsWith('http')) {
+      (payrollItemPayload as any).hr_signature_url = hr_signature;
     }
 
     if (gm_signature && gm_signature.startsWith('data:image')) {
@@ -282,6 +284,8 @@ export async function POST(request: NextRequest) {
         (payrollItemPayload as any).gm_id = authRequest.userId;
         (payrollItemPayload as any).gm_approved_at = new Date().toISOString();
       }
+    } else if (gm_signature && gm_signature.startsWith('http')) {
+      (payrollItemPayload as any).gm_signature_url = gm_signature;
     }
 
     const { data: payrollItem, error: itemError } = await supabase
@@ -350,7 +354,7 @@ export async function POST(request: NextRequest) {
 
     // 9. Update leave balance used count (mark unused leave as encashed)
     if (leaveEncashment > 0 && annualLeaveBalance > 0) {
-      const daysEncashed = Math.round(leaveEncashment / (Number(employee.basic_salary) / 30));
+      const daysEncashed = annualLeaveBalance;
       const { data: balData } = await supabase
         .from('leave_balances')
         .select('id, used')

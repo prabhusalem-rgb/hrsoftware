@@ -269,7 +269,7 @@ export function AirTicketHistory({ employeeId, employeeName }: AirTicketHistoryP
                 {history.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="text-sm">
-                      {format(new Date(entry.date), 'dd MMM yyyy')}
+                      {format(new Date(entry.date), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell>
                       <Badge variant={getTypeBadgeVariant(entry.type)} className="capitalize">

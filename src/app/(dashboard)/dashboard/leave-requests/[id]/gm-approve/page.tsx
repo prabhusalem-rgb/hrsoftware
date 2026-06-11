@@ -259,11 +259,11 @@ export default function GMLeaveApprovalPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">From</span>
-                <span>{format(parseISO(leaveRequest.start_date), 'dd MMM yyyy')}</span>
+                <span>{format(parseISO(leaveRequest.start_date), 'dd/MM/yyyy')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">To</span>
-                <span>{format(parseISO(leaveRequest.end_date), 'dd MMM yyyy')}</span>
+                <span>{format(parseISO(leaveRequest.end_date), 'dd/MM/yyyy')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Total Days</span>

@@ -14,7 +14,7 @@ interface Props {
 export function EmployeeOnboardingReportPDF({ employee, company, showLogo = true, primaryColor = '#1e3a5f' }: Props) {
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'N/A';
-    try { return format(new Date(dateStr), 'dd MMM yyyy'); } catch { return dateStr; }
+    try { return format(new Date(dateStr), 'dd/MM/yyyy'); } catch { return dateStr; }
   };
 
   const totalGross = employee.basic_salary + employee.housing_allowance + employee.transport_allowance +

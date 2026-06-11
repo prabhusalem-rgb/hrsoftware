@@ -141,7 +141,7 @@ export function SettlementStatementPDF({
             </View>
             <View style={s.headerRight}>
               <Text style={s.dateLabel}>Statement Date</Text>
-              <Text style={s.dateVal}>{format(new Date(), 'dd MMMM yyyy')}</Text>
+              <Text style={s.dateVal}>{format(new Date(), 'dd/MM/yyyy')}</Text>
             </View>
           </View>
 
@@ -166,8 +166,8 @@ export function SettlementStatementPDF({
             </View>
             {/* Row 2 */}
             <View style={s.infoRow}>
-              <InfoCell label="Joining Date"      value={format(new Date(employee.join_date), 'dd MMM yyyy')} />
-              <InfoCell label="Termination Date"  value={format(new Date(settlement.settlement_date), 'dd MMM yyyy')} last />
+              <InfoCell label="Joining Date"      value={format(new Date(employee.join_date), 'dd/MM/yyyy')} />
+              <InfoCell label="Termination Date"  value={format(new Date(settlement.settlement_date), 'dd/MM/yyyy')} last />
             </View>
             {/* Row 3 */}
             <View style={[s.infoRow, s.infoRowLast]}>
@@ -310,7 +310,7 @@ export function SettlementStatementPDF({
           <View style={s.footer}>
             <Text style={s.footerText}>End of Service Settlement — Confidential</Text>
             <Text style={s.footerText}>
-              Generated: {format(new Date(), 'dd MMM yyyy')}
+              Generated: {format(new Date(), 'dd/MM/yyyy')}
             </Text>
           </View>
 
