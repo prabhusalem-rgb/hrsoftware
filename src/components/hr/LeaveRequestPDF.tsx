@@ -164,7 +164,7 @@ export function LeaveRequestPDF({
               )}
               <Text style={styles.apprName}>{employee.name_en}</Text>
               <Text style={styles.apprDate}>
-                {leaveRequest.employee_signed_at ? format(new Date(leaveRequest.employee_signed_at), 'dd/MM/yy HH:mm') : '—'}
+                {leaveRequest.employee_signed_at ? format(new Date(leaveRequest.employee_signed_at), 'dd/MM/yyyy HH:mm') : '—'}
               </Text>
             </View>
 
@@ -184,7 +184,7 @@ export function LeaveRequestPDF({
               {leaveRequest.hr_remarks && <Text style={styles.remarkText}>"{leaveRequest.hr_remarks}"</Text>}
               <Text style={styles.apprName}>{leaveRequest.hr_id ? 'HR Manager' : '—'}</Text>
               <Text style={styles.apprDate}>
-                {leaveRequest.hr_approved_at ? format(new Date(leaveRequest.hr_approved_at), 'dd/MM/yy HH:mm') : '—'}
+                {leaveRequest.hr_approved_at ? format(new Date(leaveRequest.hr_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
               </Text>
             </View>
 
@@ -204,7 +204,7 @@ export function LeaveRequestPDF({
               {leaveRequest.ops_remarks && <Text style={styles.remarkText}>"{leaveRequest.ops_remarks}"</Text>}
               <Text style={styles.apprName}>{leaveRequest.ops_id ? 'Ops Manager' : '—'}</Text>
               <Text style={styles.apprDate}>
-                {leaveRequest.ops_approved_at ? format(new Date(leaveRequest.ops_approved_at), 'dd/MM/yy HH:mm') : '—'}
+                {leaveRequest.ops_approved_at ? format(new Date(leaveRequest.ops_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
               </Text>
             </View>
 
@@ -224,7 +224,7 @@ export function LeaveRequestPDF({
               {leaveRequest.gm_remarks && <Text style={styles.remarkText}>"{leaveRequest.gm_remarks}"</Text>}
               <Text style={styles.apprName}>{leaveRequest.gm_id ? 'GM / CEO' : '—'}</Text>
               <Text style={styles.apprDate}>
-                {leaveRequest.gm_approved_at ? format(new Date(leaveRequest.gm_approved_at), 'dd/MM/yy HH:mm') : '—'}
+                {leaveRequest.gm_approved_at ? format(new Date(leaveRequest.gm_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
               </Text>
             </View>
           </View>

@@ -9,11 +9,14 @@ import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Popover,
@@ -28,7 +31,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { Plus, Pencil, Trash2, Search, CalendarDays, Check, X, ShieldCheck, ArrowUpRight, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, CalendarDays, Check, X, ShieldCheck, ArrowUpRight, Download, CalendarX, Info } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,6 +75,7 @@ export default function LeavesPage() {
   const [employeeSearchOpen, setEmployeeSearchOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogEmployeeSearchOpen, setDialogEmployeeSearchOpen] = useState(false);
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [historyEmployeeId, setHistoryEmployeeId] = useState<string | null>(null);
@@ -84,6 +88,11 @@ export default function LeavesPage() {
   const [typeForm, setTypeForm] = useState({ name: '', is_paid: true, max_days: 30, carry_forward_max: 0, company_id: activeCompanyId });
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [currentBalance, setCurrentBalance] = useState<LeaveBalance | null>(null);
+  const [isHalfDay, setIsHalfDay] = useState(false);
+  const [lapseDialogOpen, setLapseDialogOpen] = useState(false);
+  const [lapsingBalance, setLapsingBalance] = useState<LeaveBalance | null>(null);
+  const [lapseDays, setLapseDays] = useState<string>('');
+  const [lapseReason, setLapseReason] = useState<string>('');
 
   const { data: employeesData = [] } = useEmployees({ companyId: activeCompanyId });
   const { data: leavesData = [], isLoading: leavesLoading } = useLeaves(activeCompanyId);
@@ -96,7 +105,7 @@ export default function LeavesPage() {
     selectedYear,
     selectedEmployeeId || undefined
   );
-  const { saveLeave, updateLeaveStatus, createLeaveType, deleteLeave, seedLeaveTypes, syncLeaveBalances } = useLeaveMutations(activeCompanyId);
+  const { saveLeave, updateLeaveStatus, createLeaveType, deleteLeave, seedLeaveTypes, syncLeaveBalances, updateLapsedLeave } = useLeaveMutations(activeCompanyId);
 
   const leaves = leavesData;
   const leaveTypes = typesData;
@@ -226,6 +235,7 @@ export default function LeavesPage() {
   const openNew = () => {
     setEditing(null);
     setForm({ employee_id: '', leave_type_id: '', start_date: '', end_date: '', days: 0, notes: '', settlement_status: 'none' });
+    setIsHalfDay(false);
     setCurrentBalance(null);
     setDialogOpen(true);
   };
@@ -260,8 +270,8 @@ export default function LeavesPage() {
     });
 
     if (conflictingLeave) {
-      const conflictStart = format(new Date(conflictingLeave.start_date), 'dd MMM yyyy');
-      const conflictEnd = format(new Date(conflictingLeave.end_date), 'dd MMM yyyy');
+      const conflictStart = format(new Date(conflictingLeave.start_date), 'dd/MM/yyyy');
+      const conflictEnd = format(new Date(conflictingLeave.end_date), 'dd/MM/yyyy');
       toast.error(
         `Date conflict: Employee already has ${conflictingLeave.status} leave from ${conflictStart} to ${conflictEnd}. ` +
         `Cannot apply for overlapping dates.`
@@ -270,7 +280,7 @@ export default function LeavesPage() {
     }
 
     // Calculate days (inclusive)
-    const calculatedDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const calculatedDays = isHalfDay ? 0.5 : (Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
     // Use currentBalance from state (already fetched when leave type was selected)
     const balanceRecord = currentBalance;
@@ -386,7 +396,7 @@ export default function LeavesPage() {
                           <TableCell>
                             {leave.return_date ? (
                               <Badge className="bg-blue-100 text-blue-700 border-0">
-                                Returned {format(new Date(leave.return_date), 'dd MMM yyyy')}
+                                Returned {format(new Date(leave.return_date), 'dd/MM/yyyy')}
                               </Badge>
                             ) : (
                               <Badge className={`${statusColors[leave.status]} border-0`}>{leave.status}</Badge>
@@ -551,23 +561,25 @@ export default function LeavesPage() {
                   <Label className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
                     <CalendarDays className="w-3 h-3" /> From:
                   </Label>
-                  <Input
-                    type="date"
-                    value={historyDateFrom}
-                    onChange={e => setHistoryDateFrom(e.target.value)}
-                    className="w-[130px] h-8 text-xs"
-                  />
+                  <div className="w-[140px]">
+                    <DatePickerInput
+                      value={historyDateFrom}
+                      onChange={e => setHistoryDateFrom(e.target.value)}
+                      className="h-8 text-xs w-full"
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Label className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
                     <CalendarDays className="w-3 h-3" /> To:
                   </Label>
-                  <Input
-                    type="date"
-                    value={historyDateTo}
-                    onChange={e => setHistoryDateTo(e.target.value)}
-                    className="w-[130px] h-8 text-xs"
-                  />
+                  <div className="w-[140px]">
+                    <DatePickerInput
+                      value={historyDateTo}
+                      onChange={e => setHistoryDateTo(e.target.value)}
+                      className="h-8 text-xs w-full"
+                    />
+                  </div>
                 </div>
 
                 <div className="ml-auto flex items-center gap-2">
@@ -660,7 +672,7 @@ export default function LeavesPage() {
                           </TableCell>
                           <TableCell className="text-sm">
                             <div className="flex flex-col">
-                              <span>{format(new Date(leave.start_date), 'dd MMM yyyy')} — {format(new Date(leave.end_date), 'dd MMM yyyy')}</span>
+                              <span>{format(new Date(leave.start_date), 'dd/MM/yyyy')} — {format(new Date(leave.end_date), 'dd/MM/yyyy')}</span>
                               <span className="text-[10px] text-slate-400">{format(new Date(leave.created_at), 'dd/MM/yyyy')}</span>
                             </div>
                           </TableCell>
@@ -806,13 +818,15 @@ export default function LeavesPage() {
                     <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Opening</TableHead>
                     <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Earned</TableHead>
                     <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Used</TableHead>
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Lapsed</TableHead>
                     <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Total Balance</TableHead>
+                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {!selectedEmployeeId ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-16 text-slate-500">
+                      <TableCell colSpan={8} className="text-center py-16 text-slate-500">
                         <div className="flex flex-col items-center gap-3">
                           <Search className="w-12 h-12 text-slate-300" />
                           <p className="font-medium text-base">Select an Employee</p>
@@ -824,13 +838,13 @@ export default function LeavesPage() {
                     </TableRow>
                   ) : filteredLoading && filteredBalances.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-12">
+                      <TableCell colSpan={8} className="text-center py-12">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
                       </TableCell>
                     </TableRow>
                   ) : filteredBalances.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-16 text-slate-500">
+                      <TableCell colSpan={8} className="text-center py-16 text-slate-500">
                         <div className="flex flex-col items-center gap-3">
                           <CalendarDays className="w-12 h-12 text-slate-300" />
                           <p className="font-medium text-base">No balance records for this employee</p>
@@ -850,8 +864,10 @@ export default function LeavesPage() {
                         totalBalance = bal.balance;
                       } else {
                         // Fallback: compute from components if balance is null/undefined
-                        totalBalance = (bal.entitled || 0) + carriedForward - (bal.used || 0);
+                        totalBalance = (bal.entitled || 0) + carriedForward - (bal.used || 0) - (bal.lapsed || 0);
                       }
+
+                      const isAnnualLeave = getTypeName(bal.leave_type_id).toLowerCase().includes('annual');
 
                       return (
                         <TableRow key={bal.id} className="hover:bg-slate-50/50 transition-colors">
@@ -865,6 +881,24 @@ export default function LeavesPage() {
                           <TableCell className="font-mono text-sm font-bold text-slate-400">{carriedForward}</TableCell>
                           <TableCell className="font-mono text-sm font-bold">{bal.entitled}</TableCell>
                           <TableCell className="font-mono text-sm font-bold text-red-500">{bal.used}</TableCell>
+                          <TableCell className="font-mono text-sm font-bold text-slate-700">
+                            <div className="flex items-center gap-1.5">
+                              <span>{bal.lapsed || 0}</span>
+                              {bal.lapsed_reason && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-4 w-4 p-0 text-slate-400 hover:text-slate-600">
+                                      <Info className="h-3 w-3" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-60 p-2 text-xs">
+                                    <p className="font-semibold text-slate-700">Lapsed Reason:</p>
+                                    <p className="text-slate-600 mt-0.5">{bal.lapsed_reason}</p>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <div className="flex flex-col">
                               <Badge className="bg-emerald-100 text-emerald-700 border-0 rounded-lg px-2 py-1 font-mono text-sm font-black w-fit">
@@ -874,6 +908,24 @@ export default function LeavesPage() {
                                 <span className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter mt-1 leading-none italic">Includes Opening Balance</span>
                               )}
                             </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isAnnualLeave && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 gap-1.5"
+                                onClick={() => {
+                                  setLapsingBalance(bal);
+                                  setLapseDays((bal.lapsed || 0).toString());
+                                  setLapseReason(bal.lapsed_reason || '');
+                                  setLapseDialogOpen(true);
+                                }}
+                              >
+                                <CalendarX className="w-4 h-4" />
+                                Lapse Leave
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -937,18 +989,55 @@ export default function LeavesPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-1.5">
               <Label>Employee *</Label>
-              <Select value={form.employee_id} onValueChange={(v: string | null) => { if (v) setForm({...form, employee_id: v}); }}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select employee">
-                    {employees.find(e => (e.id || '').trim() === (form.employee_id || '').trim())?.name_en || form.employee_id}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.filter(e => e.status === 'active').map(e => (
-                    <SelectItem key={e.id} value={e.id}>{e.name_en}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={dialogEmployeeSearchOpen} onOpenChange={setDialogEmployeeSearchOpen}>
+                <PopoverTrigger className="w-full">
+                  <div
+                    role="combobox"
+                    aria-expanded={dialogEmployeeSearchOpen}
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Search className="h-4 w-4 shrink-0 opacity-50" />
+                      {form.employee_id ? (
+                        <span className="truncate">
+                          {employees.find(e => (e.id || '').trim() === (form.employee_id || '').trim())?.name_en || form.employee_id}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Select employee...</span>
+                      )}
+                    </div>
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search employee by name or code..." className="h-9" />
+                    <CommandList>
+                      <CommandEmpty>No employee found.</CommandEmpty>
+                      <CommandGroup>
+                        {employees
+                          .filter(e => e.status === 'active')
+                          .map(emp => (
+                            <CommandItem
+                              key={emp.id}
+                              value={`${emp.name_en} ${emp.emp_code}`}
+                              onSelect={() => {
+                                setForm({ ...form, employee_id: emp.id });
+                                setDialogEmployeeSearchOpen(false);
+                              }}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${form.employee_id === emp.id ? 'opacity-100' : 'opacity-0'}`} />
+                              <div className="flex flex-col">
+                                <span>{emp.name_en}</span>
+                                <span className="text-xs text-muted-foreground">{emp.emp_code}</span>
+                              </div>
+                            </CommandItem>
+                          ))
+                        }
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1.5">
               <Label>Leave Type *</Label>
@@ -1084,22 +1173,62 @@ export default function LeavesPage() {
                 );
               })()}
             </div>
+            <div className="flex items-center space-x-2 py-1">
+              <Checkbox
+                id="is-half-day"
+                checked={isHalfDay}
+                onCheckedChange={(checked) => {
+                  const val = !!checked;
+                  setIsHalfDay(val);
+                  if (val) {
+                    const nextForm = {
+                      ...form,
+                      days: 0.5,
+                    };
+                    if (form.start_date) {
+                      nextForm.end_date = form.start_date;
+                    }
+                    setForm(nextForm);
+                  } else {
+                    if (form.start_date && form.end_date) {
+                      const start = new Date(form.start_date);
+                      const end = new Date(form.end_date);
+                      if (end >= start) {
+                        const calculatedDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                        setForm({ ...form, days: calculatedDays });
+                      }
+                    }
+                  }
+                }}
+              />
+              <Label htmlFor="is-half-day" className="text-sm font-medium cursor-pointer">
+                Half-Day Leave
+              </Label>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Start Date *</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={form.start_date}
                   onChange={e => {
                     const newStart = e.target.value;
-                    setForm({ ...form, start_date: newStart });
-                    // Recalculate days if end_date exists
-                    if (newStart && form.end_date) {
-                      const start = new Date(newStart);
-                      const end = new Date(form.end_date);
-                      if (end >= start) {
-                        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                        setForm(prev => ({ ...prev, days }));
+                    if (isHalfDay) {
+                      setForm({
+                        ...form,
+                        start_date: newStart,
+                        end_date: newStart,
+                        days: 0.5,
+                      });
+                    } else {
+                      setForm({ ...form, start_date: newStart });
+                      // Recalculate days if end_date exists
+                      if (newStart && form.end_date) {
+                        const start = new Date(newStart);
+                        const end = new Date(form.end_date);
+                        if (end >= start) {
+                          const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                          setForm(prev => ({ ...prev, days }));
+                        }
                       }
                     }
                   }}
@@ -1107,9 +1236,9 @@ export default function LeavesPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>End Date *</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={form.end_date}
+                  disabled={isHalfDay}
                   onChange={e => {
                     const newValue = e.target.value;
                     setForm({ ...form, end_date: newValue });
@@ -1177,6 +1306,108 @@ export default function LeavesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Lapse Leave Dialog */}
+      <Dialog open={lapseDialogOpen} onOpenChange={setLapseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Lapse Annual Leave</DialogTitle>
+            <DialogDescription>
+              Configure lapsed leave days for {lapsingBalance ? getEmpName(lapsingBalance.employee_id) : 'employee'}.
+              Lapsed days will reduce the total available leave balance.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="lapse-days">Lapsed Days *</Label>
+              <Input
+                id="lapse-days"
+                type="number"
+                step="0.5"
+                min="0"
+                placeholder="0.0"
+                value={lapseDays}
+                onChange={(e) => setLapseDays(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter the number of annual leave days to lapse (e.g. 5 or 10.5).
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="lapse-reason">Reason for Lapsing</Label>
+              <Textarea
+                id="lapse-reason"
+                placeholder="e.g. Unused carried forward leave expired after calendar year"
+                value={lapseReason}
+                onChange={(e) => setLapseReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex justify-between items-center w-full">
+            {lapsingBalance && (Number(lapsingBalance.lapsed || 0) > 0 || lapsingBalance.lapsed_reason) ? (
+              <Button
+                variant="destructive"
+                type="button"
+                disabled={updateLapsedLeave.isPending}
+                onClick={() => {
+                  updateLapsedLeave.mutate({
+                    balanceId: lapsingBalance.id,
+                    lapsed: 0,
+                    lapsedReason: ''
+                  }, {
+                    onSuccess: () => {
+                      setLapseDialogOpen(false);
+                      setLapsingBalance(null);
+                    }
+                  });
+                }}
+              >
+                Delete Lapse
+              </Button>
+            ) : <div />}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLapseDialogOpen(false);
+                  setLapsingBalance(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-amber-600 hover:bg-amber-700"
+                disabled={updateLapsedLeave.isPending}
+                onClick={() => {
+                  if (!lapsingBalance) return;
+                  const days = parseFloat(lapseDays);
+                  if (isNaN(days) || days < 0) {
+                    toast.error('Please enter a valid number of days');
+                    return;
+                  }
+                  updateLapsedLeave.mutate({
+                    balanceId: lapsingBalance.id,
+                    lapsed: days,
+                    lapsedReason: lapseReason
+                  }, {
+                    onSuccess: () => {
+                      setLapseDialogOpen(false);
+                      setLapsingBalance(null);
+                    }
+                  });
+                }}
+              >
+                {updateLapsedLeave.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                Save Changes
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -13,7 +13,7 @@ export function EmployeeOnboardingReportStatement({ company, employee }: Employe
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'N/A';
     try {
-      return format(new Date(dateStr), 'dd MMMM yyyy');
+      return format(new Date(dateStr), 'dd/MM/yyyy');
     } catch (e) {
       return dateStr;
     }

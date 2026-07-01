@@ -205,7 +205,7 @@ export default function DashboardPage() {
                       {run.type === 'monthly' ? 'Standard Monthly' : run.type}
                     </p>
                     <p className="text-[10px] text-slate-500 font-bold">
-                      {format(new Date(run.year, run.month - 1), 'MMMM yyyy')} • {run.total_employees} Personnel
+                      {format(new Date(run.year, run.month - 1), 'MM/yyyy')} • {run.total_employees} Personnel
                     </p>
                   </div>
                 </div>

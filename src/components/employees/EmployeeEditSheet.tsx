@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -143,6 +144,7 @@ export function EmployeeEditSheet({
     setValue,
     watch,
     trigger,
+    control,
     formState: { errors, isSubmitting, isValid },
   } = useForm({
     resolver: zodResolver(employeeFormSchema),
@@ -270,11 +272,11 @@ export function EmployeeEditSheet({
           air_ticket_cycle: Number(employee.air_ticket_cycle) || 12,
         });
         const valid = await trigger();
-        if (!valid) {
-          setCanSubmit(valid);
-        } else {
-          setCanSubmit(valid);
+        setCanSubmit(valid);
+        if (valid) {
           setTimeout(() => setHasInitialized(true), 0);
+        } else {
+          setHasInitialized(true);
         }
       } else {
         // Initialize create form
@@ -406,9 +408,9 @@ export function EmployeeEditSheet({
         is_salary_held: data.is_salary_held,
         salary_hold_reason: data.salary_hold_reason || null,
         salary_hold_at: data.salary_hold_at || null,
-        termination_date: null,
-        leave_settlement_date: null,
-        rejoin_date: null,
+        termination_date: isEditing && employee ? employee.termination_date : null,
+        leave_settlement_date: isEditing && employee ? employee.leave_settlement_date : null,
+        rejoin_date: isEditing && employee ? employee.rejoin_date : null,
       };
 
       if (isEditing && employee) {
@@ -425,8 +427,42 @@ export function EmployeeEditSheet({
     }
   };
 
-  // Check if button should be disabled - form must be valid and not submitting
-  const isButtonDisabled = isSubmitting || !canSubmit;
+  const getTabForField = (field: string): string => {
+    const personalFields = [
+      'name_en', 'email', 'id_type', 'civil_id', 'nationality', 'gender',
+      'religion', 'family_status', 'category', 'department', 'designation', 'join_date'
+    ];
+    const employmentFields = [
+      'basic_salary', 'housing_allowance', 'transport_allowance', 'food_allowance',
+      'special_allowance', 'site_allowance', 'other_allowance', 'status',
+      'opening_leave_balance', 'opening_air_tickets', 'air_ticket_cycle'
+    ];
+    const bankingFields = [
+      'bank_name', 'bank_bic', 'bank_iban', 'passport_expiry', 'passport_issue_date',
+      'visa_no', 'visa_type', 'visa_issue_date', 'visa_expiry'
+    ];
+    
+    if (personalFields.includes(field)) return 'personal';
+    if (employmentFields.includes(field)) return 'employment';
+    if (bankingFields.includes(field)) return 'banking';
+    return 'additional';
+  };
+
+  const onInvalid = (errors: any) => {
+    console.log('[EmployeeEditSheet] Validation failed:', errors);
+    
+    const firstErrorField = Object.keys(errors)[0];
+    if (firstErrorField) {
+      const errorTab = getTabForField(firstErrorField);
+      setActiveTab(errorTab);
+      
+      const errorMsg = errors[firstErrorField]?.message || 'Please check required fields';
+      toast.error(`Validation error in "${errorTab.toUpperCase()}" tab: ${errorMsg}`);
+    }
+  };
+
+  // Check if button should be disabled - only disabled when submitting to allow clicking and displaying errors
+  const isButtonDisabled = isSubmitting;
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -465,7 +501,7 @@ export function EmployeeEditSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-5">
           {/* Photo & Gross Salary - Top Bar */}
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-4 bg-slate-50 rounded-xl border">
             {/* Photo Upload */}
@@ -739,11 +775,17 @@ export function EmployeeEditSheet({
                   <Label htmlFor="join_date" className="text-xs font-black uppercase text-slate-400">
                     Join Date <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="join_date"
-                    type="date"
-                    {...register('join_date')}
-                    className="h-11 rounded-xl"
+                  <Controller
+                    control={control}
+                    name="join_date"
+                    render={({ field }) => (
+                      <DatePickerInput
+                        id="join_date"
+                        value={field.value || ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        className="h-11 rounded-xl"
+                      />
+                    )}
                   />
                   {errors.join_date && (
                     <p className="text-xs text-red-600">{errors.join_date.message}</p>
@@ -993,11 +1035,17 @@ export function EmployeeEditSheet({
                   <Label htmlFor="passport_expiry" className="text-xs font-black uppercase text-slate-400">
                     Passport Expiry Date
                   </Label>
-                  <Input
-                    id="passport_expiry"
-                    type="date"
-                    {...register('passport_expiry')}
-                    className="h-11 rounded-xl"
+                  <Controller
+                    control={control}
+                    name="passport_expiry"
+                    render={({ field }) => (
+                      <DatePickerInput
+                        id="passport_expiry"
+                        value={field.value || ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        className="h-11 rounded-xl"
+                      />
+                    )}
                   />
                 </div>
 
@@ -1006,11 +1054,17 @@ export function EmployeeEditSheet({
                   <Label htmlFor="passport_issue_date" className="text-xs font-black uppercase text-slate-400">
                     Passport Issue Date
                   </Label>
-                  <Input
-                    id="passport_issue_date"
-                    type="date"
-                    {...register('passport_issue_date')}
-                    className="h-11 rounded-xl"
+                  <Controller
+                    control={control}
+                    name="passport_issue_date"
+                    render={({ field }) => (
+                      <DatePickerInput
+                        id="passport_issue_date"
+                        value={field.value || ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        className="h-11 rounded-xl"
+                      />
+                    )}
                   />
                 </div>
 
@@ -1045,11 +1099,17 @@ export function EmployeeEditSheet({
                   <Label htmlFor="visa_issue_date" className="text-xs font-black uppercase text-slate-400">
                     Visa Issue Date
                   </Label>
-                  <Input
-                    id="visa_issue_date"
-                    type="date"
-                    {...register('visa_issue_date')}
-                    className="h-11 rounded-xl"
+                  <Controller
+                    control={control}
+                    name="visa_issue_date"
+                    render={({ field }) => (
+                      <DatePickerInput
+                        id="visa_issue_date"
+                        value={field.value || ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        className="h-11 rounded-xl"
+                      />
+                    )}
                   />
                 </div>
 
@@ -1058,11 +1118,17 @@ export function EmployeeEditSheet({
                   <Label htmlFor="visa_expiry" className="text-xs font-black uppercase text-slate-400">
                     Visa Expiry Date
                   </Label>
-                  <Input
-                    id="visa_expiry"
-                    type="date"
-                    {...register('visa_expiry')}
-                    className="h-11 rounded-xl"
+                  <Controller
+                    control={control}
+                    name="visa_expiry"
+                    render={({ field }) => (
+                      <DatePickerInput
+                        id="visa_expiry"
+                        value={field.value || ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        className="h-11 rounded-xl"
+                      />
+                    )}
                   />
                 </div>
               </div>

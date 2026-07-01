@@ -104,59 +104,94 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const BATCH_SIZE = 1000;
+
+    // Helper to fetch all records using pagination
+    async function fetchAll<T>(
+      fetchPage: (page: number) => PromiseLike<{ data: T[] | null; error: any }>
+    ): Promise<T[]> {
+      let allData: T[] = [];
+      let page = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await fetchPage(page);
+        if (error) throw error;
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          hasMore = data.length === BATCH_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+      return allData;
+    }
+
     // Fetch data in parallel
     const monthStartDate = `${filters.year}-${String(filters.month).padStart(2, '0')}-01`;
     const monthEndDate = `${filters.year}-${String(filters.month).padStart(2, '0')}-${new Date(filters.year, filters.month, 0).getDate()}`;
 
-    const [
-      { data: projects },
-      { data: employees },
-      { data: assignments },
-      { data: timesheets },
-      { data: holidays },
-      { data: leaves },
-    ] = await Promise.all([
-      supabase.from('projects').select('id, name'),
-      supabase
-        .from('employees')
-        .select(`
-          id,
-          emp_code,
-          name_en,
-          designation,
-          join_date,
-          termination_date,
-          status
-        `)
-        .eq('company_id', companyId),
-      supabase
-        .from('project_employee_assignments')
-        .select('*')
-        .eq('company_id', companyId)
-        .in('project_id', filters.project_ids),
-      supabase
-        .from('timesheets')
-        .select(`
-          id,
-          employee_id,
-          project_id,
-          date,
-          day_type,
-          hours_worked
-        `)
-        .eq('company_id', companyId)
-        .in('project_id', filters.project_ids)
-        .gte('date', monthStartDate)
-        .lte('date', monthEndDate),
-      supabase
-        .from('company_holidays')
-        .select('id, date, name, holiday_type, is_paid')
-        .eq('company_id', companyId),
-      supabase
-        .from('leaves')
-        .select('id, employee_id, start_date, end_date, status')
-        .eq('company_id', companyId)
-        .eq('status', 'approved'),
+    const [projects, employees, assignments, timesheets, holidays, leaves] = await Promise.all([
+      fetchAll<any>(async (page) => {
+        return await supabase.from('projects').select('id, name').range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
+      fetchAll<any>(async (page) => {
+        return await supabase
+          .from('employees')
+          .select(`
+            id,
+            company_id,
+            emp_code,
+            name_en,
+            designation,
+            join_date,
+            termination_date,
+            status
+          `)
+          .eq('company_id', companyId)
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
+      fetchAll<any>(async (page) => {
+        return await supabase
+          .from('project_employee_assignments')
+          .select('*')
+          .eq('company_id', companyId)
+          .in('project_id', filters.project_ids)
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
+      fetchAll<any>(async (page) => {
+        return await supabase
+          .from('timesheets')
+          .select(`
+            id,
+            employee_id,
+            project_id,
+            date,
+            day_type,
+            hours_worked
+          `)
+          .eq('company_id', companyId)
+          .in('project_id', filters.project_ids)
+          .gte('date', monthStartDate)
+          .lte('date', monthEndDate)
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
+      fetchAll<any>(async (page) => {
+        return await supabase
+          .from('company_holidays')
+          .select('id, date, name, holiday_type, is_paid')
+          .eq('company_id', companyId)
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
+      fetchAll<any>(async (page) => {
+        return await supabase
+          .from('leaves')
+          .select('id, employee_id, start_date, end_date, status')
+          .eq('company_id', companyId)
+          .eq('status', 'approved')
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
     ]);
 
     // Debug logging

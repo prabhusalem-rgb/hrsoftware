@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -45,7 +46,7 @@ import {
   ComboboxItem,
   ComboboxTrigger,
 } from '@/components/ui/combobox';
-import { CalendarIcon, Copy, Link as LinkIcon, Plus, RefreshCw, Search, Download, Edit, Trash2, FileSpreadsheet, FileDown, Clock, TrendingUp, Users, User, X } from 'lucide-react';
+import { CalendarIcon, Copy, Link as LinkIcon, Plus, RefreshCw, Search, Download, Edit, Trash2, FileSpreadsheet, FileDown, Clock, TrendingUp, Users, User, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isWithinInterval, parseISO } from 'date-fns';
 import {
@@ -91,6 +92,15 @@ export default function TimesheetsDashboard() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedDayType, setSelectedDayType] = useState<string | null>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 30;
+
+  // Reset current page when any filter or query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, dateFrom, dateTo, selectedEmployeeId, selectedProjectId, selectedDayType]);
 
   // Modal state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -189,6 +199,16 @@ export default function TimesheetsDashboard() {
       return empName.includes(q) || empCode.includes(q) || projName.includes(q) || reason.includes(q);
     });
   }, [timesheets, searchQuery]);
+
+  // Paginated timesheets
+  const paginatedTimesheets = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredTimesheets.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredTimesheets, currentPage]);
+
+  const totalPages = useMemo(() => {
+    return Math.ceil(filteredTimesheets.length / itemsPerPage);
+  }, [filteredTimesheets.length]);
 
   // Modal handlers
   const openNewTimesheet = () => {
@@ -455,21 +475,23 @@ export default function TimesheetsDashboard() {
                 {/* Date Range */}
                 <div className="flex items-center gap-2">
                   <Label className="text-xs text-muted-foreground whitespace-nowrap">From:</Label>
-                  <Input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-[140px]"
-                  />
+                  <div className="w-[140px]">
+                    <DatePickerInput
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Label className="text-xs text-muted-foreground whitespace-nowrap">To:</Label>
-                  <Input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-[140px]"
-                  />
+                  <div className="w-[140px]">
+                    <DatePickerInput
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
                 </div>
 
                 {/* Employee Filter */}
@@ -605,7 +627,7 @@ export default function TimesheetsDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredTimesheets.map((ts) => (
+                      {paginatedTimesheets.map((ts) => (
                         <TableRow key={ts.id}>
                           <TableCell className="font-mono text-sm">{ts.date}</TableCell>
                           <TableCell>
@@ -649,6 +671,88 @@ export default function TimesheetsDashboard() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-muted bg-card">
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Showing <span className="font-medium text-foreground">{Math.min(filteredTimesheets.length, (currentPage - 1) * itemsPerPage + 1)}</span> to{' '}
+                    <span className="font-medium text-foreground">{Math.min(filteredTimesheets.length, currentPage * itemsPerPage)}</span> of{' '}
+                    <span className="font-medium text-foreground">{filteredTimesheets.length}</span> entries
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 transition-all hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+
+                    {/* Page Numbers */}
+                    {(() => {
+                      const pages = [];
+                      const maxVisible = 5;
+                      if (totalPages <= maxVisible) {
+                        for (let i = 1; i <= totalPages; i++) pages.push(i);
+                      } else {
+                        pages.push(1);
+                        const start = Math.max(2, currentPage - 1);
+                        const end = Math.min(totalPages - 1, currentPage + 1);
+
+                        if (start > 2) pages.push('ellipsis-start');
+
+                        for (let i = start; i <= end; i++) pages.push(i);
+
+                        if (end < totalPages - 1) pages.push('ellipsis-end');
+
+                        pages.push(totalPages);
+                      }
+
+                      return pages.map((page, idx) => {
+                        if (typeof page === 'string') {
+                          return (
+                            <span
+                              key={`ellipsis-${idx}`}
+                              className="px-2 text-muted-foreground text-xs select-none"
+                            >
+                              •••
+                            </span>
+                          );
+                        }
+                        return (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            className={`h-8 w-8 text-xs font-semibold rounded-md transition-all ${
+                              currentPage === page
+                                ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/25 hover:bg-primary/90'
+                                : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+                            }`}
+                            onClick={() => setCurrentPage(page)}
+                          >
+                            {page}
+                          </Button>
+                        );
+                      });
+                    })()}
+
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 transition-all hover:bg-accent disabled:opacity-50 disabled:pointer-events-none"
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      title="Next Page"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -920,11 +1024,9 @@ export default function TimesheetsDashboard() {
             {/* Date */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Date *</Label>
-              <Input
-                type="date"
+              <DatePickerInput
                 value={form.date}
                 onChange={(e) => setForm({ ...form, date: e.target.value })}
-                max={new Date().toISOString().split('T')[0]}
               />
             </div>
 

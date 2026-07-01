@@ -59,7 +59,7 @@ export function LeaveRequestSelector({ employeeId, onSelect }: LeaveRequestSelec
               <div className="flex items-center gap-4 text-xs text-slate-500">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
-                  {format(new Date(req.start_date), 'dd MMM')} - {format(new Date(req.end_date), 'dd MMM yyyy')}
+                  {format(new Date(req.start_date), 'dd/MM/yyyy')} - {format(new Date(req.end_date), 'dd/MM/yyyy')}
                 </span>
                 <span className="font-bold text-slate-900">{req.days} Days</span>
               </div>

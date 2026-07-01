@@ -99,9 +99,9 @@ export default function WPSPage() {
         const employee = employeeMap.get(item.employee_id);
         if (!employee) return null;
         if (!isValidEmployee(employee)) return null;
-        // Exclude certain statuses
+        // Exclude certain statuses: held, failed, processing, paid, and globally held salary
         const status = item.payout_status;
-        if (['held', 'failed', 'processing'].includes(status)) return null;
+        if (['held', 'failed', 'processing', 'paid'].includes(status) || employee.is_salary_held) return null;
         // Calculate export amounts — respect wps_export_override if set
         const overrideAmount = item.wps_export_override ?? null;
         const amounts = calculateExportAmounts(item, run.type as PayrollRunType, overrideAmount);
@@ -217,7 +217,7 @@ export default function WPSPage() {
                     {completedRuns.find(r => (r.id || '').trim() === (selectedRunId || '').trim())
                       ? (() => {
                           const run = completedRuns.find(r => (r.id || '').trim() === (selectedRunId || '').trim());
-                          return run ? `${format(new Date(run.year, run.month - 1), 'MMMM yyyy')} (${run.type.replace('_', ' ')})` : 'Choose a completed payroll run';
+                          return run ? `${format(new Date(run.year, run.month - 1), 'MM/yyyy')} (${run.type.replace('_', ' ')})` : 'Choose a completed payroll run';
                         })()
                       : 'Choose a completed payroll run'}
                   </SelectValue>
@@ -225,7 +225,7 @@ export default function WPSPage() {
                 <SelectContent>
                   {completedRuns.map(run => (
                     <SelectItem key={run.id} value={run.id}>
-                      {format(new Date(run.year, run.month - 1), 'MMMM yyyy')} — {run.type.replace('_', ' ')} ({Number(run.total_amount).toFixed(3)} OMR)
+                      {format(new Date(run.year, run.month - 1), 'MM/yyyy')} — {run.type.replace('_', ' ')} ({Number(run.total_amount).toFixed(3)} OMR)
                     </SelectItem>
                   ))}
                 </SelectContent>

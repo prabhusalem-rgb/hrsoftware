@@ -76,7 +76,7 @@ export function OfferLetterStatement({ company, candidate }: OfferLetterStatemen
           <div className="pr-2">
             <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Issue Date</p>
             <p className="font-serif text-sm font-bold italic">
-              {format(new Date(), 'dd MMMM yyyy')}
+              {format(new Date(), 'dd/MM/yyyy')}
             </p>
           </div>
         </div>

@@ -155,84 +155,122 @@ export async function generateMonthlyAttendanceReport(
     // FETCH ALL REQUIRED DATA IN PARALLEL
     // ----------------------------------------------------------------
 
-    // 1. Get projects
-    let projectsQuery = supabase.from('projects').select('id, name');
-    if (profile.role !== 'super_admin') {
-      projectsQuery = projectsQuery.eq('company_id', companyId);
-    }
-    const { data: projects } = await projectsQuery;
+    const BATCH_SIZE = 1000;
 
-    // 2. Get employees
-    let employeesQuery = supabase
-      .from('employees')
-      .select(`
-        id,
-        emp_code,
-        name_en,
-        designation,
-        join_date,
-        termination_date,
-        status
-      `);
-    if (profile.role !== 'super_admin') {
-      employeesQuery = employeesQuery.eq('company_id', companyId);
-    }
-    const { data: employees } = await employeesQuery;
+    // Helper to fetch all records using pagination
+    async function fetchAll<T>(
+      fetchPage: (page: number) => PromiseLike<{ data: T[] | null; error: any }>
+    ): Promise<T[]> {
+      let allData: T[] = [];
+      let page = 0;
+      let hasMore = true;
 
-    // 3. Get project-employee assignments
-    let assignmentsQuery = supabase
-      .from('project_employee_assignments')
-      .select('*');
-    if (profile.role !== 'super_admin') {
-      assignmentsQuery = assignmentsQuery.eq('company_id', companyId);
-      if (filters.project_ids.length > 0) {
-        assignmentsQuery = assignmentsQuery.in('project_id', filters.project_ids);
+      while (hasMore) {
+        const { data, error } = await fetchPage(page);
+        if (error) throw error;
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          hasMore = data.length === BATCH_SIZE;
+          page++;
+        } else {
+          hasMore = false;
+        }
       }
+      return allData;
     }
-    const { data: assignments } = await assignmentsQuery;
 
-    // 4. Get timesheets for the month
     const monthStart = `${filters.year}-${String(filters.month).padStart(2, '0')}-01`;
     const monthEnd = `${filters.year}-${String(filters.month).padStart(2, '0')}-31`;
 
-    let timesheetsQuery = supabase
-      .from('timesheets')
-      .select(`
-        id,
-        company_id,
-        employee_id,
-        project_id,
-        date,
-        day_type,
-        hours_worked
-      `)
-      .gte('date', monthStart)
-      .lte('date', monthEnd);
+    const [projects, employees, assignments, timesheets, holidays, leaves] = await Promise.all([
+      // 1. Get projects
+      fetchAll<DbProject>(async (page) => {
+        let query = supabase.from('projects').select('id, name').range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+        if (profile.role !== 'super_admin') {
+          query = query.eq('company_id', companyId);
+        }
+        return await query;
+      }),
+      // 2. Get employees
+      fetchAll<DbEmployee>(async (page) => {
+        let query = supabase
+          .from('employees')
+          .select(`
+            id,
+            company_id,
+            emp_code,
+            name_en,
+            designation,
+            join_date,
+            termination_date,
+            status
+          `)
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+        if (profile.role !== 'super_admin') {
+          query = query.eq('company_id', companyId);
+        }
+        return await query;
+      }),
+      // 3. Get project-employee assignments
+      fetchAll<DbAssignment>(async (page) => {
+        let query = supabase
+          .from('project_employee_assignments')
+          .select('*')
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+        if (profile.role !== 'super_admin') {
+          query = query.eq('company_id', companyId);
+          if (filters.project_ids.length > 0) {
+            query = query.in('project_id', filters.project_ids);
+          }
+        }
+        return await query;
+      }),
+      // 4. Get timesheets for the month
+      fetchAll<DbTimesheet>(async (page) => {
+        let query = supabase
+          .from('timesheets')
+          .select(`
+            id,
+            company_id,
+            employee_id,
+            project_id,
+            date,
+            day_type,
+            hours_worked
+          `)
+          .gte('date', monthStart)
+          .lte('date', monthEnd)
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
 
-    if (profile.role !== 'super_admin') {
-      timesheetsQuery = timesheetsQuery.eq('company_id', companyId);
-      if (filters.project_ids.length > 0) {
-        timesheetsQuery = timesheetsQuery.in('project_id', filters.project_ids);
-      }
-      if (filters.employee_ids && filters.employee_ids.length > 0) {
-        timesheetsQuery = timesheetsQuery.in('employee_id', filters.employee_ids);
-      }
-    }
-
-    const { data: timesheets } = await timesheetsQuery;
-
-    // 5. Get company holidays
-    const { data: holidays } = await supabase
-      .from('company_holidays')
-      .select('id, company_id, date, name, holiday_type, is_paid')
-      .eq('company_id', companyId || profile.company_id);
-
-    // 6. Get approved leaves
-    const { data: leaves } = await supabase
-      .from('leaves')
-      .select('id, employee_id, start_date, end_date, status')
-      .eq('company_id', companyId || profile.company_id)
-      .eq('status', 'approved');
+        if (profile.role !== 'super_admin') {
+          query = query.eq('company_id', companyId);
+          if (filters.project_ids.length > 0) {
+            query = query.in('project_id', filters.project_ids);
+          }
+          if (filters.employee_ids && filters.employee_ids.length > 0) {
+            query = query.in('employee_id', filters.employee_ids);
+          }
+        }
+        return await query;
+      }),
+      // 5. Get company holidays
+      fetchAll<DbHoliday>(async (page) => {
+        return await supabase
+          .from('company_holidays')
+          .select('id, company_id, date, name, holiday_type, is_paid')
+          .eq('company_id', companyId || profile.company_id)
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
+      // 6. Get approved leaves
+      fetchAll<DbLeave>(async (page) => {
+        return await supabase
+          .from('leaves')
+          .select('id, employee_id, start_date, end_date, status')
+          .eq('company_id', companyId || profile.company_id)
+          .eq('status', 'approved')
+          .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1);
+      }),
+    ]);
 
     // ----------------------------------------------------------------
     // Generate report

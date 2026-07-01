@@ -832,7 +832,7 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, basic_salary),
+      employees(name_en, emp_code, basic_salary, gross_salary),
       projects(name)
     `)
     .eq('company_id', companyId)
@@ -851,35 +851,56 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
   timesheets?.forEach((ts: any) => {
     const emp = ts.employees;
     const basicSalary = Number(emp?.basic_salary || 0);
-    const hourlyRate = basicSalary / 208; // 8 hrs/day × 26 working days/month
+    const grossSalary = Number(emp?.gross_salary || 0);
+    const regularHourlyRate = grossSalary / 240;
+    const otHourlyRate = basicSalary / 240;
 
-    summary.totalHours += Number(ts.hours_worked);
-    if (ts.day_type === 'absent') summary.totalAbsentDays += 1;
-    else if (ts.day_type === 'working_day') summary.totalWorkingDays += 1;
-    else summary.totalWorkingHolidays += 1;
+    summary.totalHours += Number(ts.hours_worked || 0);
+    if (ts.day_type === 'absent') {
+      summary.totalAbsentDays += 1;
+    } else if (ts.day_type === 'working_day') {
+      summary.totalWorkingDays += 1;
+    } else if (ts.day_type === 'working_holiday' || ts.day_type === 'holiday_overtime') {
+      summary.totalWorkingHolidays += 1;
+    }
 
-    if (ts.project_id && ts.hours_worked > 0) {
-      const cost = Number(ts.hours_worked) * hourlyRate;
+    let regularCost = 0;
+    if (ts.day_type === 'working_day') {
+      regularCost = Number(ts.hours_worked || 0) * regularHourlyRate;
+    } else if (ts.day_type === 'working_holiday') {
+      regularCost = 8 * regularHourlyRate;
+    }
+
+    if (ts.project_id && (ts.day_type === 'working_day' || ts.day_type === 'working_holiday')) {
       if (!projectCostsMap.has(ts.project_id)) {
         projectCostsMap.set(ts.project_id, { projectName: ts.projects?.name || 'Unknown', totalHours: 0, totalCost: 0 });
       }
       const p = projectCostsMap.get(ts.project_id);
-      p.totalHours += Number(ts.hours_worked);
-      p.totalCost += cost;
+      p.totalHours += Number(ts.hours_worked || 0);
+      p.totalCost += regularCost;
     }
 
-    // Overtime from separate field — all OT at 1x rate
+    // Overtime from separate field — all OT at 1.25x rate of basic salary
     const otHours = Number(ts.overtime_hours || 0);
-    if (otHours > 0) {
+    if (otHours > 0 && (ts.day_type === 'working_day' || ts.day_type === 'working_holiday' || ts.day_type === 'holiday_overtime')) {
       summary.totalOvertimeHours += otHours;
-      const multiplier = 1.0;
+      const multiplier = 1.25;
+      const otCost = otHours * otHourlyRate * multiplier;
       overtimeRecords.push({
         ...ts,
         overtimeHours: otHours,
-        hourlyRate,
+        hourlyRate: otHourlyRate,
         otRateMultiplier: multiplier,
-        otCost: otHours * hourlyRate * multiplier,
+        otCost: otCost,
       });
+
+      if (ts.project_id) {
+        if (!projectCostsMap.has(ts.project_id)) {
+          projectCostsMap.set(ts.project_id, { projectName: ts.projects?.name || 'Unknown', totalHours: 0, totalCost: 0 });
+        }
+        const p = projectCostsMap.get(ts.project_id);
+        p.totalCost += otCost;
+      }
     }
   });
 
@@ -1002,4 +1023,63 @@ export async function getTimesheetStats(companyId: string, month?: string) {
   });
 
   return stats;
+}
+
+/**
+ * Delete timesheet entries in a given time period for specified project and employee.
+ */
+export async function deleteTimesheetsByRange(
+  companyId: string,
+  startDate: string,
+  endDate: string,
+  projectId?: string,
+  employeeId?: string
+) {
+  const supabase = await createClient();
+  if (!supabase) throw new Error('Database client not available');
+  const { request } = await validateRequest();
+  if (!request?.profile) throw new Error('Unauthorized');
+
+  // Verify permissions - HR and Admins can delete
+  const allowedRoles = ['super_admin', 'company_admin', 'hr'];
+  if (!allowedRoles.includes(request.profile.role)) {
+    throw new Error('Insufficient permissions');
+  }
+
+  let query = supabase
+    .from('timesheets')
+    .delete()
+    .eq('company_id', companyId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  if (projectId && projectId !== 'all') {
+    query = query.eq('project_id', projectId);
+  }
+  
+  if (employeeId && employeeId !== 'all') {
+    query = query.eq('employee_id', employeeId);
+  }
+
+  const { data: deletedRows, error } = await query.select('id');
+  if (error) throw new Error(error.message);
+  const deletedCount = deletedRows?.length || 0;
+
+  // Audit log
+  try {
+    await logAudit({
+      company_id: companyId,
+      user_id: request.userId,
+      entity_type: 'timesheet',
+      entity_id: 'bulk',
+      action: 'bulk_operation',
+      details: { startDate, endDate, projectId, employeeId, deletedCount },
+    });
+  } catch (auditErr) {
+    console.error('[deleteTimesheetsByRange] Audit failed:', auditErr);
+  }
+
+  revalidatePath('/dashboard/timesheets');
+  revalidatePath('/dashboard/timesheets/reports');
+  return { success: true, count: deletedCount };
 }

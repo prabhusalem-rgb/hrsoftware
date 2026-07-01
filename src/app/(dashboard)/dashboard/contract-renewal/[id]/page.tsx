@@ -416,7 +416,7 @@ export default function ContractRenewalDetailsPage() {
                     <div className="text-sm text-slate-500 pl-7">New Gross: {renewal.gross_salary.toFixed(3)} OMR</div>
                     {renewal.expires_at && (
                       <div className="text-sm text-slate-500 pl-7">
-                        Expires: {format(new Date(renewal.expires_at), 'dd MMM yyyy')}
+                        Expires: {format(new Date(renewal.expires_at), 'dd/MM/yyyy')}
                       </div>
                     )}
                   </div>
@@ -430,7 +430,7 @@ export default function ContractRenewalDetailsPage() {
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Employee Signature</h3>
                     <img src={renewal.employee_signature_url} alt="Signature" className="h-20 object-contain" />
                     <div className="mt-2 text-[10px] text-slate-400">
-                      Signed on {format(new Date(renewal.employee_signed_at), 'dd MMM yyyy HH:mm')}
+                      Signed on {format(new Date(renewal.employee_signed_at), 'dd/MM/yyyy HH:mm')}
                     </div>
                     {renewal.employee_signature_ip && (
                       <div className="text-[10px] text-slate-400">
@@ -445,7 +445,7 @@ export default function ContractRenewalDetailsPage() {
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Manager Signature</h3>
                     <img src={renewal.manager_signature_url} alt="Signature" className="h-20 object-contain" />
                     <div className="mt-2 text-[10px] text-slate-400">
-                      Signed on {format(new Date(renewal.manager_approved_at), 'dd MMM yyyy HH:mm')}
+                      Signed on {format(new Date(renewal.manager_approved_at), 'dd/MM/yyyy HH:mm')}
                     </div>
                   </div>
                 )}
@@ -583,7 +583,7 @@ export default function ContractRenewalDetailsPage() {
                 <div className="w-2 h-2 rounded-full bg-green-500 mt-1.5" />
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Request Created</p>
-                  <p className="text-xs text-slate-500">{format(new Date(renewal.created_at), 'dd MMM yyyy HH:mm')}</p>
+                  <p className="text-xs text-slate-500">{format(new Date(renewal.created_at), 'dd/MM/yyyy HH:mm')}</p>
                 </div>
               </div>
               {renewal.supervisor_approved_at && (
@@ -591,7 +591,7 @@ export default function ContractRenewalDetailsPage() {
                   <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5" />
                   <div className="space-y-1">
                     <p className="text-sm font-medium">Supervisor Approved</p>
-                    <p className="text-xs text-slate-500">{format(new Date(renewal.supervisor_approved_at), 'dd MMM yyyy HH:mm')}</p>
+                    <p className="text-xs text-slate-500">{format(new Date(renewal.supervisor_approved_at), 'dd/MM/yyyy HH:mm')}</p>
                   </div>
                 </div>
               )}
@@ -600,7 +600,7 @@ export default function ContractRenewalDetailsPage() {
                   <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5" />
                   <div className="space-y-1">
                     <p className="text-sm font-medium">Employee Signed</p>
-                    <p className="text-xs text-slate-500">{format(new Date(renewal.employee_signed_at), 'dd MMM yyyy HH:mm')}</p>
+                    <p className="text-xs text-slate-500">{format(new Date(renewal.employee_signed_at), 'dd/MM/yyyy HH:mm')}</p>
                   </div>
                 </div>
               )}
@@ -609,7 +609,7 @@ export default function ContractRenewalDetailsPage() {
                   <div className="w-2 h-2 rounded-full bg-purple-500 mt-1.5" />
                   <div className="space-y-1">
                     <p className="text-sm font-medium">Manager Approved</p>
-                    <p className="text-xs text-slate-500">{format(new Date(renewal.manager_approved_at), 'dd MMM yyyy HH:mm')}</p>
+                    <p className="text-xs text-slate-500">{format(new Date(renewal.manager_approved_at), 'dd/MM/yyyy HH:mm')}</p>
                   </div>
                 </div>
               )}
@@ -618,7 +618,7 @@ export default function ContractRenewalDetailsPage() {
                   <div className="w-2 h-2 rounded-full bg-green-500 mt-1.5" />
                   <div className="space-y-1">
                     <p className="text-sm font-medium">Final HR Approval</p>
-                    <p className="text-xs text-slate-500">{format(new Date(renewal.hr_approved_at), 'dd MMM yyyy HH:mm')}</p>
+                    <p className="text-xs text-slate-500">{format(new Date(renewal.hr_approved_at), 'dd/MM/yyyy HH:mm')}</p>
                   </div>
                 </div>
               )}

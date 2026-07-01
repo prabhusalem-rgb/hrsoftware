@@ -111,7 +111,7 @@ export function AirTicketBalanceCard({ employeeId, employeeName, compact = false
               <Calendar className="w-4 h-4 text-muted-foreground mt-0.5" />
               <div>
                 <p className="text-muted-foreground">Join Date</p>
-                <p className="font-medium">{balance.joinDate ? format(parseISO(balance.joinDate), 'dd MMM yyyy') : 'Not set'}</p>
+                <p className="font-medium">{balance.joinDate ? format(parseISO(balance.joinDate), 'dd/MM/yyyy') : 'Not set'}</p>
               </div>
             </div>
             <div className="flex items-start gap-2">

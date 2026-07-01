@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,6 +23,7 @@ import { useAttendanceMutations } from '@/hooks/queries/useAttendanceMutations';
 import { Attendance, AttendanceStatus, OvertimeType } from '@/types';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { formatNotesWithAdjustments, parseNotesAdjustments } from '@/lib/calculations/payroll';
 import {
   Combobox,
   ComboboxContent,
@@ -44,7 +46,7 @@ export default function AttendancePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [mode, setMode] = useState<'daily' | 'monthly'>('daily');
   const [editingRecord, setEditingRecord] = useState<Attendance | null>(null);
-  const [form, setForm] = useState({ employee_id: '', date: '', status: 'absent' as AttendanceStatus, overtime_hours: 0, overtime_type: 'none' as OvertimeType, notes: '' });
+  const [form, setForm] = useState({ employee_id: '', date: '', status: 'absent' as AttendanceStatus, overtime_hours: 0, overtime_type: 'none' as OvertimeType, notes: '', additions: 0, deductions: 0, addition_reason: '', deduction_reason: '' });
   // Modal employee combobox state
   const [formEmployeeId, setFormEmployeeId] = useState('');
   const [formEmployeeSearchQuery, setFormEmployeeSearchQuery] = useState('');
@@ -74,15 +76,18 @@ export default function AttendancePage() {
     const saveDate = mode === 'monthly' ? `${selectedMonth}-01` : form.date;
     if (!saveDate) { toast.error('Date is required'); return; }
 
+    const parsedNotes = formatNotesWithAdjustments(form.notes, form.additions, form.deductions, form.addition_reason, form.deduction_reason);
     const finalForm = {
       ...form,
       employee_id: formEmployeeId,
       date: saveDate,
       status: mode === 'monthly' ? 'present' as AttendanceStatus : form.status,
-      notes: mode === 'monthly' ? `[Monthly OT] ${form.notes}`.trim() : form.notes
+      notes: mode === 'monthly' ? `[Monthly OT] ${parsedNotes}`.trim() : parsedNotes
     };
 
-    await saveAttendance.mutateAsync({ id: editingRecord?.id, formData: finalForm });
+    const { additions, deductions, addition_reason, deduction_reason, ...dbForm } = finalForm;
+
+    await saveAttendance.mutateAsync({ id: editingRecord?.id, formData: dbForm });
     setDialogOpen(false);
   };
 
@@ -92,15 +97,20 @@ export default function AttendancePage() {
 
   const openEdit = (record: Attendance) => {
     setEditingRecord(record);
-    const isMonthly = record.notes.startsWith('[Monthly OT]');
+    const isMonthly = record.notes.includes('[Monthly OT]') || record.notes.includes('[Additions:') || record.notes.includes('[Deductions:');
     setMode(isMonthly ? 'monthly' : 'daily');
+    const parsed = parseNotesAdjustments(record.notes);
     setForm({
       employee_id: record.employee_id,
       date: record.date,
       status: record.status,
       overtime_hours: Number(record.overtime_hours),
       overtime_type: record.overtime_type as OvertimeType,
-      notes: record.notes.replace('[Monthly OT]', '').trim()
+      notes: parsed.cleanNotes.replace('[Monthly OT]', '').trim(),
+      additions: parsed.additions,
+      deductions: parsed.deductions,
+      addition_reason: parsed.additionReason,
+      deduction_reason: parsed.deductionReason
     });
     setFormEmployeeId(record.employee_id);
     setFormEmployeeSearchQuery('');
@@ -128,14 +138,14 @@ export default function AttendancePage() {
           <p className="text-muted-foreground text-sm">Mark absent (daily) or record total monthly overtime hours.</p>
         </div>
         <Button onClick={() => {
-          setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '' });
+          setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '', additions: 0, deductions: 0, addition_reason: '', deduction_reason: '' });
           setFormEmployeeId('');
           setFormEmployeeSearchQuery('');
           setEditingRecord(null);
           setMode('daily');
           setDialogOpen(true);
         }} className="gap-2 shadow-sm">
-          <Plus className="w-4 h-4" /> Record Absent / OT
+          <Plus className="w-4 h-4" /> Record Absent, OT & Adjustments
         </Button>
       </div>
 
@@ -205,7 +215,35 @@ export default function AttendancePage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium">{Number(record.overtime_hours).toFixed(1)} <span className="text-xs text-muted-foreground font-normal">h</span></TableCell>
-                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{record.notes.replace('[Monthly OT]', '').trim()}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate">
+                      {(() => {
+                        const parsed = parseNotesAdjustments(record.notes);
+                        const clean = parsed.cleanNotes.replace('[Monthly OT]', '').trim();
+                        return (
+                          <div className="flex flex-col gap-1.5">
+                            {clean && <span className="font-medium text-slate-700">{clean}</span>}
+                            <div className="flex flex-col gap-1 mt-0.5">
+                              {parsed.additions > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[10px] py-0 px-1.5 shrink-0">
+                                    +{parsed.additions.toFixed(3)} OMR
+                                  </Badge>
+                                  {parsed.additionReason && <span className="text-[10px] text-slate-400 truncate max-w-[120px]">({parsed.additionReason})</span>}
+                                </div>
+                              )}
+                              {parsed.deductions > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-100 text-[10px] py-0 px-1.5 shrink-0">
+                                    -{parsed.deductions.toFixed(3)} OMR
+                                  </Badge>
+                                  {parsed.deductionReason && <span className="text-[10px] text-slate-400 truncate max-w-[120px]">({parsed.deductionReason})</span>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(record)}><Pencil className="w-3.5 h-3.5" /></Button>
@@ -229,14 +267,14 @@ export default function AttendancePage() {
       }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>{editingRecord ? 'Edit Record' : 'Record Absent / Overtime'}</DialogTitle>
-            <DialogDescription>Mark daily absence or aggregate monthly overtime hours.</DialogDescription>
+            <DialogTitle>{editingRecord ? 'Edit Record' : 'Record Absent, OT & Adjustments'}</DialogTitle>
+            <DialogDescription>Mark daily absence or record monthly overtime and adjustments.</DialogDescription>
           </DialogHeader>
           
           <div className="space-y-6 py-4">
             <div className="flex p-1 bg-muted rounded-lg">
               <Button variant={mode === 'daily' ? 'secondary' : 'ghost'} className="flex-1 h-8 text-xs shadow-sm" onClick={() => setMode('daily')}>Record Absence (Daily)</Button>
-              <Button variant={mode === 'monthly' ? 'secondary' : 'ghost'} className="flex-1 h-8 text-xs shadow-sm" onClick={() => setMode('monthly')}>Record Overtime (Monthly)</Button>
+              <Button variant={mode === 'monthly' ? 'secondary' : 'ghost'} className="flex-1 h-8 text-xs shadow-sm" onClick={() => setMode('monthly')}>Record OT & Adjustments (Monthly)</Button>
             </div>
 
             <div className="space-y-4">
@@ -305,7 +343,7 @@ export default function AttendancePage() {
                 <>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Date of Absence *</Label>
-                    <Input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+                    <DatePickerInput value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
                   </div>
                   <div className="p-3 bg-red-50/50 rounded-lg text-xs text-red-700 border border-red-100 flex items-center gap-2">
                     <ClipboardCheck className="w-4 h-4" />
@@ -338,6 +376,48 @@ export default function AttendancePage() {
                           <SelectItem value="weekend">Weekend (150%)</SelectItem><SelectItem value="holiday">Holiday (150%)</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additions (OMR)</Label>
+                      <Input 
+                        type="number" 
+                        step="0.001" 
+                        placeholder="0.000"
+                        value={form.additions || ''} 
+                        onChange={e => setForm({...form, additions: e.target.value === '' ? 0 : parseFloat(e.target.value)})} 
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Deductions (OMR)</Label>
+                      <Input 
+                        type="number" 
+                        step="0.001" 
+                        placeholder="0.000"
+                        value={form.deductions || ''} 
+                        onChange={e => setForm({...form, deductions: e.target.value === '' ? 0 : parseFloat(e.target.value)})} 
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Addition Reason</Label>
+                      <Input 
+                        type="text" 
+                        placeholder="Bonus, allowance, etc."
+                        value={form.addition_reason} 
+                        onChange={e => setForm({...form, addition_reason: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Deduction Reason</Label>
+                      <Input 
+                        type="text" 
+                        placeholder="Late arrival, penalty, etc."
+                        value={form.deduction_reason} 
+                        onChange={e => setForm({...form, deduction_reason: e.target.value})} 
+                      />
                     </div>
                   </div>
                 </>

@@ -127,3 +127,48 @@ export function useLoanPaymentDueReport(companyId: string, month: number, year: 
     enabled: !!companyId,
   });
 }
+
+// ============================================================
+// ALL LOAN SCHEDULES REPORT
+// ============================================================
+export function useAllLoanSchedules(companyId: string) {
+  const supabase = createClient();
+
+  return useQuery({
+    queryKey: ['all_loan_schedules', companyId],
+    queryFn: async () => {
+      if (!companyId || !supabase) return [];
+
+      const { data, error } = await supabase
+        .from('loan_schedule')
+        .select(`
+          id,
+          loan_id,
+          installment_no,
+          due_date,
+          principal_due,
+          interest_due,
+          total_due,
+          paid_amount,
+          paid_date,
+          status,
+          is_held,
+          hold_reason,
+          loan:loan_id!inner(
+            id,
+            employee:employee_id!inner(
+              emp_code,
+              name_en
+            )
+          )
+        `)
+        .eq('company_id', companyId)
+        .order('due_date', { ascending: false });
+
+      if (error) throw new Error(error.message || 'Failed to fetch loan schedules');
+      return data || [];
+    },
+    enabled: !!companyId,
+  });
+}
+

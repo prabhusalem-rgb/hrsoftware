@@ -349,9 +349,9 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="py-5 hidden xl:table-cell">
                       <div className="text-xs space-y-1 text-muted-foreground font-medium">
-                        <p className="flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Joined: {format(new Date(user.created_at), 'MMM d, yyyy')}</p>
+                        <p className="flex items-center gap-1.5"><Calendar className="w-3 h-3" /> Joined: {format(new Date(user.created_at), 'dd/MM/yyyy')}</p>
                         <p className="flex items-center gap-1.5">
-                          <RefreshCw className="w-3 h-3" /> Active: {user.last_login_at ? format(new Date(user.last_login_at), 'MMM d, HH:mm') : 'Never'}
+                          <RefreshCw className="w-3 h-3" /> Active: {user.last_login_at ? format(new Date(user.last_login_at), 'dd/MM HH:mm') : 'Never'}
                         </p>
                       </div>
                     </TableCell>

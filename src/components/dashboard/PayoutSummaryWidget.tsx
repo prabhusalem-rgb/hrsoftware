@@ -145,10 +145,10 @@ export function PayoutSummaryWidget() {
                     <div>
                       <p className="text-sm font-semibold text-slate-900">
                         {run.payroll_run?.type?.split('_')[0] || 'Payroll'} —{' '}
-                        {format(new Date(run.payroll_run?.year || 2026, (run.payroll_run?.month || 1) - 1), 'MMMM yyyy')}
+                        {format(new Date(run.payroll_run?.year || 2026, (run.payroll_run?.month || 1) - 1), 'MM/yyyy')}
                       </p>
                       <p className="text-xs text-slate-500">
-                        Payout Due: {format(parseISO(run.payout_date), 'MMM dd, yyyy')}
+                        Payout Due: {format(parseISO(run.payout_date), 'dd/MM/yyyy')}
                         {isOverdue && run.status === 'scheduled' && (
                           <span className="ml-1 text-amber-600 text-[10px] font-bold uppercase">(Overdue)</span>
                         )}

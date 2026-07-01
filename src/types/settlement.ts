@@ -194,6 +194,13 @@ export interface SettlementStatementData {
     leave_days: number;
     air_ticket_qty: number;      // Accrued ticket quantity (informational, non-monetary)
     final_month_salary: number;
+    basic_salary?: number;
+    housing_allowance?: number;
+    transport_allowance?: number;
+    other_allowance?: number;
+    food_allowance?: number;
+    special_allowance?: number;
+    site_allowance?: number;
     loan_deduction: number;
     other_deduction: number;
     other_deductions: Array<{label: string; amount: number}>;

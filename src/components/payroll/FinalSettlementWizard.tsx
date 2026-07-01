@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -159,13 +160,20 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
     const basicSalary = Number(employee.basic_salary) || 0;
     const housingAllowance = Number(employee.housing_allowance) || 0;
     const transportAllowance = Number(employee.transport_allowance) || 0;
+    const foodAllowance = Number(employee.food_allowance) || 0;
+    const specialAllowance = Number(employee.special_allowance) || 0;
+    const siteAllowance = Number(employee.site_allowance) || 0;
+    const otherAllowance = Number(employee.other_allowance) || 0;
 
     const settlementData = {
       employee_id: employee.id,
       basic_salary: finalMonthSalary * (basicSalary / grossSalary),
       housing_allowance: finalMonthSalary * (housingAllowance / grossSalary),
       transport_allowance: finalMonthSalary * (transportAllowance / grossSalary),
-      other_allowance: 0,
+      food_allowance: finalMonthSalary * (foodAllowance / grossSalary),
+      special_allowance: finalMonthSalary * (specialAllowance / grossSalary),
+      site_allowance: finalMonthSalary * (siteAllowance / grossSalary),
+      other_allowance: finalMonthSalary * (otherAllowance / grossSalary),
       overtime_hours: 0,
       overtime_pay: 0,
       gross_salary: finalMonthSalary,
@@ -190,6 +198,8 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
       gm_signature: gmSignature,
       other_additions: otherAdditions.filter(a => a.label && a.amount > 0),
       other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
+      reason,
+      notice_served: noticeServed,
     };
 
     await onProcess(settlementData);
@@ -339,7 +349,7 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-black uppercase text-slate-400">Termination Date</Label>
-                      <Input type="date" value={terminationDate} onChange={e => setTerminationDate(e.target.value)} className="h-14 rounded-2xl border-2 font-mono" />
+                      <DatePickerInput value={terminationDate} onChange={e => setTerminationDate(e.target.value)} className="h-14 rounded-2xl border-2 font-mono" />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px] font-black uppercase text-slate-400">Reason for Separation</Label>
@@ -522,6 +532,10 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         basic_salary: finalMonthSalary * (Number(employee!.basic_salary) / Number(employee!.gross_salary)),
                         housing_allowance: finalMonthSalary * (Number(employee!.housing_allowance) / Number(employee!.gross_salary)),
                         transport_allowance: finalMonthSalary * (Number(employee!.transport_allowance) / Number(employee!.gross_salary)),
+                        food_allowance: finalMonthSalary * (Number(employee!.food_allowance || 0) / Number(employee!.gross_salary)),
+                        special_allowance: finalMonthSalary * (Number(employee!.special_allowance || 0) / Number(employee!.gross_salary)),
+                        site_allowance: finalMonthSalary * (Number(employee!.site_allowance || 0) / Number(employee!.gross_salary)),
+                        other_allowance: finalMonthSalary * (Number(employee!.other_allowance || 0) / Number(employee!.gross_salary)),
                         loan_deduction: totalLoanBalance,
                         other_deduction: deductionsSum,
                         eosb_amount: eosb?.totalGratuity || 0,
@@ -560,27 +574,6 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                         <p className="text-3xl font-black text-primary font-mono italic">{netSettlement.toFixed(3)} OMR</p>
                      </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                         <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">HR Signature</Label>
-                         <SignaturePad
-                            onSave={(url) => setHrSignature(url)}
-                            onClear={() => setHrSignature('')}
-                            placeholder="HR Representative Signature"
-                            height="h-56"
-                         />
-                      </div>
-                      <div className="space-y-3">
-                         <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">GM / CEO Signature</Label>
-                         <SignaturePad
-                            onSave={(url) => setGmSignature(url)}
-                            onClear={() => setGmSignature('')}
-                            placeholder="GM/CEO Authorization Signature"
-                            height="h-56"
-                         />
-                      </div>
-                   </div>
 
                   {/* Air Ticket Balance - Informational Only */}
                   {airTicketQuantity > 0 && (

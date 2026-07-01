@@ -186,7 +186,7 @@ export function AirTicketDashboard({
                 {tickets.map((ticket) => (
                   <TableRow key={ticket.id}>
                     <TableCell className="text-sm">
-                      {format(new Date(ticket.created_at), 'dd MMM yyyy')}
+                      {format(new Date(ticket.created_at), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell className="capitalize">{ticket.purpose || '—'}</TableCell>
                     <TableCell>{ticket.destination || '—'}</TableCell>

@@ -36,7 +36,7 @@ export function ContractRenewalPDF({ company, employee, renewalData }: ContractR
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '';
     try {
-      return format(new Date(dateStr), 'dd-MMM-yyyy');
+      return format(new Date(dateStr), 'dd/MM/yyyy');
     } catch {
       return dateStr;
     }
@@ -139,7 +139,7 @@ export function ContractRenewalPDF({ company, employee, renewalData }: ContractR
 
         <View style={styles.signatureGrid}>
           <View style={styles.signatureBox}>
-            <Text style={styles.signatureLabel}>HOD/Project Manager Signature:</Text>
+            <Text style={styles.signatureLabel}>GM/CEO Signature :</Text>
             {renewalData.manager_signature_url ? (
               <Image src={renewalData.manager_signature_url} style={styles.signatureImage} />
             ) : (
@@ -161,7 +161,7 @@ export function ContractRenewalPDF({ company, employee, renewalData }: ContractR
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Generated on {format(new Date(), 'dd-MMM-yyyy HH:mm')} · Secure Digital Document</Text>
+          <Text style={styles.footerText}>Generated on {format(new Date(), 'dd/MM/yyyy HH:mm')} · Secure Digital Document</Text>
         </View>
       </Page>
     </Document>

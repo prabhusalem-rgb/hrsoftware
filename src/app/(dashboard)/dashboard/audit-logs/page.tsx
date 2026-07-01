@@ -15,6 +15,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -27,6 +28,7 @@ import {
   X, RefreshCw, User, Building2
 } from 'lucide-react';
 import { useAuditLogs, useAuditStats } from '@/hooks/queries/useAuditLogs';
+import { useCompany } from '@/components/providers/CompanyProvider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -49,6 +51,7 @@ const actionColors: Record<string, string> = {
 };
 
 export default function AuditLogsPage() {
+  const { activeCompanyId } = useCompany();
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [entityTypeFilter, setEntityTypeFilter] = useState<string>('all');
@@ -60,6 +63,7 @@ export default function AuditLogsPage() {
   const [showFilters, setShowFilters] = useState(false);
 
   const { data: logsData, isLoading, refetch } = useAuditLogs({
+    company_id: activeCompanyId || undefined,
     action: actionFilter !== 'all' ? actionFilter : undefined,
     entity_type: entityTypeFilter !== 'all' ? entityTypeFilter : undefined,
     user_id: userFilter !== 'all' ? userFilter : undefined,
@@ -68,7 +72,7 @@ export default function AuditLogsPage() {
     search: search || undefined,
   });
 
-  const { data: statsData } = useAuditStats();
+  const { data: statsData } = useAuditStats(activeCompanyId || undefined);
 
   // Extract unique entity types and users for filters
   const entityTypes = useMemo(() => {
@@ -101,6 +105,71 @@ export default function AuditLogsPage() {
     } catch {
       return String(obj);
     }
+  };
+
+  const renderChangeDetails = (log: any) => {
+    const detailsText = log.details?.description || log.metadata?.description || '';
+    const oldVals = log.old_values || {};
+    const newVals = log.new_values || {};
+
+    const allKeys = Array.from(new Set([...Object.keys(oldVals), ...Object.keys(newVals)]))
+      .filter(key => !['id', 'created_at', 'updated_at', 'company_id', 'user_id', 'employee_id'].includes(key));
+
+    const changes: { key: string; oldVal: any; newVal: any }[] = [];
+
+    allKeys.forEach(key => {
+      const oldVal = oldVals[key];
+      const newVal = newVals[key];
+      if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+        changes.push({ key, oldVal, newVal });
+      }
+    });
+
+    if (changes.length === 0 && !detailsText) {
+      if (log.action === 'create') return <span className="text-muted-foreground text-xs font-normal">Created new record</span>;
+      if (log.action === 'delete') return <span className="text-muted-foreground text-xs font-normal">Removed record</span>;
+      return <span className="text-muted-foreground text-xs font-normal">-</span>;
+    }
+
+    const formatValue = (val: any): string => {
+      if (val === null || val === undefined) return 'None';
+      if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+      if (typeof val === 'object') return JSON.stringify(val);
+      return String(val);
+    };
+
+    const formatKey = (key: string): string => {
+      return key
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, l => l.toUpperCase());
+    };
+
+    return (
+      <div className="space-y-1.5 max-w-md">
+        {detailsText && (
+          <p className="text-xs font-medium text-foreground">{detailsText}</p>
+        )}
+        {changes.map(({ key, oldVal, newVal }) => (
+          <div key={key} className="text-xs flex flex-wrap items-center gap-1.5">
+            <span className="font-semibold text-foreground text-[11px] uppercase tracking-wider">{formatKey(key)}:</span>
+            {oldVal !== undefined && oldVal !== null && (
+              <span className="line-through text-muted-foreground bg-muted px-1.5 py-0.5 rounded text-[11px]">
+                {formatValue(oldVal)}
+              </span>
+            )}
+            <span className="text-muted-foreground text-[10px]">➔</span>
+            <span className="text-emerald-700 dark:text-emerald-300 font-medium bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded text-[11px]">
+              {formatValue(newVal)}
+            </span>
+          </div>
+        ))}
+        {log.error_code && (
+          <Badge variant="secondary" className="text-[10px] font-mono px-1 py-0 h-auto">
+            Error: {log.error_code}
+          </Badge>
+        )}
+      </div>
+    );
   };
 
   const exportToCSV = () => {
@@ -430,29 +499,7 @@ export default function AuditLogsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="space-y-1">
-                          {log.old_values && (
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-medium text-foreground">Before:</span>{' '}
-                              <pre className="inline font-mono bg-muted px-1 rounded text-xs">
-                                {formatJson(log.old_values)}
-                              </pre>
-                            </div>
-                          )}
-                          {log.new_values && (
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-medium text-foreground">After:</span>{' '}
-                              <pre className="inline font-mono bg-muted px-1 rounded text-xs">
-                                {formatJson(log.new_values)}
-                              </pre>
-                            </div>
-                          )}
-                          {log.error_code && (
-                            <Badge variant="secondary" className="text-xs">
-                              {log.error_code}
-                            </Badge>
-                          )}
-                        </div>
+                        {renderChangeDetails(log)}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div className="text-xs space-y-1">
@@ -474,7 +521,9 @@ export default function AuditLogsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            </DropdownMenuGroup>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => {
                               navigator.clipboard.writeText(log.id);

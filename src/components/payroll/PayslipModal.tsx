@@ -4,10 +4,11 @@ import React from 'react';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { X, Download } from 'lucide-react';
-import { PayrollItem, Employee, Company } from '@/types';
+import { X, Download, Lock, Unlock, CheckCircle, Landmark, RefreshCw } from 'lucide-react';
+import { PayrollItem, Employee, Company, PayoutMethod } from '@/types';
 import { downloadPayslipPDF, downloadLeaveSettlementPDF, downloadSettlementPDF } from '@/lib/pdf-utils';
 import { useLeaves } from '@/hooks/queries/useLeaves';
+import { usePayoutMutations } from '@/hooks/queries/usePayoutMutations';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { createPortal } from 'react-dom';
@@ -75,6 +76,292 @@ function getDaysInMonth(periodStr: string): number {
   return 30;
 }
 
+function PayoutManagementSection({
+  item,
+  companyId,
+}: {
+  item: PayrollItem;
+  companyId: string;
+}) {
+  const { batchHold, batchRelease, markPaid, resetPayout } = usePayoutMutations(companyId);
+
+  const [holdReason, setHoldReason] = useState('');
+  const [paidAmount, setPaidAmount] = useState(item.paid_amount ?? item.net_salary ?? 0);
+  const [paymentMethod, setPaymentMethod] = useState<PayoutMethod>('bank_transfer');
+  const [reference, setReference] = useState('');
+  const [notes, setNotes] = useState('');
+  const [payoutDate, setPayoutDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setPaidAmount(item.paid_amount ?? item.net_salary ?? 0);
+  }, [item]);
+
+  const handleHold = async () => {
+    if (!holdReason.trim()) {
+      toast.error('Please enter a reason for the hold');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await batchHold.mutateAsync({ itemIds: [item.id], reason: holdReason });
+      setHoldReason('');
+    } catch (e) {}
+    setIsSubmitting(false);
+  };
+
+  const handleRelease = async () => {
+    setIsSubmitting(true);
+    try {
+      await batchRelease.mutateAsync({ itemIds: [item.id] });
+    } catch (e) {}
+    setIsSubmitting(false);
+  };
+
+  const handlePay = async () => {
+    if (!reference.trim()) {
+      toast.error('Please enter a payment reference/receipt number');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await markPaid.mutateAsync({
+        itemIds: [item.id],
+        method: paymentMethod,
+        reference,
+        paidAmounts: { [item.id]: paidAmount },
+        notes,
+        payoutDate,
+      });
+      setReference('');
+      setNotes('');
+    } catch (e) {}
+    setIsSubmitting(false);
+  };
+
+  const handleReset = async () => {
+    if (confirm('Are you sure you want to reset this payout status to pending?')) {
+      setIsSubmitting(true);
+      try {
+        await resetPayout.mutateAsync({ itemIds: [item.id] });
+      } catch (e) {}
+      setIsSubmitting(false);
+    }
+  };
+
+  const status = item.payout_status || 'pending';
+  const expectedAmount = item.net_salary || 0;
+
+  return (
+    <div className="space-y-5 flex flex-col h-full text-slate-800">
+      <div>
+        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <Landmark className="w-4 h-4 text-slate-700" />
+          Manage Payout
+        </h4>
+        <p className="text-[11px] text-slate-500 mt-0.5">Control payout status and record payments</p>
+      </div>
+
+      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</span>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+            status === 'paid' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-200' :
+            status === 'held' ? 'bg-red-500/10 text-red-700 border border-red-200' :
+            status === 'processing' ? 'bg-amber-500/10 text-amber-700 border border-amber-200' :
+            'bg-slate-500/10 text-slate-700 border border-slate-200'
+          }`}>
+            {status}
+          </span>
+        </div>
+        <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Expected Net</span>
+          <span className="font-mono font-black text-slate-900 text-sm">{expectedAmount.toFixed(3)} OMR</span>
+        </div>
+        {status === 'paid' && item.paid_amount !== null && (
+          <div className="pt-1 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Paid Amount</span>
+            <span className="font-mono font-black text-emerald-600 text-sm">{(item.paid_amount ?? expectedAmount).toFixed(3)} OMR</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 space-y-4">
+        {status === 'paid' ? (
+          <div className="p-3.5 rounded-xl bg-emerald-50/30 border-2 border-emerald-200 space-y-3">
+            <div className="space-y-2 text-xs">
+              <h5 className="font-bold text-emerald-800 flex items-center gap-1.5 uppercase text-[10px] tracking-wide">
+                <CheckCircle className="w-3.5 h-3.5" />
+                Payment Details
+              </h5>
+              <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600">
+                <div>
+                  <span className="block font-bold text-slate-400 uppercase">Method</span>
+                  <span className="font-semibold text-slate-700 uppercase">{item.payout_method || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="block font-bold text-slate-400 uppercase">Reference</span>
+                  <span className="font-mono font-semibold text-slate-700">{item.payout_reference || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="block font-bold text-slate-400 uppercase">Paid Date</span>
+                  <span className="font-semibold text-slate-700">
+                    {item.payout_date ? format(new Date(item.payout_date), 'dd/MM/yyyy') : 'N/A'}
+                  </span>
+                </div>
+                {item.notes && (
+                  <div className="col-span-2">
+                    <span className="block font-bold text-slate-400 uppercase">Notes</span>
+                    <span className="text-slate-700 italic">{item.notes}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              disabled={isSubmitting}
+              className="w-full text-red-600 border-red-200 hover:bg-red-50 gap-1.5 h-8 font-bold text-[10px]"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Revert Payout
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {status !== 'held' && (
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-3 shadow-sm bg-slate-50/50">
+                <h5 className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                  Record Payment
+                </h5>
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Amount (OMR)</label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        value={paidAmount}
+                        onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                        className="w-full h-7 text-xs font-mono rounded-lg border border-slate-200 px-2 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Method</label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e: any) => setPaymentMethod(e.target.value)}
+                        className="w-full h-7 text-xs rounded-lg border border-slate-200 px-1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                      >
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="cash">Cash</option>
+                        <option value="check">Cheque</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Reference #</label>
+                      <input
+                        type="text"
+                        placeholder="TXN..."
+                        value={reference}
+                        onChange={(e) => setReference(e.target.value)}
+                        className="w-full h-7 text-xs rounded-lg border border-slate-200 px-2 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Payout Date</label>
+                      <input
+                        type="date"
+                        value={payoutDate}
+                        onChange={(e) => setPayoutDate(e.target.value)}
+                        className="w-full h-7 text-xs rounded-lg border border-slate-200 px-2 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase">Payout Notes</label>
+                    <input
+                      type="text"
+                      placeholder="Remarks..."
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full h-7 text-xs rounded-lg border border-slate-200 px-2 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handlePay}
+                    disabled={isSubmitting}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-8 text-[10px]"
+                  >
+                    Confirm Payment
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-3 shadow-sm bg-slate-50/50">
+              {status === 'held' ? (
+                <div className="space-y-2">
+                  <div className="p-2 rounded-lg bg-red-50 border border-red-100 flex items-start gap-2">
+                    <Lock className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                    <div className="text-[10px] text-red-800">
+                      <p className="font-bold">Salary on Hold</p>
+                      <p className="mt-0.5 italic">"{item.hold_reason || 'No reason specified'}"</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleRelease}
+                    disabled={isSubmitting}
+                    className="w-full text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1.5 h-8 font-bold text-[10px]"
+                  >
+                    <Unlock className="w-3 h-3" />
+                    Release Salary Hold
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <h5 className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                    <Lock className="w-3.5 h-3.5 text-red-500" />
+                    Place Hold
+                  </h5>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Reason for hold..."
+                      value={holdReason}
+                      onChange={(e) => setHoldReason(e.target.value)}
+                      className="w-full h-7 text-xs rounded-lg border border-slate-200 px-2 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={handleHold}
+                      disabled={isSubmitting}
+                      className="w-full text-red-600 border-red-200 hover:bg-red-50 gap-1.5 h-8 font-bold text-[10px]"
+                    >
+                      <Lock className="w-3 h-3" />
+                      Place Hold on Salary
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PayslipModal({ isOpen, onClose, item, employee, company, period, type = 'monthly' }: PayslipModalProps) {
   // === ALL HOOKS FIRST - no conditional returns between them ===
 
@@ -98,8 +385,8 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
 
   const settlementDate = useMemo(() => {
     if (!item || !employee) return new Date().toISOString();
-    if (type === 'final_settlement') {
-      return item.settlement_date || item.created_at || new Date().toISOString();
+    if (type === 'final_settlement' || type === 'leave_settlement') {
+      return item.settlement_date || selectedLeave?.end_date || item.created_at || new Date().toISOString();
     }
     return selectedLeave?.end_date || new Date().toISOString();
   }, [type, item, employee, selectedLeave]);
@@ -197,6 +484,11 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
       ].filter(e => e.actual > 0 || e.full > 0);
     } else {
       if (!employee || !item) return [];
+      const ratio = Number(employee.basic_salary) > 0 ? Number(item.basic_salary) / Number(employee.basic_salary) : 1.0;
+      const contractualOtherFull = Number(employee.other_allowance || 0);
+      const contractualOtherActual = Math.round(contractualOtherFull * ratio * 1000) / 1000;
+      const tempOtherActual = Math.round(Math.max(0, Number(item.other_allowance || 0) - contractualOtherActual) * 1000) / 1000;
+
       return [
         { labelEN: 'BASIC SALARY', labelAR: 'الراتب الأساسي', full: employee.basic_salary, actual: item.basic_salary },
         { labelEN: 'HOUSING ALLOWANCE', labelAR: 'بدل سكن', full: employee.housing_allowance, actual: item.housing_allowance },
@@ -204,7 +496,18 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
         { labelEN: 'FOOD ALLOWANCE', labelAR: 'بدل طعام', full: employee.food_allowance || 0, actual: item.food_allowance || 0 },
         { labelEN: 'SPECIAL ALLOWANCE', labelAR: 'بدل خاص', full: employee.special_allowance || 0, actual: item.special_allowance || 0 },
         { labelEN: 'SITE ALLOWANCE', labelAR: 'بدل موقع', full: employee.site_allowance || 0, actual: item.site_allowance || 0 },
-        { labelEN: 'OTHER ALLOWANCE', labelAR: 'بدلات أخرى', full: employee.other_allowance || 0, actual: item.other_allowance || 0 },
+        ...(contractualOtherActual > 0 || contractualOtherFull > 0 ? [{
+          labelEN: 'OTHER ALLOWANCE',
+          labelAR: 'بدلات أخرى',
+          full: contractualOtherFull,
+          actual: contractualOtherActual
+        }] : []),
+        ...(tempOtherActual > 0 ? [{
+          labelEN: 'TEMPORARY ALLOWANCE',
+          labelAR: 'بدل مؤقت',
+          full: 0,
+          actual: tempOtherActual
+        }] : []),
         ...(Number(item.overtime_hours) > 0 ? [{
           labelEN: 'OVERTIME HOURS',
           labelAR: 'ساعات العمل الإضافي',
@@ -276,7 +579,7 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
                 leave_days: settlementLeaveDays,
                 working_days: settlementWorkingDays,
                 last_salary_month: period,
-                settlement_date: selectedLeave?.end_date || '',
+                settlement_date: settlementDate,
                 earnings: earnings.map(e => ({ label: e.labelEN, full: e.full, actual: e.actual })),
                 deductions: deductions.map(d => ({ label: d.labelEN, actual: Number(d.actual) })),
                 other_additions: item.other_additions || [],
@@ -310,7 +613,14 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
                   leave_encashment: item.leave_encashment || 0,
                   leave_days: 0,
                   air_ticket_qty: item.air_ticket_balance || 0,
-                  final_month_salary: item.basic_salary || 0,
+                  final_month_salary: item.gross_salary || item.basic_salary || 0,
+                  basic_salary: item.basic_salary || 0,
+                  housing_allowance: item.housing_allowance || 0,
+                  transport_allowance: item.transport_allowance || 0,
+                  other_allowance: item.other_allowance || 0,
+                  food_allowance: item.food_allowance || 0,
+                  special_allowance: item.special_allowance || 0,
+                  site_allowance: item.site_allowance || 0,
                   loan_deduction: item.loan_deduction || 0,
                   other_deduction: item.other_deduction || 0,
                   other_deductions: item.other_deductions || [],
@@ -412,7 +722,14 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
               leave_encashment: item.leave_encashment || 0,
               leave_days: Number(item.absent_days || 0),
               air_ticket_qty: item.air_ticket_balance || 0,
-              final_month_salary: item.basic_salary || 0,
+              final_month_salary: item.gross_salary || item.basic_salary || 0,
+              basic_salary: item.basic_salary || 0,
+              housing_allowance: item.housing_allowance || 0,
+              transport_allowance: item.transport_allowance || 0,
+              other_allowance: item.other_allowance || 0,
+              food_allowance: item.food_allowance || 0,
+              special_allowance: item.special_allowance || 0,
+              site_allowance: item.site_allowance || 0,
               loan_deduction: item.loan_deduction || 0,
               other_deduction: item.other_deduction || 0,
               other_additions: item.other_additions || [],
@@ -444,7 +761,7 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
             leave_days: settlementLeaveDays,
             working_days: settlementWorkingDays,
             last_salary_month: period,
-            settlement_date: selectedLeave.end_date,
+            settlement_date: settlementDate,
             earnings: earnings.map(e => ({ label: e.labelEN, full: e.full, actual: e.actual })),
             deductions: deductions.map(d => ({ label: d.labelEN, actual: Number(d.actual) })),
             other_additions: item.other_additions || [],
@@ -486,6 +803,10 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
               basic_salary: item.basic_salary || 0,
               housing_allowance: item.housing_allowance || 0,
               transport_allowance: item.transport_allowance || 0,
+              food_allowance: item.food_allowance || 0,
+              special_allowance: item.special_allowance || 0,
+              site_allowance: item.site_allowance || 0,
+              other_allowance: item.other_allowance || 0,
               loan_deduction: item.loan_deduction || 0,
               other_deduction: item.other_deduction || 0,
               eosb_amount: item.eosb_amount || 0,
@@ -503,7 +824,7 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
       )}
 
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent showCloseButton={false} className="sm:max-w-5xl w-[95vw] h-[90vh] p-0 flex flex-col overflow-hidden bg-white border-none shadow-2xl">
+        <DialogContent showCloseButton={false} className="sm:max-w-[1300px] w-[95vw] h-[90vh] p-0 flex flex-col overflow-hidden bg-white border-none shadow-2xl">
           <style>{scrollbarHideStyle}</style>
           <div className="flex flex-col h-full">
             {/* Action Toolbar */}
@@ -546,26 +867,34 @@ export function PayslipModal({ isOpen, onClose, item, employee, company, period,
               </div>
             </div>
 
-            {/* PDF Preview */}
-            <div className="flex-1 min-h-0 overflow-auto bg-slate-100 print:bg-white print:shadow-none">
-              {isGeneratingPDF ? (
-                <div className="flex items-center justify-center h-96">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : error ? (
-                <div className="flex items-center justify-center h-96 text-red-500">
-                  {error}
-                </div>
-              ) : pdfBlobUrl ? (
-                <iframe
-                  src={pdfBlobUrl}
-                  width="100%"
-                  height="100%"
-                  style={{ border: 'none' }}
-                  title="PDF Preview"
-                  className="flex-1"
-                />
-              ) : null}
+            {/* Split Content Body */}
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden bg-slate-100">
+              {/* Left Panel: Manage Payout */}
+              <div className="lg:col-span-4 bg-white border-r border-slate-200 p-6 overflow-y-auto print:hidden">
+                <PayoutManagementSection item={item} companyId={company?.id || ''} />
+              </div>
+
+              {/* Right Panel: PDF Preview */}
+              <div className="lg:col-span-8 min-h-0 overflow-auto flex flex-col bg-slate-100 print:bg-white print:shadow-none">
+                {isGeneratingPDF ? (
+                  <div className="flex items-center justify-center h-full min-h-[300px]">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : error ? (
+                  <div className="flex items-center justify-center h-full min-h-[300px] text-red-500">
+                    {error}
+                  </div>
+                ) : pdfBlobUrl ? (
+                  <iframe
+                    src={pdfBlobUrl}
+                    width="100%"
+                    height="100%"
+                    style={{ border: 'none' }}
+                    title="PDF Preview"
+                    className="flex-1"
+                  />
+                ) : null}
+              </div>
             </div>
           </div>
         </DialogContent>

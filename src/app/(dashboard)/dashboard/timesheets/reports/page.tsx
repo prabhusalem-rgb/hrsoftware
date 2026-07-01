@@ -8,10 +8,22 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Download, Building2, TrendingUp, Clock, AlertTriangle, FileText } from 'lucide-react';
-import { getTimesheetReports } from './actions';
+import { Download, Building2, TrendingUp, Clock, AlertTriangle, FileText, Trash2 } from 'lucide-react';
+import { getTimesheetReports, getDetailedTimesheetEntries } from './actions';
+import { deleteTimesheetsByRange } from '../actions';
+import { useProjects } from '@/hooks/queries/useProjects';
+import { useEmployees } from '@/hooks/queries/useEmployees';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+const DAY_TYPE_LABELS: Record<string, string> = {
+  working_day: 'Working Day',
+  working_holiday: 'Working Holiday',
+  holiday_overtime: 'Holiday Overtime',
+  absent: 'Absent',
+};
 
 interface ProjectCostRecord {
   project_name: string;
@@ -55,13 +67,35 @@ interface ReportsData {
 }
 
 export default function TimesheetReportsPage() {
-  const { activeCompanyId } = useCompany();
+  const { activeCompanyId, profile } = useCompany();
   const currentYear = new Date().getFullYear();
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
   const [loading, setLoading] = useState(false);
   const [reports, setReports] = useState<ReportsData | null>(null);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
+
+  // Detailed Entries states
+  const [activeTab, setActiveTab] = useState('costs');
+  const [startDate, setStartDate] = useState(`${selectedMonth}-01`);
+  const [endDate, setEndDate] = useState('');
+  const [selectedProject, setSelectedProject] = useState('all');
+  const [selectedEmployee, setSelectedEmployee] = useState('all');
+  const [detailedEntries, setDetailedEntries] = useState<any[]>([]);
+  const [detailedLoading, setDetailedLoading] = useState(false);
+
+  // Fetch projects and employees lists
+  const { data: projects = [] } = useProjects(activeCompanyId);
+  const { data: employees = [] } = useEmployees({ companyId: activeCompanyId || '' });
+
+  useEffect(() => {
+    if (selectedMonth) {
+      setStartDate(`${selectedMonth}-01`);
+      const [year, monthNum] = selectedMonth.split('-').map(Number);
+      const lastDay = new Date(year, monthNum, 0).getDate();
+      setEndDate(`${selectedMonth}-${String(lastDay).padStart(2, '0')}`);
+    }
+  }, [selectedMonth]);
 
   const loadReports = async () => {
     if (!activeCompanyId) return;
@@ -82,14 +116,169 @@ export default function TimesheetReportsPage() {
     }
   };
 
+  const loadDetailedEntries = async () => {
+    if (!activeCompanyId || !startDate || !endDate) return;
+    setDetailedLoading(true);
+    try {
+      const data = await getDetailedTimesheetEntries(
+        activeCompanyId,
+        startDate,
+        endDate,
+        selectedProject,
+        selectedEmployee
+      );
+      setDetailedEntries(data || []);
+    } catch (e: any) {
+      console.error('Error loading detailed entries:', e);
+      toast.error('Failed to load detailed entries: ' + e.message);
+    } finally {
+      setDetailedLoading(false);
+    }
+  };
+
+  const handleDeleteRange = async () => {
+    if (!activeCompanyId || !startDate || !endDate) return;
+    
+    const count = detailedEntries.length;
+    if (count === 0) {
+      toast.error('No timesheet entries found in this period to delete.');
+      return;
+    }
+
+    const canDelete = profile && ['super_admin', 'company_admin', 'hr'].includes(profile.role);
+    if (!canDelete) {
+      toast.error('Insufficient permissions to delete timesheets.');
+      return;
+    }
+
+    const confirmMsg = `Are you sure you want to delete all ${count} timesheet entries between ${startDate} and ${endDate}? This action CANNOT be undone.`;
+    if (!confirm(confirmMsg)) return;
+
+    setDetailedLoading(true);
+    try {
+      const res = await deleteTimesheetsByRange(
+        activeCompanyId,
+        startDate,
+        endDate,
+        selectedProject,
+        selectedEmployee
+      );
+      if (res.success) {
+        toast.success(`Successfully deleted ${res.count} timesheet entries.`);
+        setDetailedEntries([]);
+        loadReports();
+      }
+    } catch (e: any) {
+      console.error('Error deleting timesheets:', e);
+      toast.error('Failed to delete timesheets: ' + e.message);
+    } finally {
+      setDetailedLoading(false);
+    }
+  };
+
   useEffect(() => { loadReports(); }, [activeCompanyId, selectedMonth]);
   useEffect(() => {
     (window as any).refreshTimesheetReports = loadReports;
     return () => { delete (window as any).refreshTimesheetReports; };
   }, [activeCompanyId, selectedMonth]);
 
+  useEffect(() => {
+    if (activeTab === 'details') {
+      loadDetailedEntries();
+    }
+  }, [activeCompanyId, startDate, endDate, selectedProject, selectedEmployee, activeTab]);
+
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedMonth(e.target.value);
+  };
+
+  const exportDetailedToCSV = () => {
+    if (detailedEntries.length === 0) return;
+    let csv = 'Date,Employee,Emp Code,Designation,Project,Day Type,Hours Worked,OT Hours,Holiday OT,Remarks\n';
+    detailedEntries.forEach(r => {
+      const dayTypeLabel = DAY_TYPE_LABELS[r.day_type] || r.day_type;
+      csv += `${r.date},"${r.employee_name}",${r.emp_code},"${r.designation}","${r.project_name}","${dayTypeLabel}",${r.hours_worked},${r.overtime_hours},${r.holiday_overtime_hours},"${(r.remarks || '').replace(/"/g, '""')}"\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `detailed-timesheets-${startDate}-to-${endDate}.csv`;
+    link.click();
+    toast.success(`Detailed CSV downloaded`);
+  };
+
+  const exportDetailedToPDF = () => {
+    if (detailedEntries.length === 0) return;
+
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pw = doc.internal.pageSize.getWidth();
+    const ph = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    let y = 15;
+
+    // Header
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DETAILED TIMESHEET ENTRIES', pw / 2, y, { align: 'center' });
+    y += 8;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Period: ${startDate} to ${endDate}`, pw / 2, y, { align: 'center' });
+    y += 8;
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(59, 130, 246);
+    doc.line(margin, y, pw - margin, y);
+    y += 10;
+
+    const body = detailedEntries.map(r => [
+      r.date,
+      r.employee_name,
+      r.emp_code,
+      r.designation,
+      r.project_name,
+      DAY_TYPE_LABELS[r.day_type] || r.day_type,
+      r.hours_worked.toString(),
+      r.overtime_hours.toString(),
+      r.holiday_overtime_hours.toString(),
+      r.remarks || 'N/A'
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Date', 'Employee', 'Code', 'Designation', 'Project', 'Day Type', 'Hours', 'OT', 'Hol OT', 'Remarks']],
+      body: body,
+      theme: 'striped',
+      headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 7.5 },
+      styles: { fontSize: 7, cellPadding: 1 },
+      margin: { left: margin, right: margin, bottom: 30 }
+    });
+
+    // Footer & Signature Lines
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      
+      // Signature lines
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      const sigY = ph - 25;
+      doc.line(margin, sigY, margin + 50, sigY);
+      doc.line(pw - margin - 50, sigY, pw - margin, sigY);
+      doc.text('Checked By', margin + 25, sigY + 5, { align: 'center' });
+      doc.text('Authorized Signatory', pw - margin - 25, sigY + 5, { align: 'center' });
+
+      // Footer text
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Page ${i} of ${totalPages}`, pw / 2, ph - 10, { align: 'center' });
+      doc.text(`Generated: ${new Date().toLocaleString('en-GB')}`, pw - margin, ph - 10, { align: 'right' });
+      doc.text('Timesheet System - Confidential', margin, ph - 10, { align: 'left' });
+    }
+
+    doc.save(`detailed-timesheets-${startDate}-to-${endDate}.pdf`);
+    toast.success(`PDF downloaded`);
   };
 
   const exportToCSV = (type: 'costs' | 'overtime' | 'absences') => {
@@ -423,11 +612,12 @@ export default function TimesheetReportsPage() {
             </div>
           )}
 
-          <Tabs defaultValue="costs" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="costs">Project Costs</TabsTrigger>
               <TabsTrigger value="overtime">Overtime Summary</TabsTrigger>
               <TabsTrigger value="absences">Absences</TabsTrigger>
+              <TabsTrigger value="details">Detailed Entries</TabsTrigger>
             </TabsList>
 
             <TabsContent value="costs" className="space-y-4">
@@ -589,6 +779,140 @@ export default function TimesheetReportsPage() {
                         ))}
                       </TableBody>
                     </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="details" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <CardTitle>Detailed Timesheet Entries</CardTitle>
+                      <CardDescription>Individual daily timesheet records within the selected date range.</CardDescription>
+                    </div>
+                    {detailedEntries.length > 0 && (
+                      <div className="flex gap-2">
+                        {profile && ['super_admin', 'company_admin', 'hr'].includes(profile.role) && (
+                          <Button variant="destructive" size="sm" onClick={handleDeleteRange} disabled={detailedLoading} className="gap-2">
+                            <Trash2 className="mr-1 h-4 w-4" />
+                            Delete Entries
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={exportDetailedToCSV}><Download className="mr-2 h-4 w-4" />Export CSV</Button>
+                        <Button variant="outline" size="sm" onClick={exportDetailedToPDF}><FileText className="mr-2 h-4 w-4" />Export PDF</Button>
+                      </div>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Filters Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-muted/20 rounded-lg animate-fade-in">
+                    <div className="space-y-2">
+                      <Label htmlFor="startDate">Start Date</Label>
+                      <Input
+                        id="startDate"
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="endDate">End Date</Label>
+                      <Input
+                        id="endDate"
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Project</Label>
+                      <Select value={selectedProject} onValueChange={(val) => setSelectedProject(val || 'all')}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Projects">
+                            {selectedProject === 'all'
+                              ? 'All Projects'
+                              : projects.find((p: any) => p.id === selectedProject)?.name || 'All Projects'}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Projects</SelectItem>
+                          {projects.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Employee</Label>
+                      <Select value={selectedEmployee} onValueChange={(val) => setSelectedEmployee(val || 'all')}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Employees">
+                            {selectedEmployee === 'all'
+                              ? 'All Employees'
+                              : employees.find((e: any) => e.id === selectedEmployee)
+                                ? `${employees.find((e: any) => e.id === selectedEmployee)?.name_en} (${employees.find((e: any) => e.id === selectedEmployee)?.emp_code})`
+                                : 'All Employees'}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Employees</SelectItem>
+                          {employees.map((e: any) => (
+                            <SelectItem key={e.id} value={e.id}>{e.name_en} ({e.emp_code})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {detailedLoading ? (
+                    <div className="p-12 text-center text-muted-foreground animate-pulse">Loading detailed entries...</div>
+                  ) : detailedEntries.length === 0 ? (
+                    <div className="p-12 text-center text-muted-foreground border rounded-lg border-dashed">
+                      No timesheet entries found for the selected criteria.
+                    </div>
+                  ) : (
+                    <div className="rounded-md border overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Employee</TableHead>
+                            <TableHead>Designation</TableHead>
+                            <TableHead>Project</TableHead>
+                            <TableHead>Day Type</TableHead>
+                            <TableHead className="text-right">Hours</TableHead>
+                            <TableHead className="text-right">OT</TableHead>
+                            <TableHead className="text-right">Hol OT</TableHead>
+                            <TableHead>Remarks</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {detailedEntries.map((r, i) => (
+                            <TableRow key={r.id || i}>
+                              <TableCell className="whitespace-nowrap font-medium">{r.date}</TableCell>
+                              <TableCell>
+                                <div>{r.employee_name}</div>
+                                <div className="text-xs text-muted-foreground">{r.emp_code}</div>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">{r.designation}</TableCell>
+                              <TableCell>{r.project_name}</TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {DAY_TYPE_LABELS[r.day_type] || r.day_type}
+                              </TableCell>
+                              <TableCell className="text-right">{r.hours_worked}</TableCell>
+                              <TableCell className="text-right">{r.overtime_hours}</TableCell>
+                              <TableCell className="text-right">{r.holiday_overtime_hours}</TableCell>
+                              <TableCell className="max-w-[200px] truncate" title={r.remarks}>
+                                {r.remarks || <span className="text-muted-foreground/30 italic">-</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>

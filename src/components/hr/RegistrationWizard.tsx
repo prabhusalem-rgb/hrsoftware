@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Landmark, Calendar, User, ChevronRight, ShieldCheck, CreditCard, FileSignature } from 'lucide-react';
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
@@ -130,7 +131,7 @@ export function RegistrationWizard({ isOpen, onClose, employee, onUpdate, onSucc
                     <div className="grid grid-cols-1 gap-6">
                       <div className="space-y-2">
                         <Label className="text-[10px] font-black uppercase text-slate-400">Passport Expiry Date</Label>
-                        <Input type="date" value={form.passport_expiry} onChange={e => setForm({...form, passport_expiry: e.target.value})} className="h-12 rounded-2xl border-2 font-mono font-bold" />
+                        <DatePickerInput value={form.passport_expiry} onChange={e => setForm({...form, passport_expiry: e.target.value})} className="h-12 rounded-2xl border-2 font-mono font-bold" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -139,7 +140,7 @@ export function RegistrationWizard({ isOpen, onClose, employee, onUpdate, onSucc
                         </div>
                         <div className="space-y-2">
                           <Label className="text-[10px] font-black uppercase text-slate-400">Visa Expiry Date</Label>
-                          <Input type="date" value={form.visa_expiry} onChange={e => setForm({...form, visa_expiry: e.target.value})} className="h-12 rounded-2xl border-2 font-mono" />
+                          <DatePickerInput value={form.visa_expiry} onChange={e => setForm({...form, visa_expiry: e.target.value})} className="h-12 rounded-2xl border-2 font-mono" />
                         </div>
                       </div>
                     </div>

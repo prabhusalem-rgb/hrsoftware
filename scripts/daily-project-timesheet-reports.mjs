@@ -408,10 +408,23 @@ async function sendDailyProjectTimesheetReports(targetDate) {
             toEmail: project.email,
           });
 
+          // Update database status
+          await supabase.from('projects').update({
+            email_status: 'sent',
+            email_sent_at: new Date().toISOString(),
+            email_error: null
+          }).eq('id', project.id);
+
           console.log(`     ✓ Email sent successfully`);
           totalSent++;
         } catch (err) {
           console.error(`     ✗ Error processing project ${project.name}:`, err);
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          // Update database failure status
+          await supabase.from('projects').update({
+            email_status: 'failed',
+            email_error: errorMessage
+          }).eq('id', project.id);
         }
       }
     }

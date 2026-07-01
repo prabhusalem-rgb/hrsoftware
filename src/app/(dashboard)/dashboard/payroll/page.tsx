@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calculator, Play, FileSpreadsheet, Download, Loader2, X, File, FileText, Clock, Lock, CheckCircle2 } from 'lucide-react';
+import { Calculator, Play, FileSpreadsheet, Download, Loader2, X, File, FileText, Clock, Lock, CheckCircle2, Search } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
@@ -71,9 +71,7 @@ export default function PayrollPage() {
   const attendanceData = (attendanceQuery.data ?? []) as any[];
   const loansQuery = useLoans(activeCompanyId);
   const loansData = (loansQuery.data ?? []) as any[];
-  const repaymentsQuery = useLoanRepayments(activeCompanyId);
-  const repaymentsData = (repaymentsQuery.data ?? []) as any[];
-  const { data: runsData, isLoading: runsLoading } = usePayrollRuns(activeCompanyId, { limit: 10 });
+  const { data: runsData, isLoading: runsLoading } = usePayrollRuns(activeCompanyId, { limit: 0 });
   const leavesQuery = useLeaves(activeCompanyId);
   const leavesData = (leavesQuery.data ?? []) as any[];
   const leaveTypesQuery = useLeaveTypes(activeCompanyId);
@@ -89,10 +87,13 @@ export default function PayrollPage() {
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [runsPage, setRunsPage] = useState(1);
   const [processing, setProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processMonth, setProcessMonth] = useState(new Date().getMonth() + 1);
   const [processYear, setProcessYear] = useState(new Date().getFullYear());
+  const repaymentsQuery = useLoanRepayments(activeCompanyId, processMonth, processYear);
+  const repaymentsData = (repaymentsQuery.data ?? []) as any[];
   const [finalDialog, setFinalDialog] = useState(false);
   const [finalEmpId, setFinalEmpId] = useState('');
   const [finalDate, setFinalDate] = useState('');
@@ -185,12 +186,21 @@ export default function PayrollPage() {
   const [rejoiningEmployee, setRejoiningEmployee] = useState<Employee | null>(null);
   // Cache for on-demand fetched employees (key: employee id, value: employee)
   const [employeeCache, setEmployeeCache] = useState<Record<string, Employee>>({});
+  const [empSearchQuery, setEmpSearchQuery] = useState('');
 
   // Conditional fetch for details when a run is selected
   const { data: selectedItemsData, isLoading: itemsLoading } = usePayrollItems(selectedRunId || '');
 
   const runs = runsData || [];
   const items = selectedItemsData || [];
+
+  const runsPerPage = 10;
+  const totalPages = Math.ceil(runs.length / runsPerPage);
+  const paginatedRuns = runs.slice((runsPage - 1) * runsPerPage, runsPage * runsPerPage);
+
+  useEffect(() => {
+    setRunsPage(1);
+  }, [activeCompanyId]);
 
   // Debug: when a run is selected, log its details
   useEffect(() => {
@@ -204,9 +214,6 @@ export default function PayrollPage() {
       })));
     }
   }, [selectedRunId, runs, items]);
-  const selectedItems = items;
-  const selectedRun = runs.find(r => r.id === selectedRunId);
-
   const getEmpName = (employeeId: string | undefined): string => {
     if (!employeeId) return 'Unknown';
     // Check cache first
@@ -218,6 +225,36 @@ export default function PayrollPage() {
     if (emp) return emp.name_en;
     return 'Unknown';
   };
+
+  const selectedItems = useMemo(() => {
+    const itemsWithNames = items.map(item => {
+      const name = getEmpName(item.employee_id) || '';
+      return { ...item, _empName: name };
+    });
+
+    const filtered = empSearchQuery
+      ? itemsWithNames.filter(item => item._empName.toLowerCase().includes(empSearchQuery.toLowerCase()))
+      : itemsWithNames;
+
+    return filtered.sort((a, b) => a._empName.localeCompare(b._empName));
+  }, [items, empSearchQuery, employees, employeeCache]);
+
+  const selectedRun = runs.find(r => r.id === selectedRunId);
+
+  const dialogStats = useMemo(() => {
+    if (!selectedRunId) return { totalBasic: 0, totalAllowance: 0, totalDeductions: 0, totalNet: 0, count: 0 };
+    const basic = selectedItems.reduce((s, i) => s + Number(i.basic_salary || 0), 0);
+    const allowance = selectedItems.reduce((s, i) => s + Number(i.housing_allowance || 0) + Number(i.transport_allowance || 0) + Number(i.food_allowance || 0) + Number(i.special_allowance || 0) + Number(i.site_allowance || 0) + Number(i.other_allowance || 0) + Number(i.overtime_pay || 0) + Number(i.eosb_amount || 0) + Number(i.leave_encashment || 0), 0);
+    const deductions = selectedItems.reduce((s, i) => s + Number(i.total_deductions || 0), 0);
+    const net = selectedItems.reduce((s, i) => s + Number(i.eosb_amount > 0 ? (i.final_total || i.net_salary || 0) : (i.net_salary || 0)), 0);
+    return {
+      totalBasic: basic,
+      totalAllowance: allowance,
+      totalDeductions: deductions,
+      totalNet: net,
+      count: selectedItems.length
+    };
+  }, [selectedItems, selectedRunId]);
 
   const openPayslip = async (item: PayrollItem) => {
     // First try to find in already loaded employees (case-insensitive)
@@ -259,6 +296,63 @@ export default function PayrollPage() {
     setPayslipOpen(true);
   };
 
+  const isAfterEndOfMonth = (dateStr: string | null | undefined): boolean => {
+    if (!dateStr) return false;
+    const parts = dateStr.split('-');
+    if (parts.length < 2) return false;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    if (isNaN(year) || isNaN(month)) return false;
+    
+    if (year > processYear) return true;
+    if (year < processYear) return false;
+    return month > processMonth;
+  };
+
+  const normalizeCat = (cat: string | null): string => {
+    if (!cat) return 'INDIRECT_STAFF';
+    const c = cat.toUpperCase();
+    if (['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF'].includes(c)) return c;
+    if (c === 'NATIONAL') return 'OMANI_INDIRECT_STAFF';
+    if (c === 'STAFF' || c === 'EXPAT') return 'INDIRECT_STAFF';
+    if (c === 'DIRECT_WORKER') return 'DIRECT_STAFF';
+    return 'INDIRECT_STAFF';
+  };
+
+  const isEmployeeEligible = (emp: any): boolean => {
+    if (processCategory !== 'all' && normalizeCat(emp.category) !== processCategory) {
+      return false;
+    }
+    if (emp.status === 'active' || emp.status === 'probation') {
+      if (isAfterEndOfMonth(emp.rejoin_date)) {
+        const hasSettledLeave = leavesData.some(l => 
+          l.employee_id === emp.id && 
+          l.status === 'approved' && 
+          l.settlement_status === 'settled' && 
+          !isAfterEndOfMonth(l.start_date)
+        );
+        if (hasSettledLeave) {
+          return false;
+        }
+      }
+      if (isAfterEndOfMonth(emp.join_date)) return false;
+      return true;
+    }
+    if (emp.status === 'on_leave' || emp.status === 'leave_settled') {
+      const empLeave = leavesData.find(l => l.employee_id === emp.id && l.status === 'approved' && l.settlement_status === 'settled');
+      if (empLeave) {
+        if (!isAfterEndOfMonth(empLeave.start_date)) {
+          return false;
+        }
+      }
+      return isAfterEndOfMonth(emp.leave_settlement_date);
+    }
+    if (emp.status === 'final_settled') {
+      return isAfterEndOfMonth(emp.termination_date);
+    }
+    return false;
+  };
+
   const handleProcessPayroll = async () => {
     // IMPORTANT: Refetch employees to ensure we have the latest status.
     // Employee status may have changed (e.g., to 'leave_settled') while the page was open
@@ -273,28 +367,8 @@ export default function PayrollPage() {
       toast.warning('Using cached employee data — may be outdated');
     }
 
-    // Filter employees by category and status
-    // Monthly payroll includes: active and probation employees.
-    // 'on_leave' and 'leave_settled' employees are excluded from payroll
-    // (they receive 0.100 OMR via the WPS vacation line instead).
-    // EXCLUDED: 'on_leave', 'leave_settled' (not yet rejoined) and 'final_settled' (terminated)
-    const eligibleStatuses = ['active', 'probation'];
-
-    const normalizeCat = (cat: string | null): string => {
-      if (!cat) return 'INDIRECT_STAFF';
-      const c = cat.toUpperCase();
-      if (['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF'].includes(c)) return c;
-      if (c === 'NATIONAL') return 'OMANI_INDIRECT_STAFF';
-      if (c === 'STAFF' || c === 'EXPAT') return 'INDIRECT_STAFF';
-      if (c === 'DIRECT_WORKER') return 'DIRECT_STAFF';
-      return 'INDIRECT_STAFF';
-    };
-
-    // Use the refetched employees data
-    let eligibleEmployees = (employeesQuery.data ?? []).filter(e =>
-      eligibleStatuses.includes(e.status) &&
-      (processCategory === 'all' || normalizeCat(e.category) === processCategory)
-    );
+    // Use the refetched employees data and filter by historical end-of-month eligibility
+    let eligibleEmployees = (employeesQuery.data ?? []).filter(isEmployeeEligible);
 
     // Exclude employees who already have a leave_settlement or final_settlement for this month/year
     // Data-driven check to prevent duplicate payments even if cached status is stale
@@ -317,7 +391,14 @@ export default function PayrollPage() {
         (settlementItems || []).map((s: any) => s.employee_id)
       );
 
-      eligibleEmployees = eligibleEmployees.filter(e => !settledEmployeeIds.has(e.id));
+      const currentMonthStr = `${processYear}-${String(processMonth).padStart(2, '0')}`;
+      eligibleEmployees = eligibleEmployees.filter(e => {
+        if (settledEmployeeIds.has(e.id)) {
+          // If they rejoined in the current month, do not exclude them
+          return !!(e.rejoin_date && e.rejoin_date.startsWith(currentMonthStr));
+        }
+        return true;
+      });
     }
 
     if (eligibleEmployees.length === 0) {
@@ -332,28 +413,68 @@ export default function PayrollPage() {
     setProcessing(true);
     setProcessingProgress(0);
     try {
-      // Monthly payroll includes active and probation employees
-      // on_leave employees are excluded (paid via WPS vacation line)
-      // leave_settled employees are excluded until they rejoin
-      const eligibleStatuses = ['active', 'probation'];
+      // Check for an existing run of the same month, year, type 'monthly', and category (stored in notes)
+      let runQuery = supabase
+        .from('payroll_runs')
+        .select('*')
+        .eq('company_id', activeCompanyId)
+        .eq('month', processMonth)
+        .eq('year', processYear)
+        .eq('type', 'monthly');
+
+      if (processCategory && processCategory !== 'all') {
+        runQuery = runQuery.eq('notes', `Category: ${processCategory}`);
+      } else {
+        runQuery = runQuery.or('notes.eq.,notes.is.null');
+      }
+
+      const { data: existingRuns, error: checkError } = await runQuery.limit(1);
+
+      if (checkError) {
+        throw new Error(checkError.message || 'Failed to check for existing payroll run');
+      }
+
+      const existingRun = existingRuns && existingRuns.length > 0 ? existingRuns[0] : null;
+      let targetRunId: string | undefined = undefined;
+      let targetCreatedAt: string | undefined = undefined;
+
+      if (existingRun) {
+        // If the existing run status is exported, check for super_admin permission
+        if (existingRun.status === 'exported') {
+          let role: string | null = null;
+          if (userId) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('id', userId)
+              .single();
+            role = profile?.role || null;
+          }
+          if (role !== 'super_admin' && role !== 'company_admin') {
+            toast.error('Payroll cannot be updated after it has been exported (WPS generated), unless you are a super_admin or company_admin.');
+            setProcessing(false);
+            return;
+          }
+        }
+
+        // Prompt user if they want to update existing run
+        const confirmed = window.confirm(
+          `An existing monthly payroll run for ${processMonth}/${processYear} already exists. Do you want to update it with the new data instead of creating a new run?`
+        );
+
+        if (!confirmed) {
+          setProcessing(false);
+          return;
+        }
+
+        targetRunId = existingRun.id;
+        targetCreatedAt = existingRun.created_at;
+      }
 
       // Use fresh data from the query (handleProcessPayroll already refetched)
       const currentEmployees = employeesQuery.data ?? [];
 
-      const normalizeCat = (cat: string | null): string => {
-        if (!cat) return 'INDIRECT_STAFF';
-        const c = cat.toUpperCase();
-        if (['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF'].includes(c)) return c;
-        if (c === 'NATIONAL') return 'OMANI_INDIRECT_STAFF';
-        if (c === 'STAFF' || c === 'EXPAT') return 'INDIRECT_STAFF';
-        if (c === 'DIRECT_WORKER') return 'DIRECT_STAFF';
-        return 'INDIRECT_STAFF';
-      };
-
-      const activeEmployees = currentEmployees.filter(e =>
-        eligibleStatuses.includes(e.status) &&
-        (processCategory === 'all' || normalizeCat(e.category) === processCategory)
-      );
+      const activeEmployees = currentEmployees.filter(isEmployeeEligible);
 
       // Exclude employees who already have a leave_settlement or final_settlement for this month/year
       // Fetch settlement run IDs for this month/year
@@ -378,8 +499,15 @@ export default function PayrollPage() {
           (settlementItems || []).map((s: any) => s.employee_id)
         );
 
-        // Filter out already-settled employees
-        eligibleEmployees = activeEmployees.filter(e => !settledEmployeeIds.has(e.id));
+        // Filter out already-settled employees, EXCEPT those who rejoined in the current month
+        const currentMonthStr = `${processYear}-${String(processMonth).padStart(2, '0')}`;
+        eligibleEmployees = activeEmployees.filter(e => {
+          if (settledEmployeeIds.has(e.id)) {
+            // Keep them if they rejoined in the current month
+            return !!(e.rejoin_date && e.rejoin_date.startsWith(currentMonthStr));
+          }
+          return true;
+        });
       }
 
       if (eligibleEmployees.length === 0) {
@@ -393,13 +521,13 @@ export default function PayrollPage() {
       }
 
       const workingDays = getWorkingDaysInMonth(processYear, processMonth);
-      const totalEmployees = activeEmployees.length;
+      const totalEmployees = eligibleEmployees.length;
       const newItems: any[] = [];
       const batchSize = 20;
 
       // Process in batches to allow UI updates
       for (let i = 0; i < totalEmployees; i += batchSize) {
-        const batch = activeEmployees.slice(i, i + batchSize);
+        const batch = eligibleEmployees.slice(i, i + batchSize);
         const batchItems = batch.map(emp => {
           const empAttendance = (attendanceData || []).filter(a => a.employee_id === emp.id && a.date.startsWith(`${processYear}-${String(processMonth).padStart(2, '0')}`));
           const empTimesheets = (timesheetsData || []).filter(ts => ts.employee_id === emp.id);
@@ -504,9 +632,13 @@ export default function PayrollPage() {
         total_employees: newItems.length,
         processed_by: userId || '00000000-0000-0000-0000-000000000000',
         notes: processCategory !== 'all' ? `Category: ${processCategory}` : '',
-        created_at: new Date().toISOString(),
+        created_at: targetCreatedAt || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
+
+      if (targetRunId) {
+        newRun.id = targetRunId;
+      }
 
       const runData = await processPayroll.mutateAsync({ run: newRun, items: newItems });
       setProcessingProgress(100);
@@ -656,8 +788,8 @@ export default function PayrollPage() {
         const employee = employeeMap.get(item.employee_id);
         if (!employee) continue;
         if (!isValidEmployee(employee)) continue;
-        // Exclude held/failed/processing
-        if (['held', 'failed', 'processing'].includes(item.payout_status)) continue;
+        // Exclude held/failed/processing/paid and globally held salary
+        if (['held', 'failed', 'processing', 'paid'].includes(item.payout_status) || employee.is_salary_held) continue;
         // Use wps_export_override if set, otherwise automatic calculation
         const overrideAmount = item.wps_export_override ?? null;
         const amounts = calculateExportAmounts(item, run.type, overrideAmount);
@@ -668,6 +800,26 @@ export default function PayrollPage() {
 
       const itemsToExport = exportEntries.map(e => e.item);
       const totalAmount = exportEntries.reduce((sum, e) => sum + (e.amounts?.effectiveNet || 0), 0);
+
+      // Fetch all payroll runs for this month/year to find already-included employees
+      const { data: monthRuns } = await supabase
+        .from('payroll_runs')
+        .select('id')
+        .eq('company_id', activeCompanyId)
+        .eq('month', run.month)
+        .eq('year', run.year);
+
+      const runIds = (monthRuns || []).map((r: any) => r.id);
+
+      let otherEmployeeIds = new Set<string>();
+      if (runIds.length > 0) {
+        const { data: monthItems } = await supabase
+          .from('payroll_items')
+          .select('employee_id')
+          .in('payroll_run_id', runIds);
+
+        otherEmployeeIds = new Set((monthItems || []).map((item: any) => item.employee_id));
+      }
 
       if (itemsToExport.length === 0) {
         toast.error('No selected employees are eligible for WPS export. Check hold/failed/fully-paid status or missing data.');
@@ -682,7 +834,8 @@ export default function PayrollPage() {
         itemsToExport,
         run.year,
         run.month,
-        run.type
+        run.type,
+        otherEmployeeIds
       );
       const sifContent = result.sifContent;
       const exportedAmounts = result.exportedAmounts;
@@ -782,7 +935,8 @@ export default function PayrollPage() {
         payrollRun: run,
         items: selectedItems,
         employees: employees,
-        period: format(new Date(run.year, run.month - 1), 'MMMM yyyy')
+        period: format(new Date(run.year, run.month - 1), 'MM/yyyy'),
+        leaves: leavesData
       };
 
       const blob = await generatePayrollExcel(reportData, {
@@ -837,7 +991,8 @@ export default function PayrollPage() {
         payrollRun: run,
         items: selectedItems,
         employees: employees,
-        period: format(new Date(run.year, run.month - 1), 'MMMM yyyy')
+        period: format(new Date(run.year, run.month - 1), 'MM/yyyy'),
+        leaves: leavesData
       };
 
       const { pdf } = await import('@react-pdf/renderer');
@@ -988,7 +1143,7 @@ export default function PayrollPage() {
                 employees={employees.filter(e => e.status === 'on_leave' || e.status === 'leave_settled')}
                 selectedId=""
                 onSelect={(id) => setRejoiningEmployee(employees.find(e => e.id === id) || null)}
-                placeholder="Select Employee to Record Rejoining..."
+                placeholder="Select Employee to Record/Edit Rejoining..."
                 className="border-emerald-100 bg-emerald-50/30 text-emerald-900"
               />
             </div>
@@ -1002,15 +1157,15 @@ export default function PayrollPage() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow><TableHead>Period</TableHead><TableHead>Type</TableHead><TableHead>Employees</TableHead><TableHead>Total (OMR)</TableHead><TableHead>Status</TableHead><TableHead className="text-right">View</TableHead></TableRow>
+              <TableRow><TableHead>Period</TableHead><TableHead>Type</TableHead><TableHead>Employees</TableHead><TableHead>Net Amount (OMR)</TableHead><TableHead>Status</TableHead><TableHead className="text-right">View</TableHead></TableRow>
             </TableHeader>
             <TableBody>
-              {runs.map((run) => {
+              {paginatedRuns.map((run) => {
                 const isLeaveSettlement = run.type === 'leave_settlement';
                 const isFinalSettlement = run.type === 'final_settlement';
                 return (
                 <TableRow key={run.id} className={selectedRunId === run.id ? 'bg-primary/5' : ''}>
-                  <TableCell className="font-medium">{format(new Date(run.year, run.month - 1), 'MMMM yyyy')}</TableCell>
+                  <TableCell className="font-medium">{format(new Date(run.year, run.month - 1), 'MM/yyyy')}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={
                       isLeaveSettlement ? 'border-amber-500 text-amber-700 bg-amber-50' :
@@ -1037,6 +1192,35 @@ export default function PayrollPage() {
             })}
             </TableBody>
           </Table>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-4">
+              <span className="text-xs text-slate-500 font-medium">
+                Showing {((runsPage - 1) * runsPerPage) + 1} to {Math.min(runsPage * runsPerPage, runs.length)} of {runs.length} runs
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRunsPage(p => Math.max(1, p - 1))}
+                  disabled={runsPage === 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-xs font-bold text-slate-700 px-2">
+                  Page {runsPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRunsPage(p => Math.min(totalPages, p + 1))}
+                  disabled={runsPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1048,7 +1232,7 @@ export default function PayrollPage() {
               <CardTitle className="text-base flex items-center gap-2">
                 <span>Payout Status</span>
                 <Badge variant="outline" className="text-[10px] uppercase">
-                  {format(new Date(selectedRun.year, selectedRun.month - 1), 'MMMM yyyy')}
+                  {format(new Date(selectedRun.year, selectedRun.month - 1), 'MM/yyyy')}
                 </Badge>
               </CardTitle>
               <Button
@@ -1121,31 +1305,53 @@ export default function PayrollPage() {
         </Card>
       )}
 
-      {/* Payroll Items Detail */}
-      {selectedRunId && (
-        <Card className={`border-0 shadow-sm ${selectedItems.length === 0 && !itemsLoading ? 'opacity-50' : ''}`}>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center justify-between">
-              <div className="flex-1 flex items-center justify-between">
-                <span>Payroll Details</span>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {selectedRunId && (
-                    <>
+      {/* Payroll Items Detail (Opens in Dialog/Sub-window) */}
+      <Dialog open={!!selectedRunId} onOpenChange={(open) => { if (!open) { setSelectedRunId(''); setEmpSearchQuery(''); } }}>
+        <DialogContent showCloseButton={true} className="max-w-[94vw] lg:max-w-[90vw] xl:max-w-[85vw] w-full h-[88vh] p-0 flex flex-col overflow-hidden bg-slate-50 border border-slate-200/60 shadow-2xl rounded-[24px]">
+          {selectedRunId && (
+            <div className="flex flex-col h-full">
+              {/* Header section with Actions */}
+              <div className="border-b border-slate-200/60 bg-white px-8 py-5 shrink-0">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Payroll Run Overview</span>
+                    <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                      {selectedRun && format(new Date(selectedRun.year, selectedRun.month - 1), 'MMMM yyyy')}
+                      <span className="ml-2.5 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary uppercase border border-primary/25">
+                        {selectedRun?.type.replace('_', ' ')}
+                      </span>
+                    </h2>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Search Field */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Search employee..."
+                        value={empSearchQuery}
+                        onChange={(e) => setEmpSearchQuery(e.target.value)}
+                        className="pl-9 h-9.5 rounded-xl border-slate-200 w-56 font-normal text-xs bg-slate-50 focus:bg-white focus:ring-primary/20 transition-all"
+                      />
+                    </div>
+
+                    {/* Export Actions */}
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleExportPayrollExcel('register')}
-                        className="gap-2 border-indigo-500/20 text-indigo-700 hover:bg-indigo-50"
+                        className="gap-2 border-slate-200 hover:border-indigo-200 text-indigo-700 hover:bg-indigo-50/50 rounded-xl h-9.5 font-semibold text-xs"
                       >
-                        <FileText className="w-4 h-4" /> Register Excel
+                        <FileText className="w-4 h-4 text-indigo-600" /> Register Excel
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleExportPayrollPDF('register')}
-                        className="gap-2 border-pink-500/20 text-pink-700 hover:bg-pink-50"
+                        className="gap-2 border-slate-200 hover:border-pink-200 text-pink-700 hover:bg-pink-50/50 rounded-xl h-9.5 font-semibold text-xs"
                       >
-                        <File className="w-4 h-4" /> Register PDF
+                        <File className="w-4 h-4 text-pink-600" /> Register PDF
                       </Button>
                       <Button
                         variant="outline"
@@ -1158,96 +1364,189 @@ export default function PayrollPage() {
                             toast.error('Payroll run not found');
                           }
                         }}
-                        className="gap-2 border-emerald-500/20 text-emerald-700 hover:bg-emerald-50"
+                        className="gap-2 border-slate-200 hover:border-emerald-200 text-emerald-700 hover:bg-emerald-50/50 rounded-xl h-9.5 font-semibold text-xs"
                       >
-                        <FileSpreadsheet className="w-4 h-4" /> WPS SIF
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> WPS SIF
                       </Button>
-                    </>
-                  )}
-                  {itemsLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+                    </div>
+
+                    {itemsLoading && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+                  </div>
                 </div>
               </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead><TableHead>Basic</TableHead><TableHead>Housing</TableHead>
-                  <TableHead>Transport</TableHead><TableHead>OT Hours</TableHead><TableHead>OT Pay</TableHead><TableHead>Gross</TableHead>
-                  <TableHead>Absent</TableHead><TableHead>Social Sec.</TableHead><TableHead>Leave Ded.</TableHead><TableHead>Loan Ded.</TableHead><TableHead>Total Ded.</TableHead>
-                  <TableHead>Net Salary</TableHead>
-                  {selectedItems.some(i => i.eosb_amount > 0) && <><TableHead>EOSB</TableHead><TableHead>Leave Encash</TableHead><TableHead>Final Total</TableHead></>}
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {selectedItems.map((item) => {
-                  // Debug: log item for Abdul Gani
-                  const empName = getEmpName(item.employee_id);
-                  if (empName?.toLowerCase().includes('abdul') || empName?.toLowerCase().includes('gani')) {
-                    console.log(`>>> TABLE RENDER for ${empName}:`, {
-                      overtime_hours: item.overtime_hours,
-                      overtime_pay: item.overtime_pay,
-                      gross_salary: item.gross_salary,
-                      net_salary: item.net_salary
-                    });
-                  }
 
-                  return (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium text-sm">{getEmpName(item.employee_id)}</TableCell>
-                    <TableCell>{Number(item.basic_salary).toFixed(3)}</TableCell>
-                    <TableCell>{Number(item.housing_allowance).toFixed(3)}</TableCell>
-                    <TableCell>{Number(item.transport_allowance).toFixed(3)}</TableCell>
-                    <TableCell className="font-medium text-emerald-600">{Number(item.overtime_hours).toFixed(1)} hrs</TableCell>
-                    <TableCell>{Number(item.overtime_pay).toFixed(3)}</TableCell>
-                    <TableCell className="font-medium">{Number(item.gross_salary).toFixed(3)}</TableCell>
-                    <TableCell>{item.absent_days > 0 ? <Badge className="bg-red-100 text-red-700 border-0">{item.absent_days}d</Badge> : '—'}</TableCell>
-                    <TableCell className="text-red-600">{item.social_security_deduction > 0 ? Number(item.social_security_deduction).toFixed(3) : '—'}</TableCell>
-                    <TableCell className="text-red-600">{item.leave_deduction > 0 ? Number(item.leave_deduction).toFixed(3) : '—'}</TableCell>
-                    <TableCell>{Number(item.loan_deduction).toFixed(3)}</TableCell>
-                    <TableCell>{Number(item.total_deductions).toFixed(3)}</TableCell>
-                    <TableCell className={`font-bold ${Number(item.net_salary) <= 0 ? 'text-red-600 bg-red-50' : 'text-primary'}`}>
-                      {Number(item.net_salary).toFixed(3)}
-                    </TableCell>
-                    {item.eosb_amount > 0 && <>
-                      <TableCell className="font-medium text-emerald-600">{Number(item.eosb_amount).toFixed(3)}</TableCell>
-                      <TableCell>{Number(item.leave_encashment).toFixed(3)}</TableCell>
-                      <TableCell className={`font-bold ${Number(item.final_total) <= 0 ? 'text-red-600 bg-red-50' : 'text-primary'}`}>
-                        {Number(item.final_total).toFixed(3)}
-                      </TableCell>
-                    </>}
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-8 hover:text-primary px-3 font-bold" onClick={() => openPayslip(item)}>
-                        Payslip
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );}
-              )}
-                <TableRow className="font-bold border-t-2 bg-slate-50/50">
-                  <TableCell>TOTAL</TableCell>
-                  <TableCell>{selectedItems.reduce((s, i) => s + Number(i.basic_salary), 0).toFixed(3)}</TableCell>
-                  <TableCell>{selectedItems.reduce((s, i) => s + Number(i.housing_allowance), 0).toFixed(3)}</TableCell>
-                  <TableCell>{selectedItems.reduce((s, i) => s + Number(i.transport_allowance), 0).toFixed(3)}</TableCell>
-                  <TableCell className="font-medium text-emerald-600">{selectedItems.reduce((s, i) => s + Number(i.overtime_hours), 0).toFixed(1)} hrs</TableCell>
-                  <TableCell>{selectedItems.reduce((s, i) => s + Number(i.overtime_pay), 0).toFixed(3)}</TableCell>
-                  <TableCell>{selectedItems.reduce((s, i) => s + Number(i.gross_salary), 0).toFixed(3)}</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="text-red-600">{selectedItems.reduce((s, i) => s + Number(i.social_security_deduction), 0).toFixed(3)}</TableCell>
-                  <TableCell className="text-red-600">{selectedItems.reduce((s, i) => s + Number(i.leave_deduction || 0), 0).toFixed(3)}</TableCell>
-                  <TableCell>{selectedItems.reduce((s, i) => s + Number(i.loan_deduction), 0).toFixed(3)}</TableCell>
-                  <TableCell>{selectedItems.reduce((s, i) => s + Number(i.total_deductions), 0).toFixed(3)}</TableCell>
-                  <TableCell className={`font-bold ${selectedItems.reduce((s, i) => s + Number(i.net_salary), 0) <= 0 ? 'text-red-600' : 'text-primary'}`}>
-                    {selectedItems.reduce((s, i) => s + Number(i.net_salary), 0).toFixed(3)}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+              {/* Statistics Overview Bar */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5 px-8 py-5 bg-slate-50 shrink-0 border-b border-slate-200/40">
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Staff Count</span>
+                  <span className="text-xl font-black text-slate-800 font-mono mt-1">{dialogStats.count}</span>
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Basic Salary</span>
+                  <span className="text-xl font-black text-slate-850 font-mono mt-1 text-slate-700">{dialogStats.totalBasic.toFixed(3)}</span>
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Allowances & OT</span>
+                  <span className="text-xl font-black text-emerald-600 font-mono mt-1">{dialogStats.totalAllowance.toFixed(3)}</span>
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Deductions</span>
+                  <span className="text-xl font-black text-red-500 font-mono mt-1">-{dialogStats.totalDeductions.toFixed(3)}</span>
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl border-2 border-primary/20 shadow-sm flex flex-col justify-between bg-gradient-to-br from-primary/5 to-white">
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Net Salary Distribution</span>
+                  <span className="text-xl font-black text-primary font-mono mt-1">{dialogStats.totalNet.toFixed(3)} OMR</span>
+                </div>
+              </div>
+
+              {/* Items Table Panel */}
+              <div className="flex-1 overflow-auto p-6 bg-white">
+                <div className="rounded-2xl border border-slate-200/60 overflow-x-auto shadow-sm">
+                  <Table className="min-w-full w-max lg:w-full">
+                    <TableHeader className="bg-slate-900 hover:bg-slate-900">
+                      <TableRow className="border-none hover:bg-slate-900">
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 pl-5 whitespace-nowrap">Employee</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Payout Status</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Basic</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Housing</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Transport</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">OT Hours</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">OT Pay</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Gross</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Absent</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Social Sec.</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Leave Ded.</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Loan Ded.</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Total Ded.</TableHead>
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Net Salary</TableHead>
+                        {selectedItems.some(i => i.eosb_amount > 0) && (
+                          <>
+                            <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">EOSB</TableHead>
+                            <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Leave Encash</TableHead>
+                            <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 whitespace-nowrap">Final Total</TableHead>
+                          </>
+                        )}
+                        <TableHead className="text-white font-bold text-xs uppercase tracking-wider h-11 py-3 text-right pr-5 whitespace-nowrap">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedItems.map((item) => {
+                        const status = (item.payout_status || 'pending').toLowerCase();
+                        return (
+                          <TableRow key={item.id} className="hover:bg-slate-50/70 border-b border-slate-100 transition-colors">
+                            {/* Employee Info */}
+                            <TableCell className="font-bold text-slate-800 text-sm py-4 pl-5 whitespace-nowrap">
+                              {getEmpName(item.employee_id)}
+                            </TableCell>
+
+                            {/* Payout Status Badge */}
+                            <TableCell className="py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
+                                status === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                status === 'held' ? 'bg-red-50 text-red-700 border border-red-200' :
+                                status === 'processing' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                'bg-slate-50 text-slate-600 border border-slate-200'
+                              }`}>
+                                {status === 'held' && <Lock className="w-2.5 h-2.5" />}
+                                {status === 'paid' && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />}
+                                {status === 'processing' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                {status === 'pending' && <Clock className="w-2.5 h-2.5 text-slate-500" />}
+                                {status}
+                              </span>
+                            </TableCell>
+
+                            <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">{Number(item.basic_salary).toFixed(3)}</TableCell>
+                            <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">{Number(item.housing_allowance).toFixed(3)}</TableCell>
+                            <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">{Number(item.transport_allowance).toFixed(3)}</TableCell>
+                            <TableCell className="font-mono text-xs font-semibold text-emerald-600 whitespace-nowrap">
+                              {Number(item.overtime_hours) > 0 ? `${Number(item.overtime_hours).toFixed(1)} hrs` : '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">
+                              {Number(item.overtime_pay) > 0 ? Number(item.overtime_pay).toFixed(3) : '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs font-bold text-slate-700 whitespace-nowrap">{Number(item.gross_salary).toFixed(3)}</TableCell>
+                            <TableCell className="py-4 whitespace-nowrap">
+                              {item.absent_days > 0 ? (
+                                <Badge className="bg-red-50 text-red-650 border border-red-100 shadow-none font-bold text-[10px]">
+                                  {item.absent_days}d
+                                </Badge>
+                              ) : '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-red-500 whitespace-nowrap">
+                              {item.social_security_deduction > 0 ? `-${Number(item.social_security_deduction).toFixed(3)}` : '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-red-500 whitespace-nowrap">
+                              {item.leave_deduction > 0 ? `-${Number(item.leave_deduction).toFixed(3)}` : '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">
+                              {item.loan_deduction > 0 ? `-${Number(item.loan_deduction).toFixed(3)}` : '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-red-500 whitespace-nowrap">
+                              {item.total_deductions > 0 ? `-${Number(item.total_deductions).toFixed(3)}` : '—'}
+                            </TableCell>
+                            <TableCell className={`font-mono text-xs font-extrabold whitespace-nowrap ${Number(item.net_salary) <= 0 ? 'text-red-600 bg-red-50/50 px-1 py-0.5 rounded' : 'text-primary'}`}>
+                              {Number(item.net_salary).toFixed(3)}
+                            </TableCell>
+                            
+                            {item.eosb_amount > 0 && (
+                              <>
+                                <TableCell className="font-mono text-xs font-semibold text-emerald-650 whitespace-nowrap">{Number(item.eosb_amount).toFixed(3)}</TableCell>
+                                <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">{Number(item.leave_encashment).toFixed(3)}</TableCell>
+                                <TableCell className="font-mono text-xs font-bold text-primary whitespace-nowrap">{Number(item.final_total).toFixed(3)}</TableCell>
+                              </>
+                            )}
+                            
+                            <TableCell className="text-right pr-5 py-4 whitespace-nowrap">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 hover:bg-primary hover:text-white border-primary/20 text-primary font-bold text-xs rounded-lg transition-all"
+                                onClick={() => openPayslip(item)}
+                              >
+                                Payslip
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      
+                      {/* Summary Totals Row */}
+                      <TableRow className="font-extrabold bg-slate-50 border-t-2 border-slate-355 hover:bg-slate-50">
+                        <TableCell className="text-slate-900 text-xs py-4 pl-5 whitespace-nowrap">TOTAL SUMMARY</TableCell>
+                        <TableCell></TableCell>
+                        <TableCell className="font-mono text-xs text-slate-800 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.basic_salary), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-800 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.housing_allowance), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-800 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.transport_allowance), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs text-emerald-600 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.overtime_hours), 0).toFixed(1)} hrs</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-800 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.overtime_pay), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-900 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.gross_salary), 0).toFixed(3)}</TableCell>
+                        <TableCell></TableCell>
+                        <TableCell className="font-mono text-xs text-red-655 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.social_security_deduction), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs text-red-655 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.leave_deduction || 0), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-800 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.loan_deduction), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs text-red-655 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.total_deductions), 0).toFixed(3)}</TableCell>
+                        <TableCell className="font-mono text-xs font-black text-primary text-sm whitespace-nowrap">
+                          {selectedItems.reduce((s, i) => s + Number(i.net_salary), 0).toFixed(3)}
+                        </TableCell>
+                        {selectedItems.some(i => i.eosb_amount > 0) && (
+                          <>
+                            <TableCell className="font-mono text-xs text-emerald-600 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.eosb_amount || 0), 0).toFixed(3)}</TableCell>
+                            <TableCell className="font-mono text-xs text-slate-800 whitespace-nowrap">{selectedItems.reduce((s, i) => s + Number(i.leave_encashment || 0), 0).toFixed(3)}</TableCell>
+                            <TableCell className="font-mono text-xs font-black text-primary text-sm whitespace-nowrap">
+                              {selectedItems.reduce((s, i) => s + Number(i.final_total || 0), 0).toFixed(3)}
+                            </TableCell>
+                          </>
+                        )}
+                        <TableCell></TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Wizards */}
       <LeaveSettlementWizard
@@ -1278,10 +1577,10 @@ export default function PayrollPage() {
       <PayslipModal
         isOpen={payslipOpen}
         onClose={() => setPayslipOpen(false)}
-        item={selectedItem}
+        item={items.find(i => i.id === selectedItem?.id) || selectedItem}
         employee={selectedEmployee}
         company={activeCompany!}
-        period={selectedRun ? format(new Date(selectedRun.year, selectedRun.month - 1), 'MMMM yyyy') : ''}
+        period={selectedRun ? format(new Date(selectedRun.year, selectedRun.month - 1), 'MM/yyyy') : ''}
         type={selectedRun?.type}
       />
 

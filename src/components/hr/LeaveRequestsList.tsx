@@ -60,7 +60,7 @@ export function LeaveRequestsList({ companyId }: LeaveRequestsListProps) {
                 </Badge>
               </TableCell>
               <TableCell className="text-sm">
-                {format(new Date(request.start_date), 'dd MMM yyyy')} → {format(new Date(request.end_date), 'dd MMM yyyy')}
+                {format(new Date(request.start_date), 'dd/MM/yyyy')} → {format(new Date(request.end_date), 'dd/MM/yyyy')}
               </TableCell>
               <TableCell className="font-mono font-bold">{request.days}</TableCell>
               <TableCell>

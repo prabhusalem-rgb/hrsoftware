@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -240,7 +241,7 @@ export default function SettlementHistoryPage() {
     const csv = [
       ['Date', 'Employee Code', 'Employee Name', 'Reason', 'Net Total', 'Processed By'],
       ...processedHistory.map((entry) => [
-        format(new Date(entry.processedAt), 'yyyy-MM-dd'),
+        format(new Date(entry.processedAt), 'dd/MM/yyyy'),
         entry.employeeCode,
         entry.employeeName,
         entry.reason,
@@ -341,31 +342,33 @@ export default function SettlementHistoryPage() {
         {/* Date From */}
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-muted-foreground" />
-          <Input
-            type="date"
-            placeholder="From"
-            value={dateFrom}
-            onChange={(e) => {
-              setDateFrom(e.target.value);
-              setPage(1);
-            }}
-            className="w-auto h-9"
-          />
+          <div className="w-[140px]">
+            <DatePickerInput
+              placeholder="From"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
+              className="h-9 w-full"
+            />
+          </div>
         </div>
 
         {/* Date To */}
         <div className="flex items-center gap-2">
           <CalendarRange className="w-4 h-4 text-muted-foreground" />
-          <Input
-            type="date"
-            placeholder="To"
-            value={dateTo}
-            onChange={(e) => {
-              setDateTo(e.target.value);
-              setPage(1);
-            }}
-            className="w-auto h-9"
-          />
+          <div className="w-[140px]">
+            <DatePickerInput
+              placeholder="To"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setPage(1);
+              }}
+              className="h-9 w-full"
+            />
+          </div>
         </div>
 
         {/* Amount Range */}
@@ -542,7 +545,7 @@ export default function SettlementHistoryPage() {
                     />
                   </TableCell>
                   <TableCell className="font-mono text-sm">
-                    {format(new Date(entry.processedAt), 'dd MMM yyyy')}
+                    {format(new Date(entry.processedAt), 'dd/MM/yyyy')}
                   </TableCell>
                   <TableCell className="font-medium">{entry.employeeName}</TableCell>
                   <TableCell>

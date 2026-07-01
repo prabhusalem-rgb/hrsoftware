@@ -25,17 +25,17 @@ interface LoanScheduleWithLoan {
   };
 }
 
-export function useLoanRepayments(companyId: string) {
+export function useLoanRepayments(companyId: string, month?: number, year?: number) {
   const supabase = createClient();
 
   return useQuery({
-    queryKey: ['loan_repayments', companyId],
+    queryKey: ['loan_repayments', companyId, month, year],
     queryFn: async (): Promise<LoanRepayment[]> => {
       if (!supabase || !companyId) {
         return [];
       }
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('loan_schedule')
         .select(`
           id,
@@ -57,23 +57,36 @@ export function useLoanRepayments(companyId: string) {
           )
         `)
         .eq('loan.employee.company_id', companyId)
-        .in('status', ['scheduled', 'pending'])
         .eq('is_held', false);
+
+      if (month && year) {
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        query = query.or(`status.in.(scheduled,pending),and(status.eq.paid,due_date.gte.${startDate},due_date.lte.${endDate})`);
+      } else {
+        query = query.in('status', ['scheduled', 'pending']);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw new Error(error.message || 'Failed to fetch loan schedule');
 
       const scheduleData = data as LoanScheduleWithLoan[];
 
-      return scheduleData.map(item => ({
-        id: item.id,
-        loan_id: item.loan_id,
-        month: new Date(item.due_date).getMonth() + 1,
-        year: new Date(item.due_date).getFullYear(),
-        amount: item.total_due,
-        is_held: item.is_held,
-        paid_at: item.paid_date,
-        created_at: item.created_at,
-      }));
+      return scheduleData.map(item => {
+        const [yearStr, monthStr] = item.due_date.split('-');
+        return {
+          id: item.id,
+          loan_id: item.loan_id,
+          month: parseInt(monthStr, 10),
+          year: parseInt(yearStr, 10),
+          amount: item.total_due,
+          is_held: item.is_held,
+          paid_at: item.paid_date,
+          created_at: item.created_at,
+        };
+      });
     },
     enabled: !!companyId,
   });

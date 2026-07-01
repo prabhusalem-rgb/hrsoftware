@@ -14,8 +14,7 @@ export async function POST(req: Request) {
     // Read all migration SQL files
     const fs = await import('fs');
     const path = await import('path');
-    const __dirname = path.dirname(new URL(import.meta.url).pathname);
-    const migrationsDir = path.join(__dirname, '../../supabase/migrations');
+    const migrationsDir = path.join(process.cwd(), 'supabase/migrations');
 
     const files = fs.readdirSync(migrationsDir)
       .filter(f => f.endsWith('.sql') && parseInt(f) >= 70)

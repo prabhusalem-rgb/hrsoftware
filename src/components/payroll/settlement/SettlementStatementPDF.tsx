@@ -26,8 +26,27 @@ export function SettlementStatementPDF({
 }: SettlementStatementPDFProps) {
   const { company, employee, settlement } = data;
 
+  const hasIndividualAllowances =
+    (settlement.basic_salary && settlement.basic_salary > 0) ||
+    (settlement.housing_allowance && settlement.housing_allowance > 0) ||
+    (settlement.transport_allowance && settlement.transport_allowance > 0) ||
+    (settlement.other_allowance && settlement.other_allowance > 0) ||
+    (settlement.food_allowance && settlement.food_allowance > 0) ||
+    (settlement.special_allowance && settlement.special_allowance > 0) ||
+    (settlement.site_allowance && settlement.site_allowance > 0);
+
   const earnings = [
-    { label: 'Basic Salary (Pro-Rata)',           amount: settlement.final_month_salary },
+    ...(hasIndividualAllowances
+      ? [
+          ...(settlement.basic_salary && settlement.basic_salary > 0 ? [{ label: 'Basic Salary (Pro-Rata)', amount: settlement.basic_salary }] : []),
+          ...(settlement.housing_allowance && settlement.housing_allowance > 0 ? [{ label: 'Housing Allowance (Pro-Rata)', amount: settlement.housing_allowance }] : []),
+          ...(settlement.transport_allowance && settlement.transport_allowance > 0 ? [{ label: 'Transport Allowance (Pro-Rata)', amount: settlement.transport_allowance }] : []),
+          ...(settlement.food_allowance && settlement.food_allowance > 0 ? [{ label: 'Food Allowance (Pro-Rata)', amount: settlement.food_allowance }] : []),
+          ...(settlement.special_allowance && settlement.special_allowance > 0 ? [{ label: 'Special Allowance (Pro-Rata)', amount: settlement.special_allowance }] : []),
+          ...(settlement.site_allowance && settlement.site_allowance > 0 ? [{ label: 'Site Allowance (Pro-Rata)', amount: settlement.site_allowance }] : []),
+          ...(settlement.other_allowance && settlement.other_allowance > 0 ? [{ label: 'Other Allowance (Pro-Rata)', amount: settlement.other_allowance }] : []),
+        ]
+      : [{ label: 'Salary (Pro-Rata)', amount: settlement.final_month_salary }]),
     { label: `Leave Encashment (${settlement.leave_days}d)`, amount: settlement.leave_encashment },
     { label: 'End of Service Gratuity (EOSB)',    amount: settlement.eosb_amount },
     ...(settlement.other_additions || []),
@@ -141,7 +160,7 @@ export function SettlementStatementPDF({
             </View>
             <View style={s.headerRight}>
               <Text style={s.dateLabel}>Statement Date</Text>
-              <Text style={s.dateVal}>{format(new Date(), 'dd MMMM yyyy')}</Text>
+              <Text style={s.dateVal}>{format(new Date(), 'dd/MM/yyyy')}</Text>
             </View>
           </View>
 
@@ -166,8 +185,8 @@ export function SettlementStatementPDF({
             </View>
             {/* Row 2 */}
             <View style={s.infoRow}>
-              <InfoCell label="Joining Date"      value={format(new Date(employee.join_date), 'dd MMM yyyy')} />
-              <InfoCell label="Termination Date"  value={format(new Date(settlement.settlement_date), 'dd MMM yyyy')} last />
+              <InfoCell label="Joining Date"      value={format(new Date(employee.join_date), 'dd/MM/yyyy')} />
+              <InfoCell label="Termination Date"  value={format(new Date(settlement.settlement_date), 'dd/MM/yyyy')} last />
             </View>
             {/* Row 3 */}
             <View style={[s.infoRow, s.infoRowLast]}>
@@ -310,7 +329,7 @@ export function SettlementStatementPDF({
           <View style={s.footer}>
             <Text style={s.footerText}>End of Service Settlement — Confidential</Text>
             <Text style={s.footerText}>
-              Generated: {format(new Date(), 'dd MMM yyyy')}
+              Generated: {format(new Date(), 'dd/MM/yyyy')}
             </Text>
           </View>
 

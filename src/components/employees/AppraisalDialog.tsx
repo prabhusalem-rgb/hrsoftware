@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -186,15 +187,11 @@ export function AppraisalDialog({ isOpen, onClose, employee }: AppraisalDialogPr
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-200">
               <div className="space-y-2">
                 <Label className="text-xs font-black uppercase text-slate-400">Effective Date</Label>
-                <div className="relative">
-                  <Input
-                    type="date"
-                    value={formData.effective_date}
-                    onChange={(e) => setFormData({...formData, effective_date: e.target.value})}
-                    className="font-bold cursor-pointer h-11 rounded-xl"
-                  />
-                  <CalendarDays className="absolute right-3 top-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
+                <DatePickerInput
+                  value={formData.effective_date}
+                  onChange={(e) => setFormData({...formData, effective_date: e.target.value})}
+                  className="font-bold h-11 rounded-xl"
+                />
               </div>
 
               <div className="space-y-2">

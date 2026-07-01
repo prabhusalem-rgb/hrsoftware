@@ -62,5 +62,4 @@ export const createBrowserClient = mockSupabaseClient;
 // createClient mock (used in server.ts and admin.ts)
 export const createClient = mockSupabaseClient;
 
-// Named export for module import
-export { mockSupabaseClient as createClient as default };
+export default mockSupabaseClient;
