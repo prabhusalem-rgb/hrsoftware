@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmployeePicker } from '@/components/employees/EmployeePicker';
@@ -59,6 +60,7 @@ export function LeaveForm({ companyId, employees }: LeaveFormProps) {
     handleSubmit,
     setValue,
     watch,
+    control,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -251,22 +253,34 @@ export function LeaveForm({ companyId, employees }: LeaveFormProps) {
               </Select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-slate-700">Start Date</Label>
-                <Input
-                  type="date"
-                  {...register('startDate')}
-                  className={cn("h-12 rounded-xl", errors.startDate && "border-red-500 focus:ring-red-500")}
+                <Controller
+                  control={control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <DatePickerInput
+                      value={field.value}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      className={cn("h-12 rounded-xl", errors.startDate && "border-red-500 focus:ring-red-500")}
+                    />
+                  )}
                 />
                 {errors.startDate && <p className="text-sm text-red-500">{errors.startDate.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-slate-700">End Date</Label>
-                <Input
-                  type="date"
-                  {...register('endDate')}
-                  className={cn("h-12 rounded-xl", errors.endDate && "border-red-500 focus:ring-red-500")}
+                <Controller
+                  control={control}
+                  name="endDate"
+                  render={({ field }) => (
+                    <DatePickerInput
+                      value={field.value}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      className={cn("h-12 rounded-xl", errors.endDate && "border-red-500 focus:ring-red-500")}
+                    />
+                  )}
                 />
                 {errors.endDate && <p className="text-sm text-red-500">{errors.endDate.message}</p>}
               </div>

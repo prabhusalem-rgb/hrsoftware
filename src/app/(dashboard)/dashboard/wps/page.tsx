@@ -56,6 +56,7 @@ export default function WPSPage() {
 
   const [selectedRunId, setSelectedRunId] = useState('');
   const [preview, setPreview] = useState('');
+  const [previewFileName, setPreviewFileName] = useState('');
 
   // Conditional fetch for payroll items when a run is selected
   const payrollItemsQuery = usePayrollItems(selectedRunId || '');
@@ -64,7 +65,7 @@ export default function WPSPage() {
   const completedRuns = payrollRuns.filter(r => r.status === 'completed' || r.status === 'exported');
   const filteredExports = wpsExports;
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (mode: 'salary_only' | 'vacation_only') => {
     if (!selectedRunId) {
       toast.error('No payroll run selected');
       return;
@@ -87,21 +88,24 @@ export default function WPSPage() {
 
     if (!activeCompany) { toast.error('Company profile not found'); return; }
 
-    if (runItems.length === 0) { toast.error('No payroll records found for this run'); return; }
+    if (runItems.length === 0 && mode !== 'vacation_only') {
+      toast.error('No payroll records found for this run');
+      return;
+    }
 
     const employeeMap = new Map(freshEmployees.map(e => [e.id, e]));
 
     // Determine exportable items with partial payment support
     // Include: pending items, and 'paid' items where paid_amount < net_salary (partial remaining)
     // Exclude: held, failed, processing, and fully paid
-    const exportItemsWithAmounts = runItems
+    const exportItemsWithAmounts = mode === 'vacation_only' ? [] : runItems
       .map(item => {
         const employee = employeeMap.get(item.employee_id);
         if (!employee) return null;
         if (!isValidEmployee(employee)) return null;
-        // Exclude certain statuses
+        // Exclude certain statuses: held, failed, processing, paid, and globally held salary
         const status = item.payout_status;
-        if (['held', 'failed', 'processing'].includes(status)) return null;
+        if (['held', 'failed', 'processing', 'paid'].includes(status) || employee.is_salary_held) return null;
         // Calculate export amounts — respect wps_export_override if set
         const overrideAmount = item.wps_export_override ?? null;
         const amounts = calculateExportAmounts(item, run.type as PayrollRunType, overrideAmount);
@@ -110,18 +114,24 @@ export default function WPSPage() {
       .filter(Boolean) as Array<{ item: PayrollItem; employee: Employee; amounts: ReturnType<typeof calculateExportAmounts> }>;
 
     const itemsToExport = exportItemsWithAmounts.map(e => e.item);
-    const totalAmount = exportItemsWithAmounts.reduce((sum, { amounts }) => sum + (amounts?.effectiveNet || 0), 0);
 
-    if (itemsToExport.length === 0) {
-      toast.error('No employees are ready for payout. All items are held, failed, fully paid, or lack required data.');
-      return;
-    }
-
-    // Validation for Bank Muscat WPS requirements
-    if (!activeCompany.cr_number) { toast.error('Company CR Number is missing'); return; }
-    if (!activeCompany.iban) { toast.error('Company Payment IBAN is missing'); return; }
-
-    const runEmployees = freshEmployees.filter(e => itemsToExport.some(i => i.employee_id === e.id));
+    const includedEmployeeIds = new Set(itemsToExport.map(i => i.employee_id));
+    const runEmployees = freshEmployees.filter(employee => {
+      if (mode === 'salary_only') {
+        return includedEmployeeIds.has(employee.id);
+      } else {
+        if (!['on_leave', 'leave_settled'].includes(employee.status)) return false;
+        if (includedEmployeeIds.has(employee.id)) return false;
+        const isSameMonth = (dateStr: string | null | undefined, yr: number, mo: number): boolean => {
+          if (!dateStr) return false;
+          const d = new Date(dateStr);
+          return d.getFullYear() === yr && d.getMonth() + 1 === mo;
+        };
+        if (isSameMonth(employee.leave_settlement_date, run.year, run.month)) return false;
+        if (isSameMonth(employee.rejoin_date, run.year, run.month)) return false;
+        return true;
+      }
+    });
 
     const missingID = runEmployees.filter(e => !e.civil_id && !e.passport_no);
     if (missingID.length > 0) {
@@ -135,10 +145,28 @@ export default function WPSPage() {
       return;
     }
 
-    // Generate SIF using only the exportable items
-    const result = generateWPSSIF(activeCompany, freshEmployees, itemsToExport, run.year, run.month, run.type as PayrollRunType);
+    // Generate SIF using the selected mode
+    let result;
+    try {
+      result = generateWPSSIF(
+        activeCompany,
+        freshEmployees,
+        itemsToExport,
+        run.year,
+        run.month,
+        run.type as PayrollRunType,
+        undefined,
+        mode
+      );
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to generate WPS file');
+      return;
+    }
+
     const sifContent = result.sifContent;
     const exportedAmounts = result.exportedAmounts;
+    const recordCount = exportedAmounts.size;
+    const totalAmount = Array.from(exportedAmounts.values()).reduce((sum, val) => sum + val, 0);
 
     // Calculate next sequence number for today
     const today = new Date().toISOString().slice(0, 10);
@@ -157,21 +185,23 @@ export default function WPSPage() {
     const fileName = generateWPSFileName(activeCompany.cr_number, 'BMCT', new Date(), nextSequence);
 
     setPreview(sifContent);
+    setPreviewFileName(fileName);
 
     const newExport = {
       payroll_run_id: run.id,
       file_name: fileName,
       file_type: run.type as PayrollRunType,
-      record_count: itemsToExport.length,
+      record_count: recordCount,
       total_amount: totalAmount,
       exported_by: userId || '00000000-0000-0000-0000-000000000000',
       exported_at: new Date().toISOString(),
     };
 
     // Pass item IDs and exported amounts so mutation can mark items as 'paid' with correct amounts
+    // For vacation mode, we pass empty item_ids array so regular items are not modified
     await createWPSExport.mutateAsync({
       exportData: newExport,
-      item_ids: itemsToExport.map(i => i.id),
+      item_ids: mode === 'vacation_only' ? [] : itemsToExport.map(i => i.id),
       exported_amounts: Object.fromEntries(exportedAmounts),
     });
     toast.success(`WPS file generated: ${fileName}`);
@@ -185,14 +215,14 @@ export default function WPSPage() {
     );
   }
 
-  const handleDownload = (content?: string) => {
+  const handleDownload = (content?: string, fileName?: string) => {
     const data = content || preview;
     if (!data) { toast.error('No file to download'); return; }
     const blob = new Blob([data], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filteredExports[0]?.file_name || 'wps_file.csv';
+    a.download = fileName || previewFileName || filteredExports[0]?.file_name || 'wps_file.csv';
     a.click();
     URL.revokeObjectURL(url);
     toast.success('File downloaded');
@@ -217,7 +247,7 @@ export default function WPSPage() {
                     {completedRuns.find(r => (r.id || '').trim() === (selectedRunId || '').trim())
                       ? (() => {
                           const run = completedRuns.find(r => (r.id || '').trim() === (selectedRunId || '').trim());
-                          return run ? `${format(new Date(run.year, run.month - 1), 'MMMM yyyy')} (${run.type.replace('_', ' ')})` : 'Choose a completed payroll run';
+                          return run ? `${format(new Date(run.year, run.month - 1), 'MM/yyyy')} (${run.type.replace('_', ' ')})` : 'Choose a completed payroll run';
                         })()
                       : 'Choose a completed payroll run'}
                   </SelectValue>
@@ -225,15 +255,20 @@ export default function WPSPage() {
                 <SelectContent>
                   {completedRuns.map(run => (
                     <SelectItem key={run.id} value={run.id}>
-                      {format(new Date(run.year, run.month - 1), 'MMMM yyyy')} — {run.type.replace('_', ' ')} ({Number(run.total_amount).toFixed(3)} OMR)
+                      {format(new Date(run.year, run.month - 1), 'MM/yyyy')} — {run.type.replace('_', ' ')} ({Number(run.total_amount).toFixed(3)} OMR)
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleGenerate} className="gap-2" disabled={!selectedRunId}>
-              <FileSpreadsheet className="w-4 h-4" /> Generate WPS File
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => handleGenerate('salary_only')} className="gap-2" disabled={!selectedRunId}>
+                <FileSpreadsheet className="w-4 h-4" /> Generate Main WPS File
+              </Button>
+              <Button onClick={() => handleGenerate('vacation_only')} variant="outline" className="gap-2" disabled={!selectedRunId}>
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Generate Vacation WPS File
+              </Button>
+            </div>
             {preview && (
               <Button variant="outline" onClick={() => handleDownload()} className="gap-2">
                 <Download className="w-4 h-4" /> Download CSV
@@ -288,7 +323,7 @@ export default function WPSPage() {
                   <TableCell className="font-medium">{Number(exp.total_amount).toFixed(3)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(exp.exported_at).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleDownload()}>
+                    <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleDownload(undefined, exp.file_name)}>
                       <Download className="w-3.5 h-3.5" /> Download
                     </Button>
                   </TableCell>

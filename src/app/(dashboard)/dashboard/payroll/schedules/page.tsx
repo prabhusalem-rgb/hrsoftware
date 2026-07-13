@@ -189,7 +189,7 @@ export default function PayoutSchedulesPage() {
     const next = new Date(schedule.next_run_date);
     if (next < new Date()) return 'Overdue';
     const days = Math.ceil((next.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    return `${format(next, 'MMM dd, yyyy')} (in ${days} days)`;
+    return `${format(next, 'dd/MM/yyyy')} (in ${days} days)`;
   };
 
   if (isLoading) {

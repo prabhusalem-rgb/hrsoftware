@@ -25,31 +25,33 @@ export function useWPSMutations(companyId: string) {
         .eq('id', exportData.payroll_run_id);
 
       // Mark payroll items as 'paid' with the actual exported amount
-      if (item_ids && item_ids.length > 0) {
-        const updates = item_ids.map(id => {
-          const paidAmount = exported_amounts?.[id] ?? null;
-          return {
-            id,
-            payout_status: 'paid' as const,
-            paid_amount: paidAmount,
-            wps_export_override: null,
-            payout_date: new Date().toISOString(),
-          };
-        });
+      if (item_ids !== undefined) {
+        if (item_ids.length > 0) {
+          const updates = item_ids.map(id => {
+            const paidAmount = exported_amounts?.[id] ?? null;
+            return {
+              id,
+              payout_status: 'paid' as const,
+              paid_amount: paidAmount,
+              wps_export_override: null,
+              payout_date: new Date().toISOString(),
+            };
+          });
 
-        for (const update of updates) {
-          const { error: itemError } = await supabase
-            .from('payroll_items')
-            .update({
-              payout_status: update.payout_status,
-              paid_amount: update.paid_amount,
-              wps_export_override: update.wps_export_override,
-              payout_date: update.payout_date,
-            })
-            .eq('id', update.id);
+          for (const update of updates) {
+            const { error: itemError } = await supabase
+              .from('payroll_items')
+              .update({
+                payout_status: update.payout_status,
+                paid_amount: update.paid_amount,
+                wps_export_override: update.wps_export_override,
+                payout_date: update.payout_date,
+              })
+              .eq('id', update.id);
 
-          if (itemError) {
-            console.error(`Failed to update item ${update.id}:`, itemError);
+            if (itemError) {
+              console.error(`Failed to update item ${update.id}:`, itemError);
+            }
           }
         }
       } else {

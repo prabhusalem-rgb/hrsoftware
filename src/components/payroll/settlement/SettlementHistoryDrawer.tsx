@@ -138,7 +138,7 @@ export function SettlementHistoryDrawer({
                       aria-selected={selectedEntry?.id === entry.id}
                     >
                       <TableCell>
-                        {format(new Date(entry.processedAt), 'dd MMM yyyy')}
+                        {format(new Date(entry.processedAt), 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -165,7 +165,7 @@ export function SettlementHistoryDrawer({
                             e.stopPropagation();
                             setSelectedEntry(entry);
                           }}
-                          aria-label={`View details for settlement on ${format(new Date(entry.processedAt), 'dd MMM yyyy')}`}
+                          aria-label={`View details for settlement on ${format(new Date(entry.processedAt), 'dd/MM/yyyy')}`}
                         >
                           <Eye className="w-4 h-4" aria-hidden="true" />
                         </Button>
@@ -192,7 +192,7 @@ export function SettlementHistoryDrawer({
                   <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
-                      {format(new Date(selectedEntry.processedAt), 'dd MMM yyyy')}
+                      {format(new Date(selectedEntry.processedAt), 'dd/MM/yyyy')}
                     </span>
                     <span className="flex items-center gap-1">
                       <User className="w-4 h-4" />

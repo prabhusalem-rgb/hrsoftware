@@ -85,6 +85,11 @@ export function PayslipPDF({
 
   const formatOMR = (val: number) => Number(val || 0).toFixed(3);
 
+  const ratio = Number(employee.basic_salary) > 0 ? Number(item.basic_salary) / Number(employee.basic_salary) : 1.0;
+  const contractualOtherFull = Number(employee.other_allowance || 0);
+  const contractualOtherActual = Math.round(contractualOtherFull * ratio * 1000) / 1000;
+  const tempOtherActual = Math.round(Math.max(0, Number(item.other_allowance || 0) - contractualOtherActual) * 1000) / 1000;
+
   const earnings = [
     { label: 'BASIC SALARY', full: employee.basic_salary, actual: item.basic_salary },
     { label: 'HOUSING ALLOWANCE', full: employee.housing_allowance, actual: item.housing_allowance },
@@ -92,7 +97,16 @@ export function PayslipPDF({
     { label: 'FOOD ALLOWANCE', full: employee.food_allowance || 0, actual: item.food_allowance || 0 },
     { label: 'SPECIAL ALLOWANCE', full: employee.special_allowance || 0, actual: item.special_allowance || 0 },
     { label: 'SITE ALLOWANCE', full: employee.site_allowance || 0, actual: item.site_allowance || 0 },
-    { label: 'OTHER ALLOWANCE', full: employee.other_allowance || 0, actual: item.other_allowance || 0 },
+    ...(contractualOtherActual > 0 || contractualOtherFull > 0 ? [{
+      label: 'OTHER ALLOWANCE',
+      full: contractualOtherFull,
+      actual: contractualOtherActual
+    }] : []),
+    ...(tempOtherActual > 0 ? [{
+      label: 'TEMPORARY ALLOWANCE',
+      full: 0,
+      actual: tempOtherActual
+    }] : []),
     ...(Number(item.overtime_pay) > 0 ? [{
       label: 'OVERTIME PAY',
       full: 0,

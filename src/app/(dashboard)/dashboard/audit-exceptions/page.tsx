@@ -315,7 +315,7 @@ export default function ExceptionsPage() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {dateRange.from ? format(dateRange.from, 'PP') : 'Start'}
+                      {dateRange.from ? format(dateRange.from, 'dd/MM/yyyy') : 'Start'}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -341,7 +341,7 @@ export default function ExceptionsPage() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {dateRange.to ? format(dateRange.to, 'PP') : 'End'}
+                      {dateRange.to ? format(dateRange.to, 'dd/MM/yyyy') : 'End'}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -417,7 +417,7 @@ export default function ExceptionsPage() {
                         className={cn(!ex.resolved && 'bg-amber-50/50 dark:bg-amber-950/10')}
                       >
                         <TableCell className="font-mono text-xs">
-                          {format(new Date(ex.created_at), 'PPpp')}
+                          {format(new Date(ex.created_at), 'dd/MM/yyyy, hh:mm a')}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -635,7 +635,7 @@ export default function ExceptionsPage() {
                     </div>
                     {selectedException.resolved_at && (
                       <div className="text-sm text-muted-foreground">
-                        Resolved at: {format(new Date(selectedException.resolved_at), 'PPpp')}
+                        Resolved at: {format(new Date(selectedException.resolved_at), 'dd/MM/yyyy, hh:mm a')}
                       </div>
                     )}
                     {selectedException.resolution_notes && (

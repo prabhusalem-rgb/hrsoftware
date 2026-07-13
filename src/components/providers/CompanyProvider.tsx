@@ -274,6 +274,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     setActiveCompanyIdState('');
     setUserId(undefined);
     try { sessionStorage.removeItem('userProfile'); } catch {}
+    try { localStorage.removeItem('active_company_id'); } catch {}
     hasFetchedRef.current = false;
     // Create fresh client that will read current cookies
     setSupabase(createClient());
@@ -310,6 +311,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
         setActiveCompanyIdState('');
         setUserId(undefined);
         try { sessionStorage.removeItem('userProfile'); } catch {}
+        try { localStorage.removeItem('active_company_id'); } catch {}
         
         // Reinit client to get a clean state (this won't loop because signed out doesn't fire SIGNED_IN)
         reinitAuth();
@@ -341,10 +343,6 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     if (activeCompanyIdState) {
       try {
         localStorage.setItem('active_company_id', activeCompanyIdState);
-      } catch {}
-    } else {
-      try {
-        localStorage.removeItem('active_company_id');
       } catch {}
     }
   }, [activeCompanyIdState]);

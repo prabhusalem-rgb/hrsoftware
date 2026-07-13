@@ -94,7 +94,7 @@ export function SalaryHistoryTable({ revisions, isLoading, onRevisionDeleted }: 
 
               return (
                 <TableRow key={rev.id} className="hover:bg-slate-50/30 transition-colors">
-                  <TableCell className="pl-10 font-black text-slate-900">{format(effectiveDate, 'dd MMM yyyy')}</TableCell>
+                  <TableCell className="pl-10 font-black text-slate-900">{format(effectiveDate, 'dd/MM/yyyy')}</TableCell>
                   <TableCell className="text-center">
                     <Badge variant="outline" className="bg-white border-slate-200 text-slate-600 font-bold px-3 py-1 uppercase text-[9px] tracking-widest">
                       {formatReason(rev.reason)}

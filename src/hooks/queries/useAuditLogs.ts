@@ -104,11 +104,11 @@ export function useAuditLogs(filters?: AuditLogsFilters) {
   });
 }
 
-export function useAuditStats() {
+export function useAuditStats(companyId?: string) {
   const supabase = createClient();
 
   return useQuery({
-    queryKey: ['audit-stats'],
+    queryKey: ['audit-stats', companyId],
     queryFn: async () => {
       if (!supabase) {
         return {
@@ -118,7 +118,8 @@ export function useAuditStats() {
         };
       }
 
-      const response = await fetch('/api/audit-logs/stats', {
+      const url = companyId ? `/api/audit-logs/stats?company_id=${companyId}` : '/api/audit-logs/stats';
+      const response = await fetch(url, {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       });

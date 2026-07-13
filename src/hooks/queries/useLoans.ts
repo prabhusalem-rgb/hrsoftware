@@ -307,6 +307,7 @@ export function useLoanMutations(companyId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments', companyId] });
       toast.success('Loan created successfully');
     },
     onError: (err: any) => toast.error(err.message),
@@ -335,6 +336,7 @@ export function useLoanMutations(companyId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
       queryClient.invalidateQueries({ queryKey: ['loan', undefined] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments', companyId] });
       toast.success('Loan updated successfully');
     },
     onError: (err: any) => toast.error(err.message),
@@ -425,6 +427,7 @@ export function useLoanMutations(companyId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
       queryClient.invalidateQueries({ queryKey: ['loan', undefined] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments', companyId] });
       toast.success('Loan deleted successfully');
     },
     onError: (err: any) => toast.error(err.message),

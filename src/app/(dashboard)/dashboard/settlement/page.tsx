@@ -106,7 +106,28 @@ function SettlementPageContent() {
                 isOpen={showWizard}
                 onClose={handleWizardClose}
                 employees={employees}
-                onProcess={createSettlement.mutateAsync}
+                onProcess={async (data) => {
+                  const apiData = {
+                    employeeId: data.employee_id,
+                    terminationDate: data.settlement_date,
+                    reason: data.reason || 'resignation',
+                    noticeServed: data.notice_served !== undefined ? data.notice_served : true,
+                    otherAdditions: (data.other_additions || []).map((a: any) => ({
+                      label: a.label,
+                      amount: Number(a.amount) || 0,
+                    })),
+                    otherDeductions: (data.other_deductions || []).map((d: any) => ({
+                      label: d.label,
+                      amount: Number(d.amount) || 0,
+                    })),
+                    notes: data.notes || '',
+                    includePendingLoans: data.includePendingLoans !== undefined ? data.includePendingLoans : true,
+                    leave_request_id: data.leave_request_id || null,
+                    hr_signature: data.hr_signature || null,
+                    gm_signature: data.gm_signature || null,
+                  };
+                  return createSettlement.mutateAsync(apiData as any);
+                }}
                 preselectedEmployeeId={selectedEmployeeId}
                 preselectedLeaveRequestId={selectedLeaveRequestId}
               />

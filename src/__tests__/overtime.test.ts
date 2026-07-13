@@ -8,10 +8,10 @@ import {
 describe('Overtime Calculations', () => {
   describe('calculateHourlyWage', () => {
     it('should calculate hourly wage from monthly basic salary', () => {
-      // Standard: 8 hrs/day × 26 days = 208 hours/month
-      // 500 OMR / 208 = 2.4038...
+      // Standard: 8 hrs/day × 30 days = 240 hours/month
+      // 500 OMR / 240 = 2.0833...
       const result = calculateHourlyWage(500);
-      expect(result).toBeCloseTo(2.404, 3);
+      expect(result).toBeCloseTo(2.083, 3);
     });
 
     it('should handle zero salary', () => {
@@ -20,7 +20,7 @@ describe('Overtime Calculations', () => {
 
     it('should handle high salaries', () => {
       const result = calculateHourlyWage(3000);
-      expect(result).toBeCloseTo(14.423, 3);
+      expect(result).toBeCloseTo(12.5, 3);
     });
 
     it('should round to 3 decimal places', () => {
@@ -32,13 +32,13 @@ describe('Overtime Calculations', () => {
   });
 
   describe('calculateOvertimePay', () => {
-    it('should calculate overtime pay at 1x hourly rate', () => {
-      // 500 OMR monthly = ~2.404 hourly, 5 OT hours = 12.019...
+    it('should calculate overtime pay at 1.25x hourly rate', () => {
+      // 500 OMR monthly = ~2.083 hourly, 5 OT hours = 5 * 2.0833 * 1.25 = 13.021...
       const result = calculateOvertimePay(500, 5, 'normal');
-      expect(result).toBeCloseTo(12.019, 2);
+      expect(result).toBeCloseTo(13.021, 2);
     });
 
-    it('should treat all rate types the same (1x multiplier)', () => {
+    it('should treat all rate types the same (1.25x multiplier)', () => {
       const basicSalary = 1000;
       const hours = 10;
 
@@ -76,9 +76,13 @@ describe('Overtime Calculations', () => {
       ];
 
       const result = calculateTotalOvertimePay(basicSalary, records);
-      // Hourly rate = 1000/208 = 4.8077...
-      // Total: (2+3+5) * hourly = 10 * 4.8077 = 48.077
-      expect(result).toBeCloseTo(48.077, 2);
+      // Hourly rate = 1000/240 = 4.167 (rounded)
+      // Individual:
+      // - 2 hours: 2 * 4.167 * 1.25 = 10.418
+      // - 3 hours: 3 * 4.167 * 1.25 = 15.626
+      // - 5 hours: 5 * 4.167 * 1.25 = 26.044
+      // Total: 10.418 + 15.626 + 26.044 = 52.088
+      expect(result).toBeCloseTo(52.088, 2);
     });
 
     it('should handle empty records', () => {

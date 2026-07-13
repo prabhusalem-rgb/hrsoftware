@@ -294,6 +294,20 @@ describe('isValidEmployee', () => {
     const emp = createEmployee({ bank_iban: 'NoDigits' });
     expect(isValidEmployee(emp)).toBe(false);
   });
+
+  it('should accept valid non-Bank Muscat employee with any non-empty account number format', () => {
+    const empIBAN = createEmployee({
+      bank_bic: 'NBOBOMRX', // National Bank of Oman
+      bank_iban: 'OM12NBOB0000000000123456',
+    });
+    expect(isValidEmployee(empIBAN)).toBe(true);
+
+    const empShort = createEmployee({
+      bank_bic: 'NBOBOMRX',
+      bank_iban: '1040475077017', // 13 digits local account number
+    });
+    expect(isValidEmployee(empShort)).toBe(true);
+  });
 });
 
 describe('validateWPSData additional cases', () => {
@@ -655,5 +669,58 @@ describe('Vacation employee handling in WPS', () => {
     const headerData = lines[1].split(',');
     const totalSalaries = headerData[6];
     expect(totalSalaries).toBe('0.100');
+  });
+
+  describe('exportMode options', () => {
+    const company: Company = {
+      id: 'comp-1',
+      name: 'Test Company',
+      cr_number: '123456',
+      bank_account: 'OM12BMCT000000001234567890',
+      iban: 'OM12BMCT000000001234567890',
+    };
+    const vacationEmp = createEmployee({
+      id: 'emp-vac1',
+      emp_code: 'VAC01',
+      status: 'on_leave',
+      leave_settlement_date: null,
+      rejoin_date: null,
+    });
+    const regularEmp = createEmployee({ id: 'emp-regular', emp_code: 'REG01' });
+    const payrollItem = createPayrollItem({ employee_id: 'emp-regular', net_salary: 500 });
+
+    it('should generate salary_only (excluding vacation employees)', () => {
+      const { exportedAmounts } = generateWPSSIF(
+        company,
+        [vacationEmp, regularEmp],
+        [payrollItem],
+        2025,
+        5,
+        'monthly' as PayrollRunType,
+        undefined,
+        'salary_only'
+      );
+
+      expect(exportedAmounts.get(payrollItem.id)).toBe(500);
+      expect(exportedAmounts.has(`vacation-${vacationEmp.id}`)).toBe(false);
+      expect(exportedAmounts.size).toBe(1);
+    });
+
+    it('should generate vacation_only (excluding regular salaries)', () => {
+      const { exportedAmounts } = generateWPSSIF(
+        company,
+        [vacationEmp, regularEmp],
+        [payrollItem],
+        2025,
+        5,
+        'monthly' as PayrollRunType,
+        undefined,
+        'vacation_only'
+      );
+
+      expect(exportedAmounts.has(payrollItem.id)).toBe(false);
+      expect(exportedAmounts.get(`vacation-${vacationEmp.id}`)).toBe(0.100);
+      expect(exportedAmounts.size).toBe(1);
+    });
   });
 });

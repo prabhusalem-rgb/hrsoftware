@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { batchSettlementSchema, BatchSettlementValues } from '@/lib/validations/schemas';
 import type { BatchSettlementResult } from '@/types/settlement';
 import { calculateEOSB } from '@/lib/calculations/eosb';
-import { calculateLeaveEncashment } from '@/lib/calculations/leave';
+import { calculateLeaveEncashmentValue } from '@/lib/calculations/leave';
 import { calculateAirTicketBalance } from '@/lib/calculations/air_ticket';
 import type { AirTicket } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -180,8 +180,8 @@ export async function POST(request: NextRequest) {
             (b) => b.leave_type?.name?.toLowerCase().includes('annual')
           )?.balance || 0;
 
-        const leaveEncashment = calculateLeaveEncashment(
-          Number(employee.basic_salary),
+        const leaveEncashment = calculateLeaveEncashmentValue(
+          employee,
           annualLeaveBalance
         );
 
@@ -236,11 +236,14 @@ export async function POST(request: NextRequest) {
         const netTotal = Math.round((totalCredits - totalDebits) * 1000) / 1000;
         batchTotal += netTotal;
 
-        // Create payroll item
-        const grossSalary = Number(employee.gross_salary) || 1; // Avoid division by zero
+        const grossSalary = Number(employee.gross_salary) || 1;
         const basicSalary = Number(employee.basic_salary) || 0;
         const housingAllowance = Number(employee.housing_allowance) || 0;
         const transportAllowance = Number(employee.transport_allowance) || 0;
+        const foodAllowance = Number(employee.food_allowance) || 0;
+        const specialAllowance = Number(employee.special_allowance) || 0;
+        const siteAllowance = Number(employee.site_allowance) || 0;
+        const otherAllowance = Number(employee.other_allowance) || 0;
 
         const payrollItemPayload = {
           id: uuidv4(),
@@ -250,6 +253,10 @@ export async function POST(request: NextRequest) {
           basic_salary: finalMonthSalary * (basicSalary / grossSalary),
           housing_allowance: finalMonthSalary * (housingAllowance / grossSalary),
           transport_allowance: finalMonthSalary * (transportAllowance / grossSalary),
+          food_allowance: finalMonthSalary * (foodAllowance / grossSalary),
+          special_allowance: finalMonthSalary * (specialAllowance / grossSalary),
+          site_allowance: finalMonthSalary * (siteAllowance / grossSalary),
+          other_allowance: finalMonthSalary * (otherAllowance / grossSalary),
           gross_salary: finalMonthSalary,
           loan_deduction: loanBalance,
           other_deduction: deductionsSum,
@@ -312,8 +319,7 @@ export async function POST(request: NextRequest) {
 
         // Update leave balance
         if (leaveEncashment > 0) {
-          const basicSalary = Number(employee.basic_salary) || 1; // Avoid division by zero
-          const daysEncashed = Math.round(leaveEncashment / (basicSalary / 30));
+          const daysEncashed = annualLeaveBalance;
           const { data: balData } = await supabase
             .from('leave_balances')
             .select('id, used')
@@ -341,6 +347,14 @@ export async function POST(request: NextRequest) {
             department: employee.department,
             join_date: employee.join_date,
             basic_salary: employee.basic_salary,
+            housing_allowance: employee.housing_allowance,
+            transport_allowance: employee.transport_allowance,
+            other_allowance: employee.other_allowance,
+            gross_salary: employee.gross_salary,
+            opening_air_tickets: employee.opening_air_tickets,
+            air_ticket_cycle: employee.air_ticket_cycle,
+            nationality: employee.nationality,
+            category: employee.category,
           },
           breakdown: {
             eosbAmount: eosbResult.totalGratuity,

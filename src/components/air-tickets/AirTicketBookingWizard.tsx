@@ -234,7 +234,7 @@ export function AirTicketBookingWizard({ employeeId, onSuccess, onCancel }: Book
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Issued At:</span>
-              <span>{format(new Date(), 'dd MMM yyyy, HH:mm')}</span>
+              <span>{format(new Date(), 'dd/MM/yyyy, HH:mm')}</span>
             </div>
           </div>
           <p className="text-sm text-muted-foreground text-center">

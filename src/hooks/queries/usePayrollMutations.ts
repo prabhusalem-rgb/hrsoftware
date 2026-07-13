@@ -3,6 +3,22 @@ import { createClient } from '@/lib/supabase/client';
 import { PayrollRun, PayrollItem, Employee } from '@/types';
 import { toast } from 'sonner';
 
+// Helper to convert base64 to Blob on the client-side
+const base64ToBlob = (base64Str: string, contentType = 'image/png') => {
+  const byteCharacters = atob(base64Str.split(',')[1]);
+  const byteArrays = [];
+  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+    const slice = byteCharacters.slice(offset, offset + 512);
+    const byteNumbers = new Array(slice.length);
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    byteArrays.push(byteArray);
+  }
+  return new Blob(byteArrays, { type: contentType });
+};
+
 export function usePayrollMutations(companyId: string) {
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -18,25 +34,215 @@ export function usePayrollMutations(companyId: string) {
         net_salary: i.net_salary
       })));
 
-      // Insert payroll run
-      const { data: runData, error: runError } = await supabase
-        .from('payroll_runs')
-        .insert([run])
-        .select()
-        .single();
+      let runData;
+      let existingItems: any[] = [];
+      if (run.id) {
+        console.log('[processPayroll] Overwriting existing payroll run:', run.id);
+        const { id, ...runUpdatePayload } = run;
 
-      if (runError) throw new Error(runError.message || 'Failed to insert payroll run');
+        // Fetch old items to revert their loan installments
+        const { data: oldItems, error: fetchError } = await supabase
+          .from('payroll_items')
+          .select('*')
+          .eq('payroll_run_id', id);
 
-      const itemsForInsert = items.map((item) => {
-        const { includePendingLoans, includeActiveLoans, days, date, notes, company_id, ...rest } = item;
+        if (fetchError) throw new Error(fetchError.message || 'Failed to fetch existing items');
+        existingItems = oldItems || [];
+
+        if (oldItems && oldItems.length > 0) {
+          if (run.type === 'monthly') {
+            const loanScheduleIds = Array.from(new Set(
+              oldItems
+                .map((item: any) => item.loan_schedule_id)
+                .filter((schId: string | null) => schId != null)
+            ));
+
+            if (loanScheduleIds.length > 0) {
+              const { data: { user } } = await supabase.auth.getUser();
+              const { data: profile } = user ? await supabase
+                .from('profiles')
+                .select('id')
+                .eq('id', user.id)
+                .single() : { data: null };
+
+              for (const scheduleId of loanScheduleIds) {
+                // Check if any OTHER items reference this schedule
+                const { data: otherItems } = await supabase
+                  .from('payroll_items')
+                  .select('id')
+                  .eq('loan_schedule_id', scheduleId)
+                  .neq('payroll_run_id', id)
+                  .eq('loan_deduction', '>', 0)
+                  .limit(1);
+
+                if (!otherItems || otherItems.length === 0) {
+                  const { data: schedule } = await supabase
+                    .from('loan_schedule')
+                    .select('id, loan_id, installment_no, paid_amount')
+                    .eq('id', scheduleId)
+                    .single();
+
+                  if (schedule && schedule.paid_amount > 0) {
+                    await supabase
+                      .from('loan_schedule')
+                      .update({
+                        status: 'scheduled',
+                        paid_amount: 0,
+                        paid_date: null,
+                        payment_method: null,
+                        payment_reference: null,
+                      })
+                      .eq('id', scheduleId);
+
+                    // The trigger trigger_update_loan_balance_from_schedule automatically
+                    // updates loans.balance_remaining when schedule changes. Just ensure status is active.
+                    await supabase
+                      .from('loans')
+                      .update({
+                        status: 'active'
+                      })
+                      .eq('id', schedule.loan_id);
+
+                    // Record the reversal in loan_history
+                    await supabase.from('loan_history').insert({
+                      loan_id: schedule.loan_id,
+                      company_id: run.company_id,
+                      action: 'installment_unpaid',
+                      field_name: 'status',
+                      old_value: JSON.stringify({ status: 'paid', paid_amount: schedule.paid_amount }),
+                      new_value: JSON.stringify({ status: 'scheduled', paid_amount: 0 }),
+                      changed_by: profile?.id || user?.id || '00000000-0000-0000-0000-000000000000',
+                      change_reason: `Payroll run ${id.substring(0,8)}... reprocessed — installment restored`,
+                      created_at: new Date().toISOString()
+                    });
+                  }
+                }
+              }
+            }
+          }
+
+          // Delete the old payroll items
+          const { error: deleteError } = await supabase
+            .from('payroll_items')
+            .delete()
+            .eq('payroll_run_id', id);
+          if (deleteError) throw new Error(deleteError.message || 'Failed to delete existing payroll items');
+        }
+
+        // Update the run row
+        const { data, error: updateError } = await supabase
+          .from('payroll_runs')
+          .update(runUpdatePayload)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (updateError) throw new Error(updateError.message || 'Failed to update payroll run');
+        runData = data;
+      } else {
+        // Insert new payroll run
+        const { data, error: insertError } = await supabase
+          .from('payroll_runs')
+          .insert([run])
+          .select()
+          .single();
+
+        if (insertError) throw new Error(insertError.message || 'Failed to insert payroll run');
+        runData = data;
+      }
+
+      const itemsForInsert = await Promise.all(items.map(async (item) => {
+        const { 
+          includePendingLoans, 
+          includeActiveLoans, 
+          days, 
+          date, 
+          notes, 
+          company_id, 
+          hr_signature, 
+          gm_signature, 
+          reason,
+          notice_served,
+          noticeServed,
+          ...rest 
+        } = item as any;
+
+        // Upload signatures if provided
+        if (hr_signature && hr_signature.startsWith('data:image')) {
+          try {
+            const blob = base64ToBlob(hr_signature);
+            const fileName = `settlement_hr_${rest.employee_id}_${Date.now()}.png`;
+            const { data: uploadData } = await supabase.storage
+              .from('leave-signatures')
+              .upload(fileName, blob, { contentType: 'image/png' });
+            if (uploadData) {
+              const { data: { publicUrl } } = supabase.storage.from('leave-signatures').getPublicUrl(fileName);
+              rest.hr_signature_url = publicUrl;
+              rest.hr_id = run.processed_by || null;
+              rest.hr_approved_at = new Date().toISOString();
+            }
+          } catch (err) {
+            console.error('Failed to upload HR signature:', err);
+          }
+        } else if (hr_signature && hr_signature.startsWith('http')) {
+          rest.hr_signature_url = hr_signature;
+        }
+
+        if (gm_signature && gm_signature.startsWith('data:image')) {
+          try {
+            const blob = base64ToBlob(gm_signature);
+            const fileName = `settlement_gm_${rest.employee_id}_${Date.now()}.png`;
+            const { data: uploadData } = await supabase.storage
+              .from('leave-signatures')
+              .upload(fileName, blob, { contentType: 'image/png' });
+            if (uploadData) {
+              const { data: { publicUrl } } = supabase.storage.from('leave-signatures').getPublicUrl(fileName);
+              rest.gm_signature_url = publicUrl;
+              rest.gm_id = run.processed_by || null;
+              rest.gm_approved_at = new Date().toISOString();
+            }
+          } catch (err) {
+            console.error('Failed to upload GM signature:', err);
+          }
+        } else if (gm_signature && gm_signature.startsWith('http')) {
+          rest.gm_signature_url = gm_signature;
+        }
+
+        // Keep notes if it is a settlement run
+        if (run.type === 'final_settlement' || run.type === 'leave_settlement') {
+          rest.notes = notes;
+        }
+
         return rest;
-      });
-
-      const itemsWithRunId = itemsForInsert.map(item => ({
-        ...item,
-        payroll_run_id: runData.id,
-        type: runData.type,
       }));
+
+      const itemsWithRunId = itemsForInsert.map(item => {
+        const existing = existingItems.find((oi: any) => oi.employee_id === item.employee_id);
+        if (existing) {
+          return {
+            ...item,
+            payroll_run_id: runData.id,
+            type: runData.type,
+            payout_status: existing.payout_status ?? item.payout_status,
+            paid_amount: existing.paid_amount ?? item.paid_amount,
+            wps_export_override: existing.wps_export_override ?? item.wps_export_override,
+            hold_reason: existing.hold_reason ?? item.hold_reason,
+            hold_placed_at: existing.hold_placed_at ?? item.hold_placed_at,
+            notes: existing.notes ?? item.notes,
+            hr_signature_url: existing.hr_signature_url ?? item.hr_signature_url,
+            hr_id: existing.hr_id ?? item.hr_id,
+            hr_approved_at: existing.hr_approved_at ?? item.hr_approved_at,
+            gm_signature_url: existing.gm_signature_url ?? item.gm_signature_url,
+            gm_id: existing.gm_id ?? item.gm_id,
+            gm_approved_at: existing.gm_approved_at ?? item.gm_approved_at,
+          };
+        }
+        return {
+          ...item,
+          payroll_run_id: runData.id,
+          type: runData.type,
+        };
+      });
 
       console.log('[processPayroll] Items with runId (first 3):', itemsWithRunId.slice(0, 3).map((i: any) => ({
         employee_id: i.employee_id,
@@ -218,11 +424,19 @@ export function usePayrollMutations(companyId: string) {
 
       return runData;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['payroll_runs', companyId] });
+      if (data?.id) {
+        queryClient.invalidateQueries({ queryKey: ['payroll_items', data.id] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['payroll_items'] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['payroll_items_by_month'] });
+      queryClient.invalidateQueries({ queryKey: ['held_payroll_items'] });
       queryClient.invalidateQueries({ queryKey: ['employees', companyId] });
       queryClient.invalidateQueries({ queryKey: ['leaves', companyId] });
       queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments', companyId] });
       queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats', companyId] });
       toast.success('Payroll processed and saved successfully');
@@ -273,7 +487,7 @@ export function usePayrollMutations(companyId: string) {
         // Don't block on check error — allow deletion as fallback
       } else if (wpsExports && wpsExports.length > 0) {
         // WPS exists — only super admins allowed
-        if (profile?.role !== 'super_admin') {
+        if (profile?.role !== 'super_admin' && profile?.role !== 'company_admin') {
           throw new Error("Payroll cant be deleted after WPS generation");
         }
         // Super admin continues through
@@ -494,8 +708,17 @@ export function usePayrollMutations(companyId: string) {
                 } else {
                   console.log('[Loan Revert] Restored loan installment:', scheduleId, '(loan:', schedule.loan_id?.substring(0,8), 'inst#', schedule.installment_no, ')');
 
+                  // The trigger trigger_update_loan_balance_from_schedule automatically
+                  // updates loans.balance_remaining when schedule changes. Just ensure status is active.
+                  await supabase
+                    .from('loans')
+                    .update({
+                      status: 'active'
+                    })
+                    .eq('id', schedule.loan_id);
+
                   // Record the reversal in loan_history
-                  await supabase.from('loan_history').insert({
+                  const { error: historyError } = await supabase.from('loan_history').insert({
                     loan_id: schedule.loan_id,
                     company_id: run.company_id,
                     action: 'installment_unpaid',
@@ -505,7 +728,11 @@ export function usePayrollMutations(companyId: string) {
                     changed_by: profile?.id || user.id,
                     change_reason: `Payroll run ${runId.substring(0,8)}... deleted — installment restored`,
                     created_at: new Date().toISOString()
-                  }).catch(console.error);
+                  });
+
+                  if (historyError) {
+                    console.error('[Loan Revert] Failed to log loan history:', historyError.message);
+                  }
                 }
               }
             } else {
@@ -515,27 +742,40 @@ export function usePayrollMutations(companyId: string) {
         }
       }
 
-      // Step 6: Revert final_settlement changes (loan closures + leave balance)
-      if (run.type === 'final_settlement' && items.length > 0) {
-        const employeeIds = Array.from(new Set((items as any[]).map(i => i.employee_id).filter(Boolean)));
+      // Step 6: Revert final_settlement & leave_settlement changes (loan closures + leave balance)
+      if (['final_settlement', 'leave_settlement'].includes(run.type) && items.length > 0) {
+        for (const item of items) {
+          if (item.employee_id) {
+            // Revert loan statuses — mark as active again and restore balance_remaining
+            const { data: closedLoans } = await supabase
+              .from('loans')
+              .select('id, balance_remaining')
+              .eq('employee_id', item.employee_id)
+              .eq('status', 'completed');
 
-        for (const empId of employeeIds) {
-          // Revert loan statuses — mark as active again
-          const { error: loanError } = await supabase
-            .from('loans')
-            .update({ status: 'active', balance_remaining: 0 })
-            .eq('employee_id', empId)
-            .eq('status', 'completed');
+            if (closedLoans && closedLoans.length > 0) {
+              for (const cl of closedLoans) {
+                // Reverting status to active triggers trigger_check_loan_status_change,
+                // which automatically recalculates and restores the correct balance_remaining.
+                await supabase
+                  .from('loans')
+                  .update({
+                    status: 'active'
+                  })
+                  .eq('id', cl.id);
+              }
+            }
 
-          if (loanError) console.error('[FinalSettlement Revert] Failed to revert loans:', loanError);
+            if (run.type === 'final_settlement') {
+              // Reset employee status and termination_date
+              const { error: empError } = await supabase
+                .from('employees')
+                .update({ status: 'active', termination_date: null })
+                .eq('id', item.employee_id);
 
-          // Reset employee status and termination_date
-          const { error: empError } = await supabase
-            .from('employees')
-            .update({ status: 'active', termination_date: null })
-            .eq('id', empId);
-
-          if (empError) console.error('[FinalSettlement Revert] Failed to reset employee:', empError);
+              if (empError) console.error('[FinalSettlement Revert] Failed to reset employee:', empError);
+            }
+          }
         }
 
         // Revert Annual Leave balance for encashed days (same logic as leave_encashment revert)
@@ -595,6 +835,7 @@ export function usePayrollMutations(companyId: string) {
       queryClient.invalidateQueries({ queryKey: ['employees', companyId] });
       queryClient.invalidateQueries({ queryKey: ['leaves', companyId] });
       queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments', companyId] });
       queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
       toast.success('Payroll run deleted and related settlements reverted');
     },

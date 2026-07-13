@@ -81,29 +81,43 @@ export async function POST(
   if (leaveRequest.leave_type === 'Annual Leave') {
     const leaveYear = new Date(leaveRequest.start_date).getFullYear();
 
-    // Find the leave balance record for this employee and year for paid leave type
-    const { data: balances } = await supabase
-      .from('leave_balances')
-      .select('id, used, balance')
-      .eq('employee_id', leaveRequest.employee_id)
-      .eq('year', leaveYear);
+    // Get company_id from employee to resolve correct leave type
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('company_id')
+      .eq('id', leaveRequest.employee_id)
+      .single();
 
-    if (balances && balances.length > 0) {
-      // Find a balance that is for a paid leave type - typically annual leave
-      // We'll update the first paid leave balance found
-      for (const bal of balances) {
-        // Update the used days
-        const { error: balanceError } = await supabase
+    if (employee) {
+      // Find the Annual Leave type ID for this company
+      const { data: leaveType } = await supabase
+        .from('leave_types')
+        .select('id')
+        .eq('company_id', employee.company_id)
+        .eq('name', 'Annual Leave')
+        .single();
+
+      if (leaveType) {
+        // Find the leave balance record for this employee and year specifically for Annual Leave
+        const { data: balance } = await supabase
           .from('leave_balances')
-          .update({
-            used: (bal.used || 0) + leaveRequest.days,
-          })
-          .eq('id', bal.id);
+          .select('id, used')
+          .eq('employee_id', leaveRequest.employee_id)
+          .eq('leave_type_id', leaveType.id)
+          .eq('year', leaveYear)
+          .maybeSingle();
 
-        if (balanceError) {
-          console.error('[GM Approve] Balance update error:', balanceError);
-        } else {
-          break; // Successfully updated one balance record
+        if (balance) {
+          const { error: balanceError } = await supabase
+            .from('leave_balances')
+            .update({
+              used: (balance.used || 0) + leaveRequest.days,
+            })
+            .eq('id', balance.id);
+
+          if (balanceError) {
+            console.error('[GM Approve] Balance update error:', balanceError);
+          }
         }
       }
     }

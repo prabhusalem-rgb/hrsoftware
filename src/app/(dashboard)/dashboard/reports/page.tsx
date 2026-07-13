@@ -20,7 +20,8 @@ import { useLeaves } from '@/hooks/queries/useLeaves';
 import { useLeaveBalances } from '@/hooks/queries/useLeaveBalances';
 import { useAttendance } from '@/hooks/queries/useAttendance';
 import { useLeaveTypes } from '@/hooks/queries/useLeaveTypes';
-import { usePayrollItems } from '@/hooks/queries/usePayrollItems';
+import { usePayrollItems, useHeldPayrollItems, usePayrollItemsByMonth } from '@/hooks/queries/usePayrollItems';
+import { useAllLoanSchedules } from '@/hooks/queries/useLoanReports';
 import { calculateAccruedEOSB } from '@/lib/calculations/eosb';
 import { toast } from 'sonner';
 // jsPDF and PayrollReportPDF are imported dynamically inside export functions
@@ -36,7 +37,8 @@ type ReportType =
   | 'attendance_absenteeism' | 'diversity_demographics' | 'anniversary_report'
   | 'employee_turnover_log' | 'onboarding_tracking' | 'time_attendance_summary'
   | 'gl_payroll_mapping' | 'audit_exceptions'
-  | 'payout_summary' | 'unpaid_salaries' | 'payment_register' | 'hold_report' | 'global_hold_report';
+  | 'payout_summary' | 'unpaid_salaries' | 'payment_register' | 'hold_report' | 'global_hold_report'
+  | 'salary_hold_report' | 'loan_balance_summary' | 'loan_repayment_report';
 
 const reportTypes: { value: ReportType; label: string; description: string }[] = [
   // Employee Reports
@@ -63,6 +65,9 @@ const reportTypes: { value: ReportType; label: string; description: string }[] =
   { value: 'payment_register', label: 'Payment Register Report', description: 'Audit trail of completed salary payments' },
   { value: 'hold_report', label: 'Hold/Release Report', description: 'Payment holds log with reasons and resolution' },
   { value: 'global_hold_report', label: 'Global Salary Hold Report', description: 'Employees with permanent salary hold status' },
+  { value: 'salary_hold_report', label: 'Salary Hold Report', description: 'Detailed log of active monthly payroll holds and global salary holds' },
+  { value: 'loan_balance_summary', label: 'Loan Balance Summary', description: 'Summary of all employee loans, principal, interest, paid, and outstanding balances' },
+  { value: 'loan_repayment_report', label: 'Loan Repayment Report', description: 'Detailed installment schedule and payment status of all loans' },
 
   // Audit & Compliance
   { value: 'audit_exceptions', label: 'Audit & Exceptions Report', description: 'Data anomalies and compliance exceptions' },
@@ -105,14 +110,21 @@ export default function ReportsPage() {
   const attendance: Attendance[] = (attendanceQuery.data ?? []) as Attendance[];
   const attendanceLoading = attendanceQuery.isLoading;
 
+  const loanSchedulesQuery = useAllLoanSchedules(activeCompanyId);
+  const loanSchedules = loanSchedulesQuery.data ?? [];
+  const loanSchedulesLoading = loanSchedulesQuery.isLoading;
+
+  const heldPayrollItemsQuery = useHeldPayrollItems(activeCompanyId);
+  const heldPayrollItems = heldPayrollItemsQuery.data ?? [];
+  const heldPayrollItemsLoading = heldPayrollItemsQuery.isLoading;
+
   // Determine selected month's payroll run and fetch its items
   const [selYear, selMonth] = selectedMonth.split('-').map(Number);
-  const selectedRun = payrollRuns.find(r => r.year === selYear && r.month === selMonth);
-  const { data: payrollItems = [], isLoading: payrollItemsLoading } = usePayrollItems(selectedRun?.id || '');
+  const { data: payrollItems = [], isLoading: payrollItemsLoading } = usePayrollItemsByMonth(activeCompanyId, selMonth, selYear);
   // For air tickets, we need employee-level data - could fetch all and filter (for now empty)
   const airTickets: any[] = [];
 
-  const loading = companyLoading || employeesLoading || payrollRunsLoading || loansLoading || leavesLoading || leaveBalancesLoading || attendanceLoading || payrollItemsLoading;
+  const loading = companyLoading || employeesLoading || payrollRunsLoading || loansLoading || leavesLoading || leaveBalancesLoading || attendanceLoading || payrollItemsLoading || loanSchedulesLoading || heldPayrollItemsLoading;
 
   // Filter employees by company (should already be filtered by hook, but ensure)
   const emps = employees.filter(e => e.company_id === activeCompanyId);
@@ -487,7 +499,7 @@ export default function ReportsPage() {
                 emp?.emp_code || '',
                 emp?.name_en || '',
                 emp?.department || '',
-                run ? `${format(new Date(run.year, run.month - 1), 'MMMM yyyy')}` : 'Unknown',
+                run ? `${format(new Date(run.year, run.month - 1), 'MM/yyyy')}` : 'Unknown',
                 Number(item.net_salary).toFixed(3),
                 item.payout_status?.toUpperCase() || 'PENDING',
                 item.hold_reason || (item.payout_status === 'held' ? 'No reason specified' : '-'),
@@ -517,7 +529,7 @@ export default function ReportsPage() {
                   : '-',
                 emp?.emp_code || '',
                 emp?.name_en || '',
-                run ? `${format(new Date(run.year, run.month - 1), 'MMMM yyyy')}` : 'Unknown',
+                run ? `${format(new Date(run.year, run.month - 1), 'MM/yyyy')}` : 'Unknown',
                 Number(item.net_salary).toFixed(3),
                 Number(item.paid_amount || item.net_salary).toFixed(3),
                 item.payout_method?.replace('_', ' ') || '-',
@@ -555,7 +567,7 @@ export default function ReportsPage() {
               return [
                 emp?.name_en || '',
                 emp?.department || '',
-                run ? `${format(new Date(run.year, run.month - 1), 'MMMM yyyy')}` : 'Unknown',
+                run ? `${format(new Date(run.year, run.month - 1), 'MM/yyyy')}` : 'Unknown',
                 item.hold_reason || 'No reason',
                 item.hold_authorized_by?.substring(0, 8) || '-',
                 heldOn.toLocaleDateString(),
@@ -592,10 +604,119 @@ export default function ReportsPage() {
         };
       }
 
+      case 'salary_hold_report': {
+        const globalHeldEmps = emps.filter(e => e.is_salary_held);
+
+        const rows: any[] = [];
+
+        heldPayrollItems.forEach(item => {
+          const emp = emps.find(e => e.id === item.employee_id);
+          const run = item.payroll_run;
+          const heldOn = item.hold_placed_at ? new Date(item.hold_placed_at).toLocaleDateString() : '-';
+          rows.push([
+            emp?.emp_code || '',
+            emp?.name_en || '',
+            emp?.department || '',
+            'Payroll Hold',
+            run ? `${format(new Date(run.year, run.month - 1), 'MM/yyyy')}` : 'Unknown',
+            item.hold_reason || 'No reason specified',
+            heldOn
+          ]);
+        });
+
+        globalHeldEmps.forEach(e => {
+          const heldOn = e.salary_hold_at ? new Date(e.salary_hold_at).toLocaleDateString() : 'N/A';
+          rows.push([
+            e.emp_code,
+            e.name_en,
+            e.department,
+            'Global Hold',
+            'Permanent',
+            e.salary_hold_reason || 'Permanent hold',
+            heldOn
+          ]);
+        });
+
+        if (rows.length === 0) {
+          return {
+            headers: [],
+            rows: [],
+            title: 'Salary Hold Report',
+            emptyMessage: 'No active salary holds found.'
+          };
+        }
+
+        return {
+          headers: ['Emp Code', 'Employee', 'Department', 'Type', 'Target Period', 'Hold Reason', 'Held Since'],
+          rows,
+          title: 'Salary Hold Report'
+        };
+      }
+
+      case 'loan_balance_summary': {
+        if (loans.length === 0) {
+          return {
+            headers: [],
+            rows: [],
+            title: 'Loan Balance Summary',
+            emptyMessage: 'No loans found.'
+          };
+        }
+
+        return {
+          headers: ['Emp Code', 'Employee', 'Principal', 'Interest Rate', 'Total Amount', 'Paid Amount', 'Balance Remaining', 'EMI', 'Status'],
+          rows: loans.map(l => {
+            const emp = emps.find(e => e.id === l.employee_id);
+            const paidAmount = Number(l.total_amount || 0) - Number(l.balance_remaining || 0);
+            return [
+              emp?.emp_code || '',
+              emp?.name_en || '',
+              Number(l.principal_amount).toFixed(3),
+              `${l.interest_rate}%`,
+              Number(l.total_amount).toFixed(3),
+              paidAmount.toFixed(3),
+              Number(l.balance_remaining).toFixed(3),
+              Number(l.monthly_emi).toFixed(3),
+              l.status.toUpperCase()
+            ];
+          }),
+          title: 'Loan Balance Summary'
+        };
+      }
+
+      case 'loan_repayment_report': {
+        if (loanSchedules.length === 0) {
+          return {
+            headers: [],
+            rows: [],
+            title: 'Loan Repayment Report',
+            emptyMessage: 'No repayments or schedule installments found.'
+          };
+        }
+
+        return {
+          headers: ['Emp Code', 'Employee', 'Installment #', 'Due Date', 'Total Due', 'Paid Amount', 'Paid Date', 'Status'],
+          rows: loanSchedules.map((s: any) => {
+            const emp = s.loan?.employee;
+            return [
+              emp?.emp_code || '',
+              emp?.name_en || '',
+              `#${s.installment_no}`,
+              s.due_date ? format(new Date(s.due_date), 'dd/MM/yyyy') : '-',
+              Number(s.total_due).toFixed(3),
+              s.paid_amount ? Number(s.paid_amount).toFixed(3) : '0.000',
+              s.paid_date ? format(new Date(s.paid_date), 'dd/MM/yyyy') : '-',
+              s.status.toUpperCase() + (s.is_held ? ' (HELD)' : '')
+            ];
+          }),
+          title: 'Loan Repayment Report'
+        };
+      }
+
       default:
         return { headers: [], rows: [], title: 'Report Not Available' };
     }
-  }, [reportType, emps, employeeIds, activeCompanyId, today, selectedMonth, payrollRuns, payrollItems, loans, airTickets, leaves, leaveBalances, attendance]);
+  }, [reportType, emps, employeeIds, activeCompanyId, today, selectedMonth, payrollRuns, payrollItems, loans, airTickets, leaves, leaveBalances, attendance, loanSchedules, heldPayrollItems]);
 
   // Show loading state AFTER all hooks are called
   if (loading) {
@@ -627,7 +748,7 @@ export default function ReportsPage() {
     };
 
     let csv = headers.map(escapeCSV).join(',') + '\n';
-    rows.forEach(row => {
+    rows.forEach((row: any[]) => {
       csv += row.map(escapeCSV).join(',') + '\n';
     });
 
@@ -675,7 +796,7 @@ export default function ReportsPage() {
           payrollRun: selectedRun,
           items: runItems,
           employees: emps,
-          period: (title || '').includes('—') ? (title || '').split('—')[1].trim() : format(new Date(selYear, selMonth - 1), 'MMMM yyyy')
+          period: (title || '').includes('—') ? (title || '').split('—')[1].trim() : format(new Date(selYear, selMonth - 1), 'MM/yyyy')
         };
 
         const [{ pdf }, { PayrollReportPDF }] = await Promise.all([
@@ -824,7 +945,7 @@ export default function ReportsPage() {
         payrollRun: selectedRun,
         items: payrollItems.filter(i => i.payroll_run_id === selectedRun.id),
         employees: emps,
-        period: (title || '').includes('—') ? (title || '').split('—')[1].trim() : format(new Date(selYear, selMonth - 1), 'MMMM yyyy')
+        period: (title || '').includes('—') ? (title || '').split('—')[1].trim() : format(new Date(selYear, selMonth - 1), 'MM/yyyy')
       };
 
       // Generate Excel file
@@ -881,7 +1002,7 @@ export default function ReportsPage() {
               </Select>
             </div>
             {/* Month selector for payroll reports */}
-            {(reportType === 'payroll_register' || reportType === 'gl_payroll_mapping') && (
+            {(reportType === 'payroll_register' || reportType === 'gl_payroll_mapping' || reportType === 'salary_hold_report') && (
               <div className="space-y-1.5 min-w-[150px]">
                 <Label>Month</Label>
                 <Select value={selectedMonth} onValueChange={(v) => v && setSelectedMonth(v)}>
@@ -929,11 +1050,25 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reportData.rows.map((row, i) => (
+                  {reportData.rows.map((row: any[], i: number) => (
                     <TableRow key={i}>
-                      {row.map((cell, j) => (
-                        <TableCell key={j} className={j >= 3 && j <= 16 ? "text-right" : ""}>{cell}</TableCell>
-                      ))}
+                      {row.map((cell: any, j: number) => {
+                        let alignment = "";
+                        if (reportType === 'payroll_register') {
+                          alignment = j >= 3 && j <= 16 ? "text-right font-mono" : "";
+                        } else if (reportType === 'loan_balance_summary') {
+                          alignment = j >= 2 && j <= 7 ? "text-right font-mono" : "";
+                        } else if (reportType === 'loan_repayment_report') {
+                          alignment = j === 4 || j === 5 ? "text-right font-mono" : "";
+                        } else if (reportType === 'eosb_accrual') {
+                          alignment = j === 3 || j === 4 || j === 5 ? "text-right font-mono" : "";
+                        } else if (reportType === 'loan_statement') {
+                          alignment = j >= 1 && j <= 3 ? "text-right font-mono" : "";
+                        }
+                        return (
+                          <TableCell key={j} className={alignment}>{cell}</TableCell>
+                        );
+                      })}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -947,7 +1082,7 @@ export default function ReportsPage() {
                         const colIndex = i + 3;
                         if (colIndex === 8) return <TableCell key={i}></TableCell>; // OT Hrs (not summed)
                         
-                        const total = reportData.rows.reduce((sum, row) => {
+                        const total = reportData.rows.reduce((sum: number, row: any[]) => {
                           const val = row[colIndex]?.toString().replace(/,/g, '') || '0';
                           return sum + (parseFloat(val) || 0);
                         }, 0);

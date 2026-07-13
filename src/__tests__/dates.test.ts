@@ -92,11 +92,11 @@ describe('Date Utilities', () => {
 
   describe('formatDate', () => {
     it('should format date as display format', () => {
-      expect(formatDate('2025-05-03', 'display')).toBe('03 May 2025');
+      expect(formatDate('2025-05-03', 'display')).toBe('03/05/2025');
     });
 
     it('should format date as short format', () => {
-      expect(formatDate('2025-05-03', 'short')).toBe('03 May');
+      expect(formatDate('2025-05-03', 'short')).toBe('03/05');
     });
 
     it('should format date as ISO format', () => {
@@ -105,7 +105,7 @@ describe('Date Utilities', () => {
 
     it('should format date as datetime format', () => {
       const result = formatDate('2025-05-03 14:30:00', 'datetime');
-      expect(result).toContain('03 May 2025');
+      expect(result).toContain('03/05/2025');
       // Uses 12-hour format with AM/PM
       expect(result).toContain('02:30 PM');
     });

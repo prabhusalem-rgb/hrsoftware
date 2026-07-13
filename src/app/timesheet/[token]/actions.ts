@@ -6,9 +6,6 @@ import { timesheetSubmitSchema } from '@/lib/validations/schemas';
 import { logAudit } from '@/lib/audit/audit-logger.server';
 import type { Timesheet, Company } from '@/types';
 
-const submissionRateLimit = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_MAX = 10;
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 // Response types
 export interface SubmitTimesheetResult {
@@ -181,17 +178,6 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
   // overtime_hours >= 0 enforced by schema
   // reason requirement for OT enforced by schema refinement
 
-  const now = Date.now();
-  const bucket = submissionRateLimit.get(token) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
-  if (now > bucket.resetAt) {
-    submissionRateLimit.set(token, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-  } else {
-    if (bucket.count >= RATE_LIMIT_MAX) {
-      return { success: false, error: 'ERR_RATE_LIMIT: Rate limit exceeded. Maximum 10 submissions per hour. Please try again later.' };
-    }
-    bucket.count++;
-    submissionRateLimit.set(token, bucket);
-  }
 
   const { data: linkData, error: linkError } = await supabase
     .from('timesheet_links')

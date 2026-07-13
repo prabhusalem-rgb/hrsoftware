@@ -3,7 +3,7 @@
 // exceljs is imported dynamically inside generatePayrollExcel to reduce initial bundle size
 import type { Workbook, Worksheet } from 'exceljs';
 
-import { PayrollRun, PayrollItem, Employee, Company } from '@/types';
+import { PayrollRun, PayrollItem, Employee, Company, Leave } from '@/types';
 
 export interface PayrollReportData {
   company: Company;
@@ -11,6 +11,32 @@ export interface PayrollReportData {
   items: PayrollItem[];
   employees: Employee[];
   period: string;
+  leaves?: Leave[];
+}
+
+export function getLeaveDaysInMonth(employeeId: string, leaveRecords: Leave[], month: number, year: number, effectiveStartDay: number = 1): number {
+  let leaveDays = 0;
+  const startOfMonth = new Date(year, month - 1, effectiveStartDay);
+  const endOfMonth = new Date(year, month, 0);
+
+  for (const leave of leaveRecords) {
+    if (leave.status !== 'approved' || leave.employee_id !== employeeId) continue;
+    
+    const start = new Date(leave.start_date);
+    const end = new Date(leave.end_date);
+
+    const overlapStart = start > startOfMonth ? start : startOfMonth;
+    const overlapEnd = end < endOfMonth ? end : endOfMonth;
+
+    if (overlapStart <= overlapEnd) {
+      const cursor = new Date(overlapStart);
+      while (cursor <= overlapEnd) {
+        leaveDays++;
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+  }
+  return leaveDays;
 }
 
 export interface ExcelReportOptions {
@@ -109,16 +135,25 @@ function setupRegisterSheet(
   data: PayrollReportData,
   styles: any
 ) {
-  const { company, items, period, payrollRun } = data;
+  const { company, items, period, payrollRun, leaves = [] } = data;
   const { headerStyle, cellStyle, numericStyle, totalStyle, colors } = styles;
 
-  // Set column widths
+  // Sort items alphabetically by employee name
+  const sortedItems = [...items].map(item => {
+    const emp = data.employees.find(e => e.id === item.employee_id);
+    return { ...item, _empName: emp?.name_en || 'Unknown' };
+  }).sort((a, b) => a._empName.localeCompare(b._empName));
+
+  // Set column widths (18 columns now)
   sheet.columns = [
-    { width: 10 }, // Emp Code
+    { width: 8 },  // S.No
     { width: 28 }, // Name
+    { width: 22 }, // Bank Account Number
+    { width: 10 }, // M-Days
+    { width: 10 }, // W-Days
     { width: 12 }, // Basic
     { width: 12 }, // Housing
-    { width: 12 }, // Transport
+    { width: 12 }, // Food
     { width: 12 }, // Other Allw
     { width: 14 }, // Gross
     { width: 8 },  // OT Hrs
@@ -128,7 +163,6 @@ function setupRegisterSheet(
     { width: 12 }, // Other Ded
     { width: 14 }, // Total Ded
     { width: 12 }, // Social Sec
-    { width: 12 }, // PASI
     { width: 15 }  // Net Pay
   ];
 
@@ -167,11 +201,11 @@ function setupRegisterSheet(
 
   // Table Headers
   const headers = [
-    'Emp Code', 'Employee Name',
-    'Basic', 'Housing', 'Transport', 'Other Allw',
+    'S.No', 'Employee Name', 'Bank Account Number',
+    'M-Days', 'W-Days', 'Basic', 'Housing', 'Food', 'Other Allw',
     'Gross Pay', 'OT Hrs', 'OT Pay',
     'Abs Ded', 'Loan Ded', 'Other Ded', 'Total Ded',
-    'Soc. Sec', 'PASI Share', 'Net Salary'
+    'Soc. Sec', 'Net Salary'
   ];
 
   const headerRowIndex = 6;
@@ -185,24 +219,65 @@ function setupRegisterSheet(
   // Data Rows
   let currentRow = headerRowIndex + 1;
   const totals: Record<string, number> = {
-    basic: 0, housing: 0, transport: 0, otherAllw: 0,
+    mDays: 0, wDays: 0, basic: 0, housing: 0, food: 0, otherAllw: 0,
     gross: 0, otPay: 0, absDed: 0, loanDed: 0, otherDed: 0, totalDed: 0,
-    socialSec: 0, pasiShare: 0, net: 0
+    socialSec: 0, net: 0
   };
 
-  items.forEach((item) => {
+  const daysInMonth = new Date(payrollRun.year, payrollRun.month, 0).getDate();
+
+  sortedItems.forEach((item, index) => {
     const emp = data.employees.find(e => e.id === item.employee_id);
     const row = sheet.getRow(currentRow);
     
-    const otherAllw = Number(item.food_allowance || 0) + Number(item.special_allowance || 0) + 
+    const otherAllw = Number(item.special_allowance || 0) + 
                       Number(item.site_allowance || 0) + Number(item.other_allowance || 0);
+    const absentDays = Number(item.absent_days || 0);
+
+    let effectiveStartDay = 1;
+    if (emp) {
+      const joinDate = emp.join_date ? new Date(emp.join_date) : null;
+      const rejoinDate = emp.rejoin_date ? new Date(emp.rejoin_date) : null;
+      const isJoiningThisMonth = joinDate && !isNaN(joinDate.getTime()) &&
+                                 joinDate.getMonth() + 1 === payrollRun.month &&
+                                 joinDate.getFullYear() === payrollRun.year;
+      let isRejoiningThisMonth = rejoinDate && !isNaN(rejoinDate.getTime()) &&
+                                   rejoinDate.getMonth() + 1 === payrollRun.month &&
+                                   rejoinDate.getFullYear() === payrollRun.year;
+
+      if (isRejoiningThisMonth) {
+        const hasWorkedBeforeLeave = leaves.some(leave => {
+          if (leave.employee_id !== emp.id || leave.status !== 'approved') return false;
+          const leaveStart = new Date(leave.start_date);
+          return leaveStart.getFullYear() === payrollRun.year &&
+                 leaveStart.getMonth() + 1 === payrollRun.month &&
+                 leaveStart.getDate() > 1;
+        });
+        if (hasWorkedBeforeLeave) {
+          isRejoiningThisMonth = false;
+        }
+      }
+
+      if (isRejoiningThisMonth && rejoinDate) {
+        effectiveStartDay = rejoinDate.getDate();
+      } else if (isJoiningThisMonth && joinDate) {
+        effectiveStartDay = joinDate.getDate();
+      }
+    }
+
+    const activeCalendarDays = daysInMonth - effectiveStartDay + 1;
+    const leaveDays = getLeaveDaysInMonth(item.employee_id, leaves, payrollRun.month, payrollRun.year, effectiveStartDay);
+    const wDays = Math.max(0, activeCalendarDays - absentDays - leaveDays);
 
     row.values = [
-      emp?.emp_code || '-',
+      index + 1,
       emp?.name_en || 'Unknown',
+      emp?.bank_iban || '-',
+      daysInMonth,
+      wDays,
       Number(item.basic_salary),
       Number(item.housing_allowance),
-      Number(item.transport_allowance),
+      Number(item.food_allowance || 0),
       otherAllw,
       Number(item.gross_salary),
       item.overtime_hours || 0,
@@ -212,14 +287,13 @@ function setupRegisterSheet(
       Number(item.other_deduction || 0),
       Number(item.total_deductions || 0),
       Number(item.social_security_deduction || 0),
-      Number(item.pasi_company_share || 0),
       Number(item.net_salary || 0)
     ];
 
     row.eachCell((cell, colNum) => {
-      if (colNum <= 2) {
+      if (colNum <= 3) {
         cell.style = cellStyle;
-      } else if (colNum === 8) { // OT Hrs
+      } else if (colNum === 4 || colNum === 5 || colNum === 11) { // M-Days (4), W-Days (5), OT Hrs (11)
         cell.style = { ...numericStyle, numFmt: '0' };
       } else {
         cell.style = numericStyle;
@@ -227,9 +301,11 @@ function setupRegisterSheet(
     });
 
     // Accumulate
+    totals.mDays += daysInMonth;
+    totals.wDays += wDays;
     totals.basic += Number(item.basic_salary);
     totals.housing += Number(item.housing_allowance);
-    totals.transport += Number(item.transport_allowance);
+    totals.food += Number(item.food_allowance || 0);
     totals.otherAllw += otherAllw;
     totals.gross += Number(item.gross_salary);
     totals.otPay += Number(item.overtime_pay || 0);
@@ -238,7 +314,6 @@ function setupRegisterSheet(
     totals.otherDed += Number(item.other_deduction || 0);
     totals.totalDed += Number(item.total_deductions || 0);
     totals.socialSec += Number(item.social_security_deduction || 0);
-    totals.pasiShare += Number(item.pasi_company_share || 0);
     totals.net += Number(item.net_salary || 0);
 
     currentRow++;
@@ -248,16 +323,16 @@ function setupRegisterSheet(
   const totalRow = sheet.getRow(currentRow);
   totalRow.height = 25;
   totalRow.values = [
-    'TOTALS', `(${items.length} Employees)`,
-    totals.basic, totals.housing, totals.transport, totals.otherAllw,
+    'TOTALS', `(${sortedItems.length} Employees)`, '',
+    totals.mDays, totals.wDays, totals.basic, totals.housing, totals.food, totals.otherAllw,
     totals.gross, '', totals.otPay,
     totals.absDed, totals.loanDed, totals.otherDed, totals.totalDed,
-    totals.socialSec, totals.pasiShare, totals.net
+    totals.socialSec, totals.net
   ];
 
   totalRow.eachCell((cell, colNum) => {
     cell.style = totalStyle;
-    if (colNum <= 2) {
+    if (colNum <= 3) {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     }
   });
@@ -281,8 +356,8 @@ function setupRegisterSheet(
   };
 
   // Checked By
-  sheet.mergeCells(currentRow, 8, currentRow, 11);
-  const checkedBy = sheet.getCell(currentRow, 8);
+  sheet.mergeCells(currentRow, 10, currentRow, 13);
+  const checkedBy = sheet.getCell(currentRow, 10);
   checkedBy.value = 'CHECKED BY';
   checkedBy.style = { 
     font: { bold: true, size: 10, color: { argb: colors.secondary } }, 
@@ -291,8 +366,8 @@ function setupRegisterSheet(
   };
 
   // Authorised By
-  sheet.mergeCells(currentRow, 13, currentRow, 16);
-  const authorisedBy = sheet.getCell(currentRow, 13);
+  sheet.mergeCells(currentRow, 15, currentRow, 18);
+  const authorisedBy = sheet.getCell(currentRow, 15);
   authorisedBy.value = 'AUTHORISED BY';
   authorisedBy.style = { 
     font: { bold: true, size: 10, color: { argb: colors.secondary } }, 
@@ -305,11 +380,11 @@ function setupRegisterSheet(
   sigRowTitle.getCell(2).value = 'HR / Payroll Administrator';
   sigRowTitle.getCell(2).style = { font: { size: 9, italic: true, color: { argb: 'FF64748b' } }, alignment: { horizontal: 'center' } };
   
-  sigRowTitle.getCell(8).value = 'Finance Department';
-  sigRowTitle.getCell(8).style = { font: { size: 9, italic: true, color: { argb: 'FF64748b' } }, alignment: { horizontal: 'center' } };
+  sigRowTitle.getCell(10).value = 'Finance Department';
+  sigRowTitle.getCell(10).style = { font: { size: 9, italic: true, color: { argb: 'FF64748b' } }, alignment: { horizontal: 'center' } };
   
-  sigRowTitle.getCell(13).value = 'General Manager / CEO';
-  sigRowTitle.getCell(13).style = { font: { size: 9, italic: true, color: { argb: 'FF64748b' } }, alignment: { horizontal: 'center' } };
+  sigRowTitle.getCell(15).value = 'General Manager / CEO';
+  sigRowTitle.getCell(15).style = { font: { size: 9, italic: true, color: { argb: 'FF64748b' } }, alignment: { horizontal: 'center' } };
 
   // Freeze header
   sheet.views = [{ state: 'frozen', ySplit: headerRowIndex }];

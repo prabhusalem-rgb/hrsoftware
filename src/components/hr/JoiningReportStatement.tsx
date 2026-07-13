@@ -26,7 +26,7 @@ export function JoiningReportStatement({ company, employee }: JoiningReportState
         </div>
         <div className="text-right">
           <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Report Date</p>
-          <p className="font-mono text-sm font-bold">{format(new Date(), 'dd MMMM yyyy')}</p>
+          <p className="font-mono text-sm font-bold">{format(new Date(), 'dd/MM/yyyy')}</p>
         </div>
       </div>
 
@@ -57,7 +57,7 @@ export function JoiningReportStatement({ company, employee }: JoiningReportState
           <div className="space-y-4 pl-8">
             <div>
               <p className="text-[10px] font-black uppercase text-slate-400">Date of Assumption</p>
-              <p className="font-black text-emerald-700">{employee.join_date ? format(new Date(employee.join_date), 'dd MMMM yyyy') : 'NOT RECORDED'}</p>
+              <p className="font-black text-emerald-700">{employee.join_date ? format(new Date(employee.join_date), 'dd/MM/yyyy') : 'NOT RECORDED'}</p>
             </div>
             <div>
               <p className="text-[10px] font-black uppercase text-slate-400">Department</p>

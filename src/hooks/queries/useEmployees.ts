@@ -21,7 +21,8 @@ const DEFAULT_EMPLOYEE_SELECT = `
   basic_salary, housing_allowance, transport_allowance, food_allowance,
   special_allowance, site_allowance, other_allowance, gross_salary,
   nationality, gender, religion, family_status, id_type, civil_id,
-  passport_no, passport_expiry, visa_no, visa_expiry, onboarding_status
+  passport_no, passport_expiry, visa_no, visa_expiry, onboarding_status,
+  leave_settlement_date, termination_date
 `.trim().replace(/\s+/g, ' ');
 
 export function useEmployees({

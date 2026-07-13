@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
 
 // Mock the server action
-vi.mock('./actions', () => ({
+vi.mock('@/app/timesheet/[token]/actions', () => ({
   submitTimesheet: vi.fn(),
 }));
 
@@ -23,13 +23,13 @@ vi.mock('sonner', () => ({
 }));
 
 const mockEmployees = [
-  { id: '1', name_en: 'John Doe', emp_code: 'EMP001' },
-  { id: '2', name_en: 'Jane Smith', emp_code: 'EMP002' },
+  { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', name_en: 'John Doe', emp_code: 'EMP001' },
+  { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', name_en: 'Jane Smith', emp_code: 'EMP002' },
 ];
 
 const mockProjects = [
-  { id: 'p1', name: 'Project Alpha' },
-  { id: 'p2', name: 'Project Beta' },
+  { id: 'b0f0c090-9c0b-4ef8-bb6d-6bb9bd380c11', name: 'Project Alpha' },
+  { id: 'b0f0c090-9c0b-4ef8-bb6d-6bb9bd380c22', name: 'Project Beta' },
 ];
 
 const createWrapper = () => {
@@ -133,15 +133,16 @@ describe('TimesheetForm', () => {
 
     it('resets values when switching day types', async () => {
       render(<TimesheetForm {...defaultProps} />);
-      const hoursInput = screen.getByLabelText(/Regular Hours/i) as HTMLInputElement;
 
       // Select working_day first
       await userEvent.click(screen.getByLabelText('Working Day'));
+      expect(screen.getByLabelText('8 Hours (Full-day)')).toBeInTheDocument();
+
       // Then switch to absent
       await userEvent.click(screen.getByLabelText('Absent'));
 
-      // Hours should be reset
-      expect(screen.queryByLabelText(/Regular Hours/i)).not.toBeInTheDocument();
+      // Hours should be hidden
+      expect(screen.queryByLabelText('8 Hours (Full-day)')).not.toBeInTheDocument();
     });
   });
 
@@ -177,23 +178,27 @@ describe('TimesheetForm', () => {
   describe('Form Submission', () => {
     it('submits the form with correct data', async () => {
       const mockSubmit = vi.fn().mockResolvedValue({ success: true });
-      const { submitTimesheet } = await import('./actions');
+      const { submitTimesheet } = await import('@/app/timesheet/[token]/actions');
       vi.mocked(submitTimesheet).mockImplementation(mockSubmit);
 
       render(<TimesheetForm {...defaultProps} />);
-
-      // Fill employee
-      await userEvent.selectOptions(screen.getByRole('combobox', { name: '' }), '1');
-      // Select project
-      const projectSelect = screen.getAllByRole('combobox')[1];
-      await userEvent.selectOptions(projectSelect, 'p1');
 
       // Select day type
       await userEvent.click(screen.getByLabelText('Holiday Overtime'));
 
       // Set holiday OT hours
       const otSelect = screen.getByRole('combobox', { name: /Holiday Overtime Hours/i });
-      await userEvent.selectOptions(otSelect, '5');
+      fireEvent.change(otSelect, { target: { value: '5' } });
+
+      // Select project
+      const projectSelect = screen.getByLabelText(/Select project/i);
+      fireEvent.change(projectSelect, { target: { value: 'b0f0c090-9c0b-4ef8-bb6d-6bb9bd380c11' } });
+
+      // Fill employee using combobox last
+      const comboboxInput = screen.getByPlaceholderText(/Search employee by name or code.../i);
+      await userEvent.click(comboboxInput);
+      const option = await screen.findByText('John Doe');
+      await userEvent.click(option);
 
       // Add reason
       const reasonTextarea = screen.getByPlaceholderText(/Please provide a reason/i);
@@ -203,6 +208,10 @@ describe('TimesheetForm', () => {
       const submitBtn = screen.getByRole('button', { name: /Submit Timesheet/i });
       await userEvent.click(submitBtn);
 
+      // Click Confirm & Submit in the dialog
+      const confirmBtn = await screen.findByRole('button', { name: /Confirm & Submit/i });
+      await userEvent.click(confirmBtn);
+
       await waitFor(() => {
         expect(mockSubmit).toHaveBeenCalled();
       });
@@ -211,14 +220,24 @@ describe('TimesheetForm', () => {
     it('shows validation error when required reason is missing for holiday overtime', async () => {
       render(<TimesheetForm {...defaultProps} />);
 
+      // Select project
+      const projectSelect = screen.getByLabelText(/Select project/i);
+      fireEvent.change(projectSelect, { target: { value: 'b0f0c090-9c0b-4ef8-bb6d-6bb9bd380c11' } });
+
       await userEvent.click(screen.getByLabelText('Holiday Overtime'));
       // Holiday OT defaults to 1 hour, reason is required
+
+      // Fill employee using combobox last
+      const comboboxInput = screen.getByPlaceholderText(/Search employee by name or code.../i);
+      await userEvent.click(comboboxInput);
+      const option = await screen.findByText('John Doe');
+      await userEvent.click(option);
 
       const submitBtn = screen.getByRole('button', { name: /Submit Timesheet/i });
       await userEvent.click(submitBtn);
 
       await waitFor(() => {
-        expect(screen.getByText(/Reason is required/i)).toBeInTheDocument();
+        expect(screen.getByText(/Reason is required for absences and overtime entries/i)).toBeInTheDocument();
       });
     });
   });
@@ -249,14 +268,26 @@ describe('TimesheetForm', () => {
   describe('Date Validation', () => {
     it('does not allow future dates', async () => {
       render(<TimesheetForm {...defaultProps} />);
-      const dateInput = screen.getByLabelText(/Date/i);
 
+      // Select project first
+      const projectSelect = screen.getByLabelText(/Select project/i);
+      fireEvent.change(projectSelect, { target: { value: 'b0f0c090-9c0b-4ef8-bb6d-6bb9bd380c11' } });
+
+      // Set date to future
+      const dateInput = screen.getByLabelText(/Date/i) as HTMLInputElement;
       const futureDate = new Date();
       futureDate.setDate(futureDate.getDate() + 10);
-      const futureDateStr = futureDate.toISOString().split('T')[0];
+      const day = String(futureDate.getDate()).padStart(2, '0');
+      const month = String(futureDate.getMonth() + 1).padStart(2, '0');
+      const year = futureDate.getFullYear();
+      const futureDateStr = `${day}/${month}/${year}`;
+      fireEvent.change(dateInput, { target: { value: futureDateStr } });
 
-      await userEvent.clear(dateInput);
-      await userEvent.type(dateInput, futureDateStr);
+      // Fill employee using combobox last
+      const comboboxInput = screen.getByPlaceholderText(/Search employee by name or code.../i);
+      await userEvent.click(comboboxInput);
+      const option = await screen.findByText('John Doe');
+      await userEvent.click(option);
 
       const submitBtn = screen.getByRole('button', { name: /Submit Timesheet/i });
       await userEvent.click(submitBtn);

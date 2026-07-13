@@ -113,7 +113,7 @@ export function LeaveRequestDetails({ request }: LeaveRequestDetailsProps) {
                   </span>
                   <p className="text-lg font-bold text-slate-900">{request.days} Days</p>
                   <p className="text-sm text-slate-500">
-                    {format(new Date(request.start_date), 'dd MMM yyyy')} — {format(new Date(request.end_date), 'dd MMM yyyy')}
+                    {format(new Date(request.start_date), 'dd/MM/yyyy')} — {format(new Date(request.end_date), 'dd/MM/yyyy')}
                   </p>
                 </div>
                 <div className="space-y-1 col-span-2">
@@ -133,7 +133,7 @@ export function LeaveRequestDetails({ request }: LeaveRequestDetailsProps) {
                   <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 flex flex-col items-center">
                     <img src={request.employee_signature_url} alt="Employee Signature" className="max-h-32 object-contain" />
                     <p className="text-[10px] text-slate-400 mt-2 font-mono">
-                      Digitally signed on {format(new Date(request.employee_signed_at), 'dd MMM yyyy HH:mm')}
+                      Digitally signed on {format(new Date(request.employee_signed_at), 'dd/MM/yyyy HH:mm')}
                     </p>
                   </div>
                 ) : (
@@ -184,7 +184,7 @@ export function LeaveRequestDetails({ request }: LeaveRequestDetailsProps) {
                     <div className="space-y-3 flex-1">
                       <div>
                         <p className="font-bold text-slate-900">HR Approval</p>
-                        <p className="text-xs text-slate-500">{format(new Date(request.hr_approved_at), 'dd MMM yyyy HH:mm')}</p>
+                        <p className="text-xs text-slate-500">{format(new Date(request.hr_approved_at), 'dd/MM/yyyy HH:mm')}</p>
                       </div>
                       {request.hr_remarks && (
                         <p className="text-sm bg-white p-3 rounded-xl border border-slate-200 italic">"{request.hr_remarks}"</p>
@@ -201,7 +201,7 @@ export function LeaveRequestDetails({ request }: LeaveRequestDetailsProps) {
                     <div className="space-y-3 flex-1">
                       <div>
                         <p className="font-bold text-slate-900">GM/CEO Approval</p>
-                        <p className="text-xs text-slate-500">{format(new Date(request.gm_approved_at), 'dd MMM yyyy HH:mm')}</p>
+                        <p className="text-xs text-slate-500">{format(new Date(request.gm_approved_at), 'dd/MM/yyyy HH:mm')}</p>
                       </div>
                       {request.gm_remarks && (
                         <p className="text-sm bg-white p-3 rounded-xl border border-slate-200 italic">"{request.gm_remarks}"</p>

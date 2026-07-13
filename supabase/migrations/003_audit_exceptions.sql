@@ -155,6 +155,7 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_name = 'audit_logs' AND table_schema = 'public'
   ) THEN
+    DROP POLICY IF EXISTS "Super admins can view all audit logs" ON audit_logs;
     CREATE POLICY "Super admins can view all audit logs"
       ON audit_logs FOR SELECT
       USING (get_user_role() = 'super_admin');
@@ -176,6 +177,7 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_name = 'exceptions' AND table_schema = 'public'
   ) THEN
+    DROP POLICY IF EXISTS "Super admins can manage exceptions" ON exceptions;
     CREATE POLICY "Super admins can manage exceptions"
       ON exceptions FOR ALL
       USING (get_user_role() = 'super_admin');
@@ -190,6 +192,7 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_name = 'exceptions' AND table_schema = 'public'
   ) THEN
+    DROP POLICY IF EXISTS "Authenticated users can log exceptions" ON exceptions;
     CREATE POLICY "Authenticated users can log exceptions"
       ON exceptions FOR INSERT
       TO authenticated

@@ -34,29 +34,61 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
-    // Get stats by entity type
-    const { data: byEntity } = await (supabase as any)
-      .from('audit_logs')
-      .select('entity_type, count()', { count: 'exact', head: false })
-      .groupBy('entity_type');
+    const searchParams = req.nextUrl.searchParams;
+    const companyId = searchParams.get('company_id');
 
-    // Get stats by action
-    const { data: byAction } = await (supabase as any)
+    let query = supabase
       .from('audit_logs')
-      .select('action, count()', { count: 'exact', head: false })
-      .groupBy('action');
+      .select('entity_type, action, created_at');
 
-    // Get last 7 days count
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: recent } = await (supabase as any)
-      .from('audit_logs')
-      .select('count()', { count: 'exact', head: false })
-      .gte('created_at', sevenDaysAgo);
+    if (companyId) {
+      query = query.eq('company_id', companyId);
+    }
+
+    // Fetch audit logs fields for in-memory aggregation to avoid unsupported groupBy in Supabase client
+    const { data: logs, error: logsError } = await query;
+
+    if (logsError) {
+      console.error('Error fetching logs for stats:', logsError);
+      return NextResponse.json({ error: 'Failed to fetch logs for stats' }, { status: 500 });
+    }
+
+    const byEntityMap: Record<string, number> = {};
+    const byActionMap: Record<string, number> = {};
+    let last7DaysCount = 0;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    if (logs) {
+      for (const log of logs) {
+        if (log.entity_type) {
+          byEntityMap[log.entity_type] = (byEntityMap[log.entity_type] || 0) + 1;
+        }
+        if (log.action) {
+          byActionMap[log.action] = (byActionMap[log.action] || 0) + 1;
+        }
+        if (log.created_at) {
+          const createdAt = new Date(log.created_at);
+          if (createdAt >= sevenDaysAgo) {
+            last7DaysCount++;
+          }
+        }
+      }
+    }
+
+    const byEntity = Object.entries(byEntityMap).map(([entity_type, count]) => ({
+      entity_type,
+      count,
+    }));
+
+    const byAction = Object.entries(byActionMap).map(([action, count]) => ({
+      action,
+      count,
+    }));
 
     return NextResponse.json({
-      byEntity: byEntity || [],
-      byAction: byAction || [],
-      last7Days: recent?.[0]?.count || 0,
+      byEntity,
+      byAction,
+      last7Days: last7DaysCount,
     });
   } catch (error) {
     console.error('GET /api/audit-logs/stats error:', error);

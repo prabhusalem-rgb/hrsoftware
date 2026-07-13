@@ -37,7 +37,7 @@ export function OfferLetterPDF({ company, candidate }: OfferLetterPDFProps) {
 
   const formatDate = (dateStr: string) => {
     try {
-      return format(new Date(dateStr), 'dd MMMM yyyy');
+      return format(new Date(dateStr), 'dd/MM/yyyy');
     } catch {
       return dateStr;
     }

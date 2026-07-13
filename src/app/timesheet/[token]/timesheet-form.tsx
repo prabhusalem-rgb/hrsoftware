@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useForm, UseFormReturn } from 'react-hook-form';
+import { useForm, UseFormReturn, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { submitTimesheet, type SubmitTimesheetResponse } from './actions';
@@ -10,6 +10,7 @@ import { type Timesheet, type Company } from '@/types';
 import { downloadTimesheetConfirmationPDF } from '@/lib/pdf-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -63,11 +64,22 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
 
+  const filteredEmployees = employees.filter(emp => {
+    const query = employeeSearchQuery || '';
+    if (!query.trim()) return true;
+    const search = query.toLowerCase();
+    return (
+      (emp.name_en || '').toLowerCase().includes(search) ||
+      (emp.emp_code || '').toLowerCase().includes(search)
+    );
+  });
+
   const {
     register,
     handleSubmit,
     watch,
     setValue,
+    control,
     formState: { errors },
   } = useForm<FormDataWithToken>({
     // @ts-expect-error - Zod v4 type inference compatibility with token field
@@ -191,7 +203,7 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" noValidate>
       {/* Hidden token field */}
       <input type="hidden" {...register('token')} />
 
@@ -227,17 +239,7 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
           </ComboboxField>
           <ComboboxContent>
             <div className="py-2">
-              {employees
-                .filter(emp => {
-                  const query = employeeSearchQuery || '';
-                  if (!query.trim()) return true;
-                  const search = query.toLowerCase();
-                  return (
-                    (emp.name_en || '').toLowerCase().includes(search) ||
-                    (emp.emp_code || '').toLowerCase().includes(search)
-                  );
-                })
-                .map(emp => (
+              {filteredEmployees.map(emp => (
                   <ComboboxItem key={emp.id} value={emp.id} className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium">
                       {emp.name_en?.charAt(0) || '?'}
@@ -248,7 +250,7 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
                     </div>
                   </ComboboxItem>
                 ))}
-              {employees.length === 0 && (
+              {filteredEmployees.length === 0 && (
                 <div className="px-3 py-8 text-center text-gray-500">
                   <User className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                   <p className="text-sm">No employees found</p>
@@ -269,10 +271,16 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
         <Label htmlFor="date">
           Date <span className="text-red-500">*</span>
         </Label>
-        <Input
-          type="date"
-          max={new Date().toISOString().split('T')[0]}
-          {...register('date')}
+        <Controller
+          control={control}
+          name="date"
+          render={({ field }) => (
+            <DatePickerInput
+              id="date"
+              value={field.value}
+              onChange={(e) => field.onChange(e.target.value)}
+            />
+          )}
         />
         {errors.date && (
           <p className="text-xs text-red-500 flex items-center gap-1">
@@ -363,6 +371,7 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
             </Label>
             <select
               {...register('overtime_hours', { valueAsNumber: true })}
+              id="overtime_hours"
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 mt-1"
             >
               <option value={0}>0 hours</option>
@@ -397,6 +406,7 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
             </Label>
             <select
               {...register('overtime_hours', { valueAsNumber: true })}
+              id="overtime_hours"
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 mt-1"
             >
               <option value={1}>1 hour</option>

@@ -192,7 +192,7 @@ export default function ContractRenewalListPage() {
                     <TableCell className="font-mono font-medium">{renewal.gross_salary.toFixed(3)} OMR</TableCell>
                     <TableCell>{getStatusBadge(renewal.status)}</TableCell>
                     <TableCell className="text-slate-500 text-xs">
-                      {format(new Date(renewal.created_at), 'dd MMM yyyy')}
+                      {format(new Date(renewal.created_at), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

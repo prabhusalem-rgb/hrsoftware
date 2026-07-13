@@ -108,13 +108,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch audit logs' }, { status: 500 });
     }
 
-    // Fetch total stats for dashboard
-    const { data: statsData } = await (supabase as any)
-      .from('audit_logs')
-      .select('entity_type, action, count()', { count: 'exact', head: false })
-      .groupBy('entity_type')
-      .groupBy('action');
-
     return NextResponse.json({
       logs: data || [],
       pagination: {
@@ -123,7 +116,7 @@ export async function GET(req: NextRequest) {
         total: count || 0,
         totalPages: Math.ceil((count || 0) / limit),
       },
-      stats: statsData || [],
+      stats: [],
     });
   } catch (error) {
     console.error('GET /api/audit-logs error:', error);

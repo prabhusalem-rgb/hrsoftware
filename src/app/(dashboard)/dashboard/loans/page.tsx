@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,7 +17,20 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import {
-  Plus, Pencil, Trash2, Search, Wallet, Ban, CheckCircle,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Plus, Pencil, Trash2, Search, Wallet, Ban, CheckCircle, Check,
   Calendar, DollarSign, FileText, History, TrendingUp, AlertTriangle
 } from 'lucide-react';
 import { useCompany } from '@/components/providers/CompanyProvider';
@@ -64,6 +78,7 @@ export default function LoansPage() {
 
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogEmployeeSearchOpen, setDialogEmployeeSearchOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [editing, setEditing] = useState<Loan | null>(null);
@@ -73,6 +88,7 @@ export default function LoansPage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedInstallments, setSelectedInstallments] = useState<number[]>([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
+  const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   // Form state
   const [form, setForm] = useState({
@@ -222,7 +238,7 @@ export default function LoansPage() {
   const handleMarkPaid = async () => {
     if (!selectedScheduleId) return;
     const amount = parseFloat((document.getElementById('paid-amount') as HTMLInputElement)?.value || '0');
-    const date = (document.getElementById('paid-date') as HTMLInputElement)?.value;
+    const date = paymentDate;
     const method = (document.getElementById('payment-method') as HTMLInputElement)?.value;
     const reference = (document.getElementById('payment-reference') as HTMLInputElement)?.value;
 
@@ -424,7 +440,7 @@ export default function LoansPage() {
                       <div>
                         <p className="font-medium text-sm">{getEmpName(loan.employee_id)}</p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(loan.disbursement_date), 'MMM yyyy')}
+                          {format(new Date(loan.disbursement_date), 'MM/yyyy')}
                         </p>
                       </div>
                     </div>
@@ -501,25 +517,55 @@ export default function LoansPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-1.5">
               <Label>Employee *</Label>
-              <Select
-                value={form.employee_id}
-                onValueChange={(v) => { if (v) setForm({ ...form, employee_id: v }); }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select employee">
-                    {employees.find(e => e.id === form.employee_id)?.name_en || form.employee_id}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {employees
-                    .filter(e => e.status === 'active')
-                    .map(e => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.name_en} ({e.emp_code})
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Popover open={dialogEmployeeSearchOpen} onOpenChange={setDialogEmployeeSearchOpen}>
+                <PopoverTrigger className="w-full">
+                  <div
+                    role="combobox"
+                    aria-expanded={dialogEmployeeSearchOpen}
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Search className="h-4 w-4 shrink-0 opacity-50" />
+                      {form.employee_id ? (
+                        <span className="truncate">
+                          {employees.find(e => e.id === form.employee_id)?.name_en || form.employee_id}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Select employee...</span>
+                      )}
+                    </div>
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search employee by name or code..." className="h-9" />
+                    <CommandList>
+                      <CommandEmpty>No employee found.</CommandEmpty>
+                      <CommandGroup>
+                        {employees
+                          .filter(e => e.status === 'active')
+                          .map(emp => (
+                            <CommandItem
+                              key={emp.id}
+                              value={`${emp.name_en} ${emp.emp_code}`}
+                              onSelect={() => {
+                                setForm({ ...form, employee_id: emp.id });
+                                setDialogEmployeeSearchOpen(false);
+                              }}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${form.employee_id === emp.id ? 'opacity-100' : 'opacity-0'}`} />
+                              <div className="flex flex-col">
+                                <span>{emp.name_en}</span>
+                                <span className="text-xs text-muted-foreground">{emp.emp_code}</span>
+                              </div>
+                            </CommandItem>
+                          ))
+                        }
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -566,16 +612,14 @@ export default function LoansPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Disbursement Date *</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={form.disbursement_date}
                   onChange={(e) => setForm({ ...form, disbursement_date: e.target.value })}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label>First Payment Date *</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={form.first_payment_date}
                   onChange={(e) => setForm({ ...form, first_payment_date: e.target.value })}
                 />
@@ -631,7 +675,7 @@ export default function LoansPage() {
                   Loan Details — {getEmpName(selectedLoan.employee_id)}
                 </DialogTitle>
                 <DialogDescription>
-                  {selectedLoan.status.replace('_', ' ')} • Disbursed {format(new Date(selectedLoan.disbursement_date), 'MMM d, yyyy')}
+                  {selectedLoan.status.replace('_', ' ')} • Disbursed {format(new Date(selectedLoan.disbursement_date), 'dd/MM/yyyy')}
                 </DialogDescription>
               </DialogHeader>
 
@@ -703,7 +747,7 @@ export default function LoansPage() {
                       {scheduleData.map((inst: LoanScheduleItem) => (
                         <TableRow key={inst.id} className={inst.is_held ? 'bg-amber-50/50' : ''}>
                           <TableCell className="font-medium">{inst.installment_no}</TableCell>
-                          <TableCell>{format(new Date(inst.due_date), 'MMM dd, yyyy')}</TableCell>
+                          <TableCell>{format(new Date(inst.due_date), 'dd/MM/yyyy')}</TableCell>
                           <TableCell className="font-mono">{inst.principal_due.toFixed(3)}</TableCell>
                           <TableCell className="font-mono">{inst.interest_due.toFixed(3)}</TableCell>
                           <TableCell className="font-mono font-medium">{inst.total_due.toFixed(3)}</TableCell>
@@ -729,6 +773,7 @@ export default function LoansPage() {
                                   className="h-7 text-xs"
                                   onClick={() => {
                                     setSelectedScheduleId(inst.id);
+                                    setPaymentDate(format(new Date(), 'yyyy-MM-dd'));
                                     setPaymentDialogOpen(true);
                                   }}
                                 >
@@ -787,7 +832,7 @@ export default function LoansPage() {
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(entry.created_at), 'MMM d, yyyy HH:mm')}
+                            {format(new Date(entry.created_at), 'dd/MM/yyyy HH:mm')}
                           </span>
                         </div>
                       </CardContent>
@@ -872,7 +917,11 @@ export default function LoansPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Payment Date *</Label>
-              <Input id="paid-date" type="date" defaultValue={format(new Date(), 'yyyy-MM-dd')} />
+              <DatePickerInput
+                id="paid-date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Payment Method</Label>

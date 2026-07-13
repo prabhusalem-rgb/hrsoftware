@@ -27,7 +27,19 @@ export default function SettingsPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const [isUpdatingSystem, setIsUpdatingSystem] = useState(false);
+  const [activeTab, setActiveTab] = useState<'company_admin' | 'hr' | 'finance' | 'viewer'>('company_admin');
   const supabase = createClient();
+
+  const modules = [
+    { id: 'employees', name: 'Employees' },
+    { id: 'attendance', name: 'Attendance & Timesheets' },
+    { id: 'leaves', name: 'Leaves & Leave Requests' },
+    { id: 'loans', name: 'Loans' },
+    { id: 'payroll', name: 'Payroll & Payouts' },
+    { id: 'reports', name: 'Reports' },
+    { id: 'users', name: 'Users' },
+    { id: 'settings', name: 'Settings & Branding' }
+  ];
 
   useEffect(() => {
     async function fetchSystemSettings() {
@@ -117,6 +129,7 @@ export default function SettingsPage() {
         .update({
           software_name: systemSettings.software_name,
           software_logo_url: systemSettings.software_logo_url,
+          role_permissions: systemSettings.role_permissions,
           updated_at: new Date().toISOString(),
           updated_by: profile?.id
         })
@@ -248,37 +261,123 @@ export default function SettingsPage() {
 
       {/* System Settings (Super Admin Only) */}
       {profile?.role === 'super_admin' && (
-        <Card className="border-0 shadow-sm border-2 border-primary/20">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2 text-primary">
-              <Monitor className="w-4 h-4" /> System Branding
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <LogoUpload
-                label="Software Logo"
-                value={systemSettings?.software_logo_url}
-                onChange={(url) => setSystemSettings(prev => prev ? { ...prev, software_logo_url: url } : null)}
-                onRemove={() => setSystemSettings(prev => prev ? { ...prev, software_logo_url: null } : null)}
-                folder="branding"
-              />
-              
-              <div className="space-y-1.5">
-                <Label>Software Name</Label>
-                <Input 
-                  value={systemSettings?.software_name || ''} 
-                  onChange={e => setSystemSettings(prev => prev ? { ...prev, software_name: e.target.value } : null)} 
+        <>
+          <Card className="border-0 shadow-sm border-2 border-primary/20">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2 text-primary">
+                <Monitor className="w-4 h-4" /> System Branding
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <LogoUpload
+                  label="Software Logo"
+                  value={systemSettings?.software_logo_url}
+                  onChange={(url) => setSystemSettings(prev => prev ? { ...prev, software_logo_url: url } : null)}
+                  onRemove={() => setSystemSettings(prev => prev ? { ...prev, software_logo_url: null } : null)}
+                  folder="branding"
                 />
+                
+                <div className="space-y-1.5">
+                  <Label>Software Name</Label>
+                  <Input 
+                    value={systemSettings?.software_name || ''} 
+                    onChange={e => setSystemSettings(prev => prev ? { ...prev, software_name: e.target.value } : null)} 
+                  />
+                </div>
               </div>
-            </div>
 
-            <Button onClick={handleSaveSystemSettings} disabled={isUpdatingSystem} className="w-full">
-              {isUpdatingSystem ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
-              Update System Branding
-            </Button>
-          </CardContent>
-        </Card>
+              <Button onClick={handleSaveSystemSettings} disabled={isUpdatingSystem} className="w-full">
+                {isUpdatingSystem ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
+                Update System Branding
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Role Permissions (Super Admin Only) */}
+          <Card className="border-0 shadow-sm border-2 border-primary/20">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2 text-primary">
+                <Shield className="w-4 h-4" /> Role Permissions Settings
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Configure module-level permissions for each user role.</p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex flex-wrap gap-2 border-b pb-4 mb-4">
+                {(['company_admin', 'hr', 'finance', 'viewer'] as const).map((r) => (
+                  <Button
+                    key={r}
+                    type="button"
+                    variant={activeTab === r ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setActiveTab(r)}
+                    className="capitalize"
+                  >
+                    {r.replace('_', ' ')}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="p-3 text-left font-semibold">Module</th>
+                      <th className="p-3 text-center font-semibold">Read</th>
+                      <th className="p-3 text-center font-semibold">Create</th>
+                      <th className="p-3 text-center font-semibold">Update</th>
+                      <th className="p-3 text-center font-semibold">Delete</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {modules.map((mod) => {
+                      const currentPerms = (systemSettings?.role_permissions as any)?.[activeTab]?.[mod.id] || [];
+                      return (
+                        <tr key={mod.id} className="hover:bg-muted/10">
+                          <td className="p-3 font-medium capitalize">{mod.name}</td>
+                          {(['read', 'create', 'update', 'delete'] as const).map((act) => {
+                            const isChecked = currentPerms.includes(act);
+                            return (
+                              <td key={act} className="p-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const updatedPerms = e.target.checked
+                                      ? [...currentPerms, act]
+                                      : currentPerms.filter((p: string) => p !== act);
+                                    
+                                    const newPermissions = {
+                                      ...(systemSettings?.role_permissions as any),
+                                      [activeTab]: {
+                                        ...((systemSettings?.role_permissions as any)?.[activeTab] || {}),
+                                        [mod.id]: updatedPerms
+                                      }
+                                    };
+
+                                    setSystemSettings((prev) =>
+                                      prev ? { ...prev, role_permissions: newPermissions } : null
+                                    );
+                                  }}
+                                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20 accent-primary"
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <Button onClick={handleSaveSystemSettings} disabled={isUpdatingSystem} className="w-full">
+                {isUpdatingSystem ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
+                Save Permissions Grid
+              </Button>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       {/* About */}

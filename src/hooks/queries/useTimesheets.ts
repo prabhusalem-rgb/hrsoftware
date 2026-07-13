@@ -24,49 +24,73 @@ export function useTimesheets(params: {
   return useQuery<Timesheet[]>({
     queryKey: ['timesheets', companyId, { ...filters }],
     queryFn: async () => {
-      if (!companyId || !supabase) return [];
+      const buildQuery = () => {
+        let q = supabase
+          .from('timesheets')
+          .select(`
+            *,
+            employees(name_en, emp_code, gross_salary),
+            projects(name)
+          `)
+          .eq('company_id', companyId)
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false });
 
-      let query = supabase
-        .from('timesheets')
-        .select(`
-          *,
-          employees(name_en, emp_code, gross_salary),
-          projects(name)
-        `)
-        .eq('company_id', companyId)
-        .order('date', { ascending: false })
-        .order('created_at', { ascending: false });
+        if (filters.employeeId) {
+          q = q.eq('employee_id', filters.employeeId);
+        }
+        if (filters.projectId) {
+          q = q.eq('project_id', filters.projectId);
+        }
+        if (filters.dayType) {
+          q = q.eq('day_type', filters.dayType);
+        }
+        if (filters.dateFrom) {
+          q = q.gte('date', filters.dateFrom);
+        }
+        if (filters.dateTo) {
+          q = q.lte('date', filters.dateTo);
+        }
+        if (filters.month) {
+          const startDate = `${filters.month}-01`;
+          // Get last day of month without timezone shift
+          const [year, monthNum] = filters.month.split('-').map(Number);
+          const lastDay = new Date(year, monthNum, 0).getDate();
+          const endDate = `${filters.month}-${String(lastDay).padStart(2, '0')}`;
+          q = q.gte('date', startDate).lte('date', endDate);
+        }
+        return q;
+      };
 
-      if (filters.employeeId) {
-        query = query.eq('employee_id', filters.employeeId);
-      }
-      if (filters.projectId) {
-        query = query.eq('project_id', filters.projectId);
-      }
-      if (filters.dayType) {
-        query = query.eq('day_type', filters.dayType);
-      }
-      if (filters.dateFrom) {
-        query = query.gte('date', filters.dateFrom);
-      }
-      if (filters.dateTo) {
-        query = query.lte('date', filters.dateTo);
-      }
-      if (filters.month) {
-        const startDate = `${filters.month}-01`;
-        // Get last day of month without timezone shift
-        const [year, monthNum] = filters.month.split('-').map(Number);
-        const lastDay = new Date(year, monthNum, 0).getDate();
-        const endDate = `${filters.month}-${String(lastDay).padStart(2, '0')}`;
-        query = query.gte('date', startDate).lte('date', endDate);
-      }
+      const targetLimit = filters.limit || 100000;
+      if (targetLimit <= 1000) {
+        const { data, error } = await buildQuery().limit(targetLimit);
+        if (error) throw new Error(error.message);
+        return (data || []) as Timesheet[];
+      } else {
+        // Fetch in batches of 1000 to bypass PostgREST server-side limits
+        const allData: Timesheet[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
 
-      // Apply pagination server-side; for client-side hook, fetch all within reasonable limit
-      // In production, this should be a server action call
-      const { data, error } = await query.limit(filters.limit || 1000);
+        while (hasMore && allData.length < targetLimit) {
+          const to = from + pageSize - 1;
+          const { data, error } = await buildQuery().range(from, to);
+          if (error) throw new Error(error.message);
 
-      if (error) throw new Error(error.message);
-      return (data || []) as Timesheet[];
+          if (data && data.length > 0) {
+            allData.push(...(data as Timesheet[]));
+            from += pageSize;
+            if (data.length < pageSize) {
+              hasMore = false;
+            }
+          } else {
+            hasMore = false;
+          }
+        }
+        return allData;
+      }
     },
     enabled: !!companyId,
     staleTime: 2 * 60 * 1000, // 2 minutes

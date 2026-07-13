@@ -131,15 +131,15 @@ export function formatDate(
 
   switch (formatType) {
     case 'display':
-      return format(date, 'dd MMM yyyy');
+      return format(date, 'dd/MM/yyyy');
     case 'short':
-      return format(date, 'dd MMM');
+      return format(date, 'dd/MM');
     case 'iso':
       return format(date, 'yyyy-MM-dd');
     case 'datetime':
-      return format(date, 'dd MMM yyyy, hh:mm a');
+      return format(date, 'dd/MM/yyyy, hh:mm a');
     default:
-      return format(date, 'dd MMM yyyy');
+      return format(date, 'dd/MM/yyyy');
   }
 }
 

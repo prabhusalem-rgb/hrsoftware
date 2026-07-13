@@ -97,19 +97,20 @@ export function useSalaryRevisions(employeeId?: string) {
           approved_by: profile.id,
         };
 
-        const response = await supabase
-          .from('salary_revisions')
-          .insert([insertData])
-          .select()
-          .single();
+        const res = await fetch('/api/salary-revisions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(insertData),
+        });
 
-        if (response.error) {
-          const err = response.error as any;
-          console.error('Salary revision insert failed:', err.message || String(err));
-          throw err instanceof Error ? err : new Error(`Insert failed: ${JSON.stringify(err)}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to create salary revision');
         }
 
-        return response.data;
+        return data.revision;
       } catch (e: any) {
         console.error('Salary revision error:', e?.message || e);
         throw e;

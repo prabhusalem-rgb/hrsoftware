@@ -220,6 +220,10 @@ export async function POST(request: NextRequest) {
     const basicSalary = Number(employee.basic_salary) || 0;
     const housingAllowance = Number(employee.housing_allowance) || 0;
     const transportAllowance = Number(employee.transport_allowance) || 0;
+    const foodAllowance = Number(employee.food_allowance) || 0;
+    const specialAllowance = Number(employee.special_allowance) || 0;
+    const siteAllowance = Number(employee.site_allowance) || 0;
+    const otherAllowance = Number(employee.other_allowance) || 0;
 
     const payrollItemPayload = {
       payroll_run_id: payrollRun.id,
@@ -228,10 +232,10 @@ export async function POST(request: NextRequest) {
       basic_salary: finalMonthSalary * (basicSalary / grossSalary),
       housing_allowance: finalMonthSalary * (housingAllowance / grossSalary),
       transport_allowance: finalMonthSalary * (transportAllowance / grossSalary),
-      food_allowance: 0,
-      special_allowance: 0,
-      site_allowance: 0,
-      other_allowance: 0,
+      food_allowance: finalMonthSalary * (foodAllowance / grossSalary),
+      special_allowance: finalMonthSalary * (specialAllowance / grossSalary),
+      site_allowance: finalMonthSalary * (siteAllowance / grossSalary),
+      other_allowance: finalMonthSalary * (otherAllowance / grossSalary),
       overtime_hours: 0,
       overtime_pay: 0,
       gross_salary: finalMonthSalary,
@@ -267,6 +271,8 @@ export async function POST(request: NextRequest) {
         (payrollItemPayload as any).hr_id = authRequest.userId;
         (payrollItemPayload as any).hr_approved_at = new Date().toISOString();
       }
+    } else if (hr_signature && hr_signature.startsWith('http')) {
+      (payrollItemPayload as any).hr_signature_url = hr_signature;
     }
 
     if (gm_signature && gm_signature.startsWith('data:image')) {
@@ -282,6 +288,8 @@ export async function POST(request: NextRequest) {
         (payrollItemPayload as any).gm_id = authRequest.userId;
         (payrollItemPayload as any).gm_approved_at = new Date().toISOString();
       }
+    } else if (gm_signature && gm_signature.startsWith('http')) {
+      (payrollItemPayload as any).gm_signature_url = gm_signature;
     }
 
     const { data: payrollItem, error: itemError } = await supabase
@@ -350,7 +358,7 @@ export async function POST(request: NextRequest) {
 
     // 9. Update leave balance used count (mark unused leave as encashed)
     if (leaveEncashment > 0 && annualLeaveBalance > 0) {
-      const daysEncashed = Math.round(leaveEncashment / (Number(employee.basic_salary) / 30));
+      const daysEncashed = annualLeaveBalance;
       const { data: balData } = await supabase
         .from('leave_balances')
         .select('id, used')
@@ -399,7 +407,10 @@ export async function POST(request: NextRequest) {
         basic_salary: finalMonthSalary * (Number(employee.basic_salary) / Number(employee.gross_salary)),
         housing_allowance: finalMonthSalary * (Number(employee.housing_allowance) / Number(employee.gross_salary)),
         transport_allowance: finalMonthSalary * (Number(employee.transport_allowance) / Number(employee.gross_salary)),
-        other_allowance: 0,
+        food_allowance: finalMonthSalary * (Number(employee.food_allowance || 0) / Number(employee.gross_salary)),
+        special_allowance: finalMonthSalary * (Number(employee.special_allowance || 0) / Number(employee.gross_salary)),
+        site_allowance: finalMonthSalary * (Number(employee.site_allowance || 0) / Number(employee.gross_salary)),
+        other_allowance: finalMonthSalary * (Number(employee.other_allowance || 0) / Number(employee.gross_salary)),
         gross_salary: finalMonthSalary,
         loan_deduction: loanBalance,
         other_deduction: deductionsSum,

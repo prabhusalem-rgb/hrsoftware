@@ -86,7 +86,7 @@ export function useLeaveMutations(companyId: string) {
       } else {
         const { data: newLeave, error } = await supabase.from('leaves').insert([formData]).select().single();
         if (error) {
-          console.error('[saveLeave] Insert error:', error);
+          console.error('[saveLeave] Insert error details:', error.message, 'details:', error.details, 'hint:', error.hint, 'code:', error.code);
           throw new Error(error.message || 'Failed');
         }
 
@@ -171,7 +171,7 @@ export function useLeaveMutations(companyId: string) {
       }
 
       // Employee status updates
-      if (status === 'approved' && data.previousStatus !== 'approved') {
+      if (status === 'approved' && data.previousStatus !== 'approved' && Number(data.days || 0) >= 1) {
         // Do not overwrite leave_settled or final_settled if the leave was already settled before approval
         const { data: currentEmp } = await supabase.from('employees').select('status').eq('id', data.employeeId).single();
         if (currentEmp && currentEmp.status !== 'leave_settled' && currentEmp.status !== 'final_settled') {
@@ -183,6 +183,7 @@ export function useLeaveMutations(companyId: string) {
           .select('id')
           .eq('employee_id', data.employeeId)
           .in('status', ['approved', 'pending'])
+          .gte('days', 1)
           .limit(1);
 
         const newStatus = remainingLeaves && remainingLeaves.length > 0 ? 'on_leave' : 'active';
@@ -383,13 +384,18 @@ export function useLeaveMutations(companyId: string) {
 
       const { data: existingBalances } = await supabase
         .from('leave_balances')
-        .select('employee_id, leave_type_id, used')
+        .select('employee_id, leave_type_id, used, lapsed, lapsed_reason')
         .eq('company_id', companyId)
         .eq('year', targetYear);
 
       const usedMap = new Map();
+      const lapsedMap = new Map();
+      const reasonMap = new Map();
       existingBalances?.forEach((b: any) => {
-        usedMap.set(`${b.employee_id}_${b.leave_type_id}`, b.used);
+        const key = `${b.employee_id}_${b.leave_type_id}`;
+        usedMap.set(key, b.used);
+        lapsedMap.set(key, b.lapsed || 0);
+        reasonMap.set(key, b.lapsed_reason || null);
       });
 
       const upsertData = [];
@@ -407,7 +413,10 @@ export function useLeaveMutations(companyId: string) {
           }
 
           const carried_forward = isAnnual ? (emp.opening_leave_balance || 0) : 0;
-          const currentUsed = usedMap.get(`${emp.id}_${lt.id}`) || 0;
+          const key = `${emp.id}_${lt.id}`;
+          const currentUsed = usedMap.get(key) || 0;
+          const currentLapsed = lapsedMap.get(key) || 0;
+          const currentReason = reasonMap.get(key) || null;
 
           upsertData.push({
             employee_id: emp.id,
@@ -416,7 +425,9 @@ export function useLeaveMutations(companyId: string) {
             year: targetYear,
             entitled,
             carried_forward,
-            used: currentUsed
+            used: currentUsed,
+            lapsed: currentLapsed,
+            lapsed_reason: currentReason
           });
         }
       }
@@ -453,5 +464,44 @@ export function useLeaveMutations(companyId: string) {
     },
   });
 
-  return { saveLeave, updateLeaveStatus, createLeaveType, deleteLeave, seedLeaveTypes, syncLeaveBalances };
+  // 7. Update Lapsed Leave for an employee
+  const updateLapsedLeave = useMutation({
+    mutationFn: async ({
+      balanceId,
+      lapsed,
+      lapsedReason
+    }: {
+      balanceId: string;
+      lapsed: number;
+      lapsedReason: string;
+    }) => {
+      if (!supabase) throw new Error('Supabase not initialized');
+
+      const { data, error } = await supabase
+        .from('leave_balances')
+        .update({
+          lapsed: lapsed,
+          lapsed_reason: lapsedReason || null
+        })
+        .eq('id', balanceId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[updateLapsedLeave] Error:', error);
+        throw new Error(error.message || 'Failed to update lapsed leave');
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
+      toast.success('Lapsed leave updated successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to update lapsed leave');
+    }
+  });
+
+  return { saveLeave, updateLeaveStatus, createLeaveType, deleteLeave, seedLeaveTypes, syncLeaveBalances, updateLapsedLeave };
 }

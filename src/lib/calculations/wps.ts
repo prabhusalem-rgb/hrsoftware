@@ -63,12 +63,21 @@ function formatEmployeeId(id: string | number): string {
 export function isValidEmployee(employee: Employee): boolean {
   if (!employee) return false;
 
-  // IBAN must exist and be 16 digits after formatting
+  // IBAN must exist and be valid after formatting
   const rawAccount = employee.bank_iban || '';
+  if (!rawAccount.trim()) return false;
+
+  // Must contain numeric digits
   const numericAccount = rawAccount.toString().replace(/[^0-9]/g, '');
   if (numericAccount.length === 0) return false;
-  const formattedAccount = formatEmployeeAccount(rawAccount);
-  if (formattedAccount.length !== 16) return false;
+  
+  const formattedAccount = formatEmployeeAccount(rawAccount, employee.bank_bic);
+  if (isBankMuscat(employee.bank_bic)) {
+    if (formattedAccount.length !== 16) return false;
+  } else {
+    // Non-Bank Muscat: accept any non-empty account number as entered
+    if (formattedAccount.length === 0) return false;
+  }
 
   // ID check
   if (employee.id_type === 'civil_id') {
@@ -100,18 +109,39 @@ function formatExtraHours(amount: number): string {
 }
 
 /**
- * Format employee account number for Bank Muscat WPS
- * Returns exactly 16 numeric digits
+ * Check if a BIC code belongs to Bank Muscat
  */
-function formatEmployeeAccount(account: string): string {
+function isBankMuscat(bic?: string): boolean {
+  if (!bic) return true; // Default to Bank Muscat
+  const cleanBic = bic.trim().toUpperCase();
+  return cleanBic.startsWith('BMUS') || cleanBic.startsWith('BMCT');
+}
+
+/**
+ * Format employee account number for Bank Muscat WPS.
+ * If Bank Muscat: returns exactly 16 numeric digits.
+ * If non-Bank Muscat: returns the full cleaned IBAN (usually 24 characters starting with OM).
+ */
+function formatEmployeeAccount(account: string, bic?: string): string {
   if (!account) return '';
-  const numericOnly = account.toString().replace(/[^0-9]/g, '');
-  if (numericOnly.length > 16) {
-    return numericOnly.substring(0, 16);
-  } else if (numericOnly.length < 16) {
-    return numericOnly.padStart(16, '0');
+  const clean = account.toString().replace(/[\s-]/g, '').toUpperCase();
+
+  if (isBankMuscat(bic)) {
+    let accountNum = clean;
+    if (clean.startsWith('OM') && clean.length === 24) {
+      accountNum = clean.substring(8); // Extract 16-digit account number from Bank Muscat IBAN
+    }
+    const numericOnly = accountNum.replace(/[^0-9]/g, '');
+    if (numericOnly.length > 16) {
+      return numericOnly.substring(0, 16);
+    } else if (numericOnly.length < 16) {
+      return numericOnly.padStart(16, '0');
+    }
+    return numericOnly;
+  } else {
+    // Non-Bank Muscat account: keep full cleaned IBAN (e.g. 24 characters) without 16-digit constraint
+    return clean;
   }
-  return numericOnly;
 }
 
 /**
@@ -285,7 +315,9 @@ export function generateWPSSIF(
   payrollItems: PayrollItem[],
   year: number,
   month: number,
-  type: PayrollRunType
+  type: PayrollRunType,
+  otherIncludedEmployeeIds?: Set<string>,
+  exportMode: 'all' | 'salary_only' | 'vacation_only' = 'all'
 ): { sifContent: string; exportedAmounts: Map<string, number> } {
   // Validate year and month
   if (!Number.isInteger(year) || year < 1900 || year > 2100) {
@@ -299,21 +331,28 @@ export function generateWPSSIF(
 
   // Pre-compute export amounts for each item
   const itemsWithAmounts: Array<{ item: PayrollItem; employee: Employee; amounts: NonNullable<ReturnType<typeof calculateExportAmounts>> }> = [];
-  for (const item of payrollItems) {
-    const employee = employeeMap.get(item.employee_id);
-    if (!employee) {
-      console.warn(`Employee not found for item ${item.id}, skipping`);
-      continue;
+  if (exportMode !== 'vacation_only') {
+    for (const item of payrollItems) {
+      const employee = employeeMap.get(item.employee_id);
+      if (!employee) {
+        console.warn(`Employee not found for item ${item.id}, skipping`);
+        continue;
+      }
+      if (!isValidEmployee(employee)) {
+        console.warn(`Employee ${employee.name_en} missing required WPS fields, skipping`);
+        continue;
+      }
+      // Exclude paid, held, failed, processing status or globally held salary
+      if (['held', 'failed', 'processing', 'paid'].includes(item.payout_status) || employee.is_salary_held) {
+        console.warn(`Employee ${employee.name_en} salary is held, failed, processing, or paid, skipping`);
+        continue;
+      }
+      // Use wps_export_override if set, otherwise automatic (paid_amount-based)
+      const overrideAmount = item.wps_export_override ?? null;
+      const amounts = calculateExportAmounts(item, type, overrideAmount);
+      if (!amounts) continue; // skip items with nothing to pay
+      itemsWithAmounts.push({ item, employee, amounts });
     }
-    if (!isValidEmployee(employee)) {
-      console.warn(`Employee ${employee.name_en} missing required WPS fields, skipping`);
-      continue;
-    }
-    // Use wps_export_override if set, otherwise automatic (paid_amount-based)
-    const overrideAmount = item.wps_export_override ?? null;
-    const amounts = calculateExportAmounts(item, type, overrideAmount);
-    if (!amounts) continue; // skip items with nothing to pay
-    itemsWithAmounts.push({ item, employee, amounts });
   }
 
   // ── Vacation employees: add 0.100 OMR if not already in payroll
@@ -326,58 +365,61 @@ export function generateWPSSIF(
   const includedEmployeeIds = new Set(payrollItems.map(item => item.employee_id));
 
   const isSameMonth = (dateStr: string | null | undefined, yr: number, mo: number): boolean => {
-    if (!dateStr) {
-      console.log(`[WPS] isSameMonth: dateStr is falsy, returning false`);
-      return false;
-    }
+    if (!dateStr) return false;
     const d = new Date(dateStr);
     const result = d.getFullYear() === yr && d.getMonth() + 1 === mo;
     console.log(`[WPS] isSameMonth(dateStr=${dateStr}, yr=${yr}, mo=${mo}) → d={year:${d.getFullYear()}, month:${d.getMonth()+1}} → ${result}`);
     return result;
   };
 
-  console.log(`[WPS] Checking vacation employees: total employees=${employees.length}, payroll items=${payrollItems.length}, already included=${includedEmployeeIds.size}`);
-  for (const employee of employees) {
-    console.log(`[WPS] Employee ${employee.emp_code} (${employee.name_en}): status=${employee.status}, leave_settlement_date=${employee.leave_settlement_date}, rejoin_date=${employee.rejoin_date}`);
-    // Include both 'on_leave' and 'leave_settled' employees
-    // (leave_settled = leave already paid, but employee still on leave until rejoin)
-    if (!['on_leave', 'leave_settled'].includes(employee.status)) {
-      console.log(`[WPS]   -> SKIP: status not on_leave/leave_settled`);
-      continue;
-    }
-    if (includedEmployeeIds.has(employee.id)) {
-      console.log(`[WPS]   -> SKIP: already in payroll items`);
-      continue;
-    }
-    // Skip if leave settlement was done in the export month
-    if (isSameMonth(employee.leave_settlement_date, year, month)) {
-      console.log(`[WPS]   -> SKIP: leave_settlement_date in same month (${employee.leave_settlement_date})`);
-      continue;
-    }
-    // Skip if employee rejoins in the export month (salary resumes)
-    if (isSameMonth(employee.rejoin_date, year, month)) {
-      console.log(`[WPS]   -> SKIP: rejoin_date in same month (${employee.rejoin_date})`);
-      continue;
-    }
-    if (!isValidEmployee(employee)) {
-      console.warn(`[WPS] Vacation employee ${employee.name_en} missing required WPS fields, skipping 0.100 OMR addition`);
-      continue;
-    }
+  if (type === 'monthly' && exportMode !== 'salary_only') {
+    console.log(`[WPS] Checking vacation employees: total employees=${employees.length}, payroll items=${payrollItems.length}, already included=${includedEmployeeIds.size}`);
+    for (const employee of employees) {
+      console.log(`[WPS] Employee ${employee.emp_code} (${employee.name_en}): status=${employee.status}, leave_settlement_date=${employee.leave_settlement_date}, rejoin_date=${employee.rejoin_date}`);
+      // Include both 'on_leave' and 'leave_settled' employees
+      // (leave_settled = leave already paid, but employee still on leave until rejoin)
+      if (!['on_leave', 'leave_settled'].includes(employee.status)) {
+        console.log(`[WPS]   -> SKIP: status not on_leave/leave_settled`);
+        continue;
+      }
+      if (includedEmployeeIds.has(employee.id)) {
+        console.log(`[WPS]   -> SKIP: already in payroll items`);
+        continue;
+      }
+      if (otherIncludedEmployeeIds?.has(employee.id)) {
+        console.log(`[WPS]   -> SKIP: already included in another payroll run for this month`);
+        continue;
+      }
+      // Skip if leave settlement was done in the export month
+      if (isSameMonth(employee.leave_settlement_date, year, month)) {
+        console.log(`[WPS]   -> SKIP: leave_settlement_date in same month (${employee.leave_settlement_date})`);
+        continue;
+      }
+      // Skip if employee rejoins in the export month (salary resumes)
+      if (isSameMonth(employee.rejoin_date, year, month)) {
+        console.log(`[WPS]   -> SKIP: rejoin_date in same month (${employee.rejoin_date})`);
+        continue;
+      }
+      if (!isValidEmployee(employee)) {
+        console.warn(`[WPS] Vacation employee ${employee.name_en} missing required WPS fields, skipping 0.100 OMR addition`);
+        continue;
+      }
 
-    console.log(`[WPS] Adding vacation employee: ${employee.name_en} (${employee.id}) with 0.100 OMR`);
-    const vacationNet = 0.100;
-    const vacationAmounts = {
-      effectiveNet: vacationNet,
-      scaledBasic: vacationNet,  // Set basic = net so rawNet calculation yields correct total
-      scaledOvertime: 0,
-      scaledExtraIncome: 0,
-      scaledDeductions: 0,
-      scaledSocialSecurity: 0,
-      workingDays: 0,
-      notes: 'VACATION',
-    };
-    const vacationItem = { id: `vacation-${employee.id}`, employee_id: employee.id } as PayrollItem;
-    itemsWithAmounts.push({ item: vacationItem, employee, amounts: vacationAmounts as any });
+      console.log(`[WPS] Adding vacation employee: ${employee.name_en} (${employee.id}) with 0.100 OMR`);
+      const vacationNet = 0.100;
+      const vacationAmounts = {
+        effectiveNet: vacationNet,
+        scaledBasic: vacationNet,  // Set basic = net so rawNet calculation yields correct total
+        scaledOvertime: 0,
+        scaledExtraIncome: 0,
+        scaledDeductions: 0,
+        scaledSocialSecurity: 0,
+        workingDays: 0,
+        notes: 'VACATION',
+      };
+      const vacationItem = { id: `vacation-${employee.id}`, employee_id: employee.id } as PayrollItem;
+      itemsWithAmounts.push({ item: vacationItem, employee, amounts: vacationAmounts as any });
+    }
   }
 
   console.log(`[WPS] After vacation addition: itemsWithAmounts count = ${itemsWithAmounts.length}`);
@@ -474,7 +516,7 @@ export function generateWPSSIF(
       const rawNetSalary = amounts.scaledBasic + extraIncome - amounts.scaledDeductions - amounts.scaledSocialSecurity;
 
       // Build fields array for employee row
-      const employeeAccount = formatEmployeeAccount(employee.bank_iban || '');
+      const employeeAccount = formatEmployeeAccount(employee.bank_iban || '', employee.bank_bic);
 
       const fields = [
         idType,
@@ -590,15 +632,21 @@ export function validateWPSData(data: any): ValidationResult {
     errors.push({ field: 'basicSalary', message: 'Salary must be positive' });
   }
 
-  // IBAN format: must have digits and result in exactly 16 digits after formatting
+  // IBAN format: must have digits and result in proper length after formatting
   if (data.bankIban) {
     const numeric = data.bankIban.toString().replace(/[^0-9]/g, '');
     if (numeric.length === 0) {
       errors.push({ field: 'bankIban', message: 'IBAN must contain digits' });
     } else {
-      const formatted = formatEmployeeAccount(data.bankIban);
-      if (formatted.length !== 16) {
-        errors.push({ field: 'bankIban', message: 'IBAN must be 16 digits after formatting' });
+      const formatted = formatEmployeeAccount(data.bankIban, data.bankBic || data.bank_bic);
+      if (isBankMuscat(data.bankBic || data.bank_bic)) {
+        if (formatted.length !== 16) {
+          errors.push({ field: 'bankIban', message: 'IBAN must be 16 digits after formatting' });
+        }
+      } else {
+        if (formatted.length === 0) {
+          errors.push({ field: 'bankIban', message: 'IBAN cannot be empty' });
+        }
       }
     }
   }

@@ -215,6 +215,30 @@ describe('Leave Calculations', () => {
       expect(result).toBeCloseTo(2000 / 30 * 10, 2);
     });
 
+    it('should use gross salary if non-Omani direct worker basic salary is > 250', () => {
+      const highBasicDirectWorker = {
+        nationality: 'INDIAN',
+        category: 'DIRECT_STAFF',
+        gross_salary: 500,
+        basic_salary: 300,
+      };
+      const result = calculateLeaveEncashmentValue(highBasicDirectWorker, 10);
+      // basic > 250 (300) → gross_salary basis
+      expect(result).toBeCloseTo(500 / 30 * 10, 2);
+    });
+
+    it('should use basic salary if non-Omani direct worker basic salary is <= 250', () => {
+      const lowBasicDirectWorker = {
+        nationality: 'INDIAN',
+        category: 'DIRECT_STAFF',
+        gross_salary: 300,
+        basic_salary: 200,
+      };
+      const result = calculateLeaveEncashmentValue(lowBasicDirectWorker, 10);
+      // basic <= 250 (200) → basic_salary basis
+      expect(result).toBeCloseTo(200 / 30 * 10, 2);
+    });
+
     it('should return 0 for zero or negative days', () => {
       expect(calculateLeaveEncashmentValue(omaniEmployee, 0)).toBe(0);
       expect(calculateLeaveEncashmentValue(omaniEmployee, -5)).toBe(0);

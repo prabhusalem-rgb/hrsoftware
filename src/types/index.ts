@@ -50,6 +50,7 @@ export interface SystemSettings {
   id: string;
   software_name: string;
   software_logo_url: string | null;
+  role_permissions?: Record<string, Record<string, string[]>> | null;
   updated_at: string;
   updated_by: string | null;
 }
@@ -137,7 +138,9 @@ export interface LeaveBalance {
   entitled: number;
   used: number;
   carried_forward: number;
-  balance: number;           // computed: entitled + carried_forward - used
+  lapsed?: number;
+  lapsed_reason?: string | null;
+  balance: number;           // computed: entitled + carried_forward - used - lapsed
   employee?: Employee;
   leave_type?: LeaveType;
 }

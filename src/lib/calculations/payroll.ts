@@ -72,10 +72,26 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
 
   // --- Handle Rejoining Date (Pro-rata Salary) ---
   const rejoinDate = employee.rejoin_date ? new Date(employee.rejoin_date) : null;
-  const isRejoiningThisMonth = rejoinDate &&
-                               !isNaN(rejoinDate.getTime()) &&
-                               rejoinDate.getMonth() + 1 === month &&
-                               rejoinDate.getFullYear() === year;
+  let isRejoiningThisMonth = rejoinDate &&
+                             !isNaN(rejoinDate.getTime()) &&
+                             rejoinDate.getMonth() + 1 === month &&
+                             rejoinDate.getFullYear() === year;
+
+  // If the employee has an approved leave starting in the current month (after day 1),
+  // they worked days before the leave. We should not pro-rate their baseline salary from the rejoin date;
+  // instead, calculate full monthly salary and let the leave deduction handle the unpaid days.
+  if (isRejoiningThisMonth) {
+    const hasWorkedBeforeLeave = leaveRecords.some(leave => {
+      if (leave.employee_id !== employee.id || leave.status !== 'approved') return false;
+      const leaveStart = new Date(leave.start_date);
+      return leaveStart.getFullYear() === year &&
+             leaveStart.getMonth() + 1 === month &&
+             leaveStart.getDate() > 1;
+    });
+    if (hasWorkedBeforeLeave) {
+      isRejoiningThisMonth = false;
+    }
+  }
 
   // --- Handle Joining Date (Pro-rata Salary for new employees) ---
   const joinDate = employee.join_date ? new Date(employee.join_date) : null;
@@ -111,7 +127,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
       const startDay = effectiveStartDay;
       const endDay = daysInMonth;
       const workedDays = getCalendarDaysInRange(year, month, startDay, endDay);
-      const ratio = Math.min(1.0, workedDays / 30.0);
+      const ratio = Math.min(1.0, workedDays / daysInMonth);
 
       basicSalary = fullBasic * ratio;
       housingAllowance = fullHousing * ratio;
@@ -119,7 +135,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
       foodAllowance = fullFood * ratio;
       specialAllowance = fullSpecial * ratio;
       siteAllowance = fullSite * ratio;
-      otherAllowance = manualOtherAllowance !== undefined ? manualOtherAllowance : fullOther * ratio;
+      otherAllowance = fullOther * ratio;
     } else {
       basicSalary = fullBasic;
       housingAllowance = fullHousing;
@@ -127,7 +143,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
       foodAllowance = fullFood;
       specialAllowance = fullSpecial;
       siteAllowance = fullSite;
-      otherAllowance = manualOtherAllowance !== undefined ? manualOtherAllowance : fullOther;
+      otherAllowance = fullOther;
     }
   } else {
     let currentStartDay = effectiveStartDay;
@@ -164,7 +180,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
       }
 
       const segmentWorkingDays = getCalendarDaysInRange(year, month, segmentStart, endDay);
-      const ratio = segmentWorkingDays / 30.0;
+      const ratio = segmentWorkingDays / daysInMonth;
 
       if (usePreviousRates) {
         basicSalary += Number(rev.previous_basic) * ratio;
@@ -173,14 +189,14 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
         foodAllowance += Number(rev.previous_food || 0) * ratio;
         specialAllowance += Number(rev.previous_special || 0) * ratio;
         siteAllowance += Number(rev.previous_site || 0) * ratio;
-        otherAllowance += (manualOtherAllowance !== undefined ? manualOtherAllowance / 30.0 * segmentWorkingDays : Number(rev.previous_other) * ratio);
+        otherAllowance += Number(rev.previous_other) * ratio;
 
         // Now handle the "after revision" segment with new rates
         const afterStart = revDay;
         const afterEnd = nextRev ? new Date(nextRev.effective_date).getDate() - 1 : daysInMonth;
         if (afterStart <= afterEnd) {
           const afterWorkingDays = getCalendarDaysInRange(year, month, afterStart, afterEnd);
-          const afterRatio = afterWorkingDays / 30.0;
+          const afterRatio = afterWorkingDays / daysInMonth;
 
           basicSalary += Number(rev.new_basic) * afterRatio;
           housingAllowance += Number(rev.new_housing) * afterRatio;
@@ -188,7 +204,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
           foodAllowance += Number(rev.new_food || 0) * afterRatio;
           specialAllowance += Number(rev.new_special || 0) * afterRatio;
           siteAllowance += Number(rev.new_site || 0) * afterRatio;
-          otherAllowance += (manualOtherAllowance !== undefined ? manualOtherAllowance / 30.0 * afterWorkingDays : Number(rev.new_other) * afterRatio);
+          otherAllowance += Number(rev.new_other) * afterRatio;
         }
         // Move currentStartDay past this revision's coverage and continue to next revision
         currentStartDay = afterEnd + 1;
@@ -202,7 +218,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
         foodAllowance += Number(rev.new_food || 0) * ratio;
         specialAllowance += Number(rev.new_special || 0) * ratio;
         siteAllowance += Number(rev.new_site || 0) * ratio;
-        otherAllowance += (manualOtherAllowance !== undefined ? manualOtherAllowance / 30.0 * segmentWorkingDays : Number(rev.new_other) * ratio);
+        otherAllowance += Number(rev.new_other) * ratio;
         currentStartDay = endDay + 1;
         lastUsedRev = rev;
       }
@@ -211,7 +227,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
     // Handle remaining days after last processed revision
     if ((isRejoiningThisMonth || isJoiningThisMonth) && currentStartDay <= daysInMonth) {
       const remainingWorkingDays = getCalendarDaysInRange(year, month, currentStartDay, daysInMonth);
-      const remainingRatio = remainingWorkingDays / 30.0;
+      const remainingRatio = remainingWorkingDays / daysInMonth;
 
       // Use the last revision we actually applied, or fall back to the last pre-rejoin revision
       const applicableRev = lastUsedRev || lastPreRejoinRev;
@@ -222,17 +238,20 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
         foodAllowance += Number(applicableRev.new_food || 0) * remainingRatio;
         specialAllowance += Number(applicableRev.new_special || 0) * remainingRatio;
         siteAllowance += Number(applicableRev.new_site || 0) * remainingRatio;
-        otherAllowance += (manualOtherAllowance !== undefined ? manualOtherAllowance / 30.0 * remainingWorkingDays : Number(applicableRev.new_other) * remainingRatio);
+        otherAllowance += Number(applicableRev.new_other) * remainingRatio;
       }
     }
   }
 
+  // --- Add Manual Extra Allowance (one-time addition) ---
+  otherAllowance += (manualOtherAllowance || 0);
+
   // --- Overtime from Timesheets + Legacy Attendance ---
-  // OT paid at 1x hourly wage based on basic salary (per revised policy)
-  // Hourly rate = basicSalary / 208 (8 hrs/day × 26 working days/month)
+  // OT paid at 1.25x hourly wage based on basic salary (per revised policy)
+  // Hourly rate = basicSalary / 240 (8 hrs/day × 30 working days/month)
   let overtimeHours = 0;
   let overtimePay = 0;
-  const hourlyRate = basicSalary / 208;
+  const hourlyRate = basicSalary / 240;
 
   // Sum OT from timesheets (new system)
   if (timesheetRecords && timesheetRecords.length > 0) {
@@ -240,7 +259,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
       const ot = Number(ts.overtime_hours || 0);
       if (ot > 0) {
         overtimeHours += ot;
-        overtimePay += ot * hourlyRate * 1.0;
+        overtimePay += ot * hourlyRate * 1.25;
       }
     }
   }
@@ -262,9 +281,20 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
   const regularGross = grossSalary - overtimePay;
 
   // --- Daily Rates for Deductions ---
-  // We use gross fixed allowances + basic for deductions as per common practice
+  // We use the full, un-pro-rated gross fixed allowances + basic for deductions as per user preference
+  const latestRev = sortedRevisions.length > 0 ? sortedRevisions[sortedRevisions.length - 1] : null;
+  const fullBasic = latestRev ? Number(latestRev.new_basic) : Number(employee.basic_salary);
+  const fullHousing = latestRev ? Number(latestRev.new_housing) : Number(employee.housing_allowance);
+  const fullTransport = latestRev ? Number(latestRev.new_transport) : Number(employee.transport_allowance);
+  const fullFood = latestRev ? Number(latestRev.new_food || 0) : Number(employee.food_allowance || 0);
+  const fullSpecial = latestRev ? Number(latestRev.new_special || 0) : Number(employee.special_allowance || 0);
+  const fullSite = latestRev ? Number(latestRev.new_site || 0) : Number(employee.site_allowance || 0);
+  const fullOther = latestRev ? Number(latestRev.new_other || 0) : (manualOtherAllowance !== undefined ? manualOtherAllowance : Number(employee.other_allowance || 0));
+
+  const fullFixedGrossPerMonth = fullBasic + fullHousing + fullTransport + fullFood + fullSpecial + fullSite + fullOther;
+  const dailyRate = fullFixedGrossPerMonth / daysInMonth;
+
   const fixedGrossPerMonth = basicSalary + housingAllowance + transportAllowance + foodAllowance + specialAllowance + siteAllowance + otherAllowance;
-  const dailyRate = fixedGrossPerMonth / 30.0;
 
   // --- Absent Days Deduction ---
   // Use timesheets if available, otherwise fall back to attendance
@@ -284,7 +314,8 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
     leaveRecords,
     leaveTypes,
     month,
-    year
+    year,
+    effectiveStartDay
   );
 
   // --- Loan Deduction ---
@@ -301,8 +332,7 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
   let pasiCompanyShare = 0;
 
   const nationality = employee.nationality?.toUpperCase();
-  const isOmani = nationality === "OMAN" || nationality === "OMN" || nationality === "OMANI" ||
-                  employee.category === 'OMANI_DIRECT_STAFF' || employee.category === 'OMANI_INDIRECT_STAFF';
+  const isOmani = nationality === "OMAN" || nationality === "OMN" || nationality === "OMANI";
 
   if (isOmani) {
     // Current SPF (Social Protection Fund) Law:
@@ -349,7 +379,15 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
 /**
  * Calculates tiered deductions for leaves taken within the current month.
  */
-function calculateLeaveDeductions(employeeId: string, dailyRate: number, leaveRecords: Leave[], leaveTypes: LeaveType[], month: number, year: number): number {
+function calculateLeaveDeductions(
+  employeeId: string,
+  dailyRate: number,
+  leaveRecords: Leave[],
+  leaveTypes: LeaveType[],
+  month: number,
+  year: number,
+  effectiveStartDay: number = 1
+): number {
   let totalDeduction = 0;
   const currentMonthStart = new Date(Date.UTC(year, month - 1, 1));
   const currentMonthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
@@ -371,30 +409,36 @@ function calculateLeaveDeductions(employeeId: string, dailyRate: number, leaveRe
     const leaveStart = new Date(leave.start_date);
     const leaveEnd = new Date(leave.end_date);
     
+    // Calculate calendar days to scale partial days (e.g. 0.5 days)
+    const calendarDays = Math.max(1, Math.round((leaveEnd.getTime() - leaveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    const dayScale = Math.min(1.0, Number(leave.days || calendarDays) / calendarDays);
+
     // Iterate through every day of this leave
     const cursor = new Date(leaveStart);
     while (cursor <= leaveEnd) {
       if (cursor.getFullYear() === year) {
-        // Increment global counter for this type
-        cumulativeDaysPerType[type.id] = (cumulativeDaysPerType[type.id] || 0) + 1;
+        // Increment global counter for this type by the scaled day amount
+        cumulativeDaysPerType[type.id] = (cumulativeDaysPerType[type.id] || 0) + dayScale;
         const currentNthDay = cumulativeDaysPerType[type.id];
 
         // Is this day inside the month being processed?
-        if (cursor >= currentMonthStart && cursor <= currentMonthEnd) {
+        // ALSO check if it falls on or after the rejoining/joining day of this month
+        if (cursor >= currentMonthStart && cursor <= currentMonthEnd && cursor.getDate() >= effectiveStartDay) {
           // Determine percentage for this specific day
           let percentage = type.is_paid ? 1.0 : 0.0;
           
           if (type.payment_tiers && type.payment_tiers.length > 0) {
-            const tier = type.payment_tiers.find(t => currentNthDay >= t.min_day && currentNthDay <= t.max_day);
+            const checkDay = Math.ceil(currentNthDay);
+            const tier = type.payment_tiers.find(t => checkDay >= t.min_day && checkDay <= t.max_day);
             if (tier) {
               percentage = tier.percentage;
-            } else if (currentNthDay > type.max_days) {
+            } else if (checkDay > type.max_days) {
               percentage = 0.0; // Over-limit is usually unpaid
             }
           }
 
-          // Deduction is the unpaid portion of the daily rate
-          totalDeduction += dailyRate * (1 - percentage);
+          // Deduction is the unpaid portion of the daily rate scaled by the partial day factor
+          totalDeduction += dailyRate * (1 - percentage) * dayScale;
         }
       }
       cursor.setDate(cursor.getDate() + 1);
@@ -433,4 +477,46 @@ export function getWorkingDaysInRange(year: number, month: number, startDay: num
 export function getCalendarDaysInRange(year: number, month: number, startDay: number, endDay: number): number {
   return Math.max(0, endDay - startDay + 1);
 }
+
+export function formatNotesWithAdjustments(notes: string, additions: number, deductions: number, additionReason?: string, deductionReason?: string): string {
+  let cleanNotes = notes
+    .replace(/\[Additions:\s*[\d.]+\]/gi, '')
+    .replace(/\[Deductions:\s*[\d.]+\]/gi, '')
+    .replace(/\[AdditionReason:\s*.*?\]/gi, '')
+    .replace(/\[DeductionReason:\s*.*?\]/gi, '')
+    .trim();
+  const tags = [];
+  if (additions > 0) {
+    tags.push(`[Additions: ${additions.toFixed(3)}]`);
+    if (additionReason) tags.push(`[AdditionReason: ${additionReason}]`);
+  }
+  if (deductions > 0) {
+    tags.push(`[Deductions: ${deductions.toFixed(3)}]`);
+    if (deductionReason) tags.push(`[DeductionReason: ${deductionReason}]`);
+  }
+  return tags.length > 0 ? `${tags.join(' ')} ${cleanNotes}`.trim() : cleanNotes;
+}
+
+export function parseNotesAdjustments(notes: string | undefined | null): { additions: number; deductions: number; additionReason: string; deductionReason: string; cleanNotes: string } {
+  if (!notes) return { additions: 0, deductions: 0, additionReason: '', deductionReason: '', cleanNotes: '' };
+  
+  const additionsMatch = notes.match(/\[Additions:\s*([\d.]+)\]/i);
+  const deductionsMatch = notes.match(/\[Deductions:\s*([\d.]+)\]/i);
+  const additionReasonMatch = notes.match(/\[AdditionReason:\s*(.*?)\]/i);
+  const deductionReasonMatch = notes.match(/\[DeductionReason:\s*(.*?)\]/i);
+  
+  const additions = additionsMatch ? parseFloat(additionsMatch[1]) || 0 : 0;
+  const deductions = deductionsMatch ? parseFloat(deductionsMatch[1]) || 0 : 0;
+  const additionReason = additionReasonMatch ? additionReasonMatch[1].trim() : '';
+  const deductionReason = deductionReasonMatch ? deductionReasonMatch[1].trim() : '';
+  
+  let cleanNotes = notes
+    .replace(/\[Additions:\s*[\d.]+\]/gi, '')
+    .replace(/\[Deductions:\s*[\d.]+\]/gi, '')
+    .replace(/\[AdditionReason:\s*.*?\]/gi, '')
+    .replace(/\[DeductionReason:\s*.*?\]/gi, '')
+    .trim();
+  return { additions, deductions, additionReason, deductionReason, cleanNotes };
+}
+
 

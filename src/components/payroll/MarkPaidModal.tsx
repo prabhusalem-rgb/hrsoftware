@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -157,8 +158,7 @@ export function MarkPaidModal({
               <Label className="text-xs font-black uppercase text-slate-400">
                 Payout Date
               </Label>
-              <Input
-                type="date"
+              <DatePickerInput
                 value={payoutDate}
                 onChange={(e) => setPayoutDate(e.target.value)}
                 className="h-12 rounded-2xl border-2 font-mono"
