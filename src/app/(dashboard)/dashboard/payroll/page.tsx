@@ -104,6 +104,7 @@ export default function PayrollPage() {
   const [sifProgress, setSifProgress] = useState(0);
   const [showSIFProgress, setShowSIFProgress] = useState(false);
   const [processCategory, setProcessCategory] = useState<string | null>('all');
+  const [isVacationRun, setIsVacationRun] = useState(false);
 
   // Auto-open Leave Settlement Wizard when accessed with leaveRequestId query param
   // Using window.location to avoid useSearchParams Suspense requirement
@@ -319,44 +320,53 @@ export default function PayrollPage() {
     return 'INDIRECT_STAFF';
   };
 
-  const isEmployeeEligible = (emp: any): boolean => {
+  const isEmployeeEligible = (emp: any, isVacation: boolean = false): boolean => {
     if (processCategory !== 'all' && normalizeCat(emp.category) !== processCategory) {
       return false;
     }
-    if (emp.status === 'active' || emp.status === 'probation') {
-      if (isAfterEndOfMonth(emp.rejoin_date)) {
-        const hasSettledLeave = leavesData.some(l => 
-          l.employee_id === emp.id && 
-          l.status === 'approved' && 
-          l.settlement_status === 'settled' && 
-          !isAfterEndOfMonth(l.start_date)
-        );
-        if (hasSettledLeave) {
-          return false;
-        }
+    if (isVacation) {
+      if (emp.status !== 'on_leave' && emp.status !== 'leave_settled') {
+        return false;
       }
-      if (isAfterEndOfMonth(emp.join_date)) return false;
+      const isSameMonthLocal = (dateStr: string | null | undefined): boolean => {
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        return d.getFullYear() === processYear && d.getMonth() + 1 === processMonth;
+      };
+      if (isSameMonthLocal(emp.leave_settlement_date)) {
+        return false;
+      }
+      if (isSameMonthLocal(emp.rejoin_date)) {
+        return false;
+      }
       return true;
-    }
-    if (emp.status === 'on_leave' || emp.status === 'leave_settled') {
-      const empLeave = leavesData.find(l => l.employee_id === emp.id && l.status === 'approved' && l.settlement_status === 'settled');
-      if (empLeave) {
-        if (!isAfterEndOfMonth(empLeave.start_date)) {
-          return false;
-        }
+    } else {
+      if (emp.status === 'on_leave' || emp.status === 'leave_settled') {
+        return false;
       }
-      return isAfterEndOfMonth(emp.leave_settlement_date);
+      if (emp.status === 'active' || emp.status === 'probation') {
+        if (isAfterEndOfMonth(emp.rejoin_date)) {
+          const hasSettledLeave = leavesData.some(l => 
+            l.employee_id === emp.id && 
+            l.status === 'approved' && 
+            l.settlement_status === 'settled' && 
+            !isAfterEndOfMonth(l.start_date)
+          );
+          if (hasSettledLeave) {
+            return false;
+          }
+        }
+        if (isAfterEndOfMonth(emp.join_date)) return false;
+        return true;
+      }
+      if (emp.status === 'final_settled') {
+        return isAfterEndOfMonth(emp.termination_date) && !isAfterEndOfMonth(emp.join_date);
+      }
+      return false;
     }
-    if (emp.status === 'final_settled') {
-      return isAfterEndOfMonth(emp.termination_date) && !isAfterEndOfMonth(emp.join_date);
-    }
-    return false;
   };
 
   const handleProcessPayroll = async () => {
-    // IMPORTANT: Refetch employees to ensure we have the latest status.
-    // Employee status may have changed (e.g., to 'leave_settled') while the page was open
-    // and the useEmployees query cache could be stale (staleTime = 5 minutes).
     const loadingToast = toast.loading('Loading latest employee data...');
     try {
       await employeesQuery.refetch();
@@ -367,11 +377,10 @@ export default function PayrollPage() {
       toast.warning('Using cached employee data — may be outdated');
     }
 
-    // Use the refetched employees data and filter by historical end-of-month eligibility
-    let eligibleEmployees = (employeesQuery.data ?? []).filter(isEmployeeEligible);
+    setIsVacationRun(false);
 
-    // Exclude employees who already have a leave_settlement or final_settlement for this month/year
-    // Data-driven check to prevent duplicate payments even if cached status is stale
+    let eligibleEmployees = (employeesQuery.data ?? []).filter(emp => isEmployeeEligible(emp, false));
+
     const { data: settlementRuns } = await supabase
       .from('payroll_runs')
       .select('id')
@@ -394,7 +403,6 @@ export default function PayrollPage() {
       const currentMonthStr = `${processYear}-${String(processMonth).padStart(2, '0')}`;
       eligibleEmployees = eligibleEmployees.filter(e => {
         if (settledEmployeeIds.has(e.id)) {
-          // If they rejoined in the current month, do not exclude them
           return !!(e.rejoin_date && e.rejoin_date.startsWith(currentMonthStr));
         }
         return true;
@@ -402,18 +410,49 @@ export default function PayrollPage() {
     }
 
     if (eligibleEmployees.length === 0) {
-      toast.error('No eligible employees found in the selected category. Ensure employees are Active, on Probation, or on Leave.');
+      toast.error('No eligible employees found in the selected category. Ensure employees are Active or on Probation.');
       return;
     }
 
     setAdjustmentModalOpen(true);
   };
 
-  const finalizeProcessPayroll = async (adjustments: Record<string, { allowance: number, deduction: number, allowanceNote?: string, deductionNote?: string }>) => {
+  const handleProcessVacationPayroll = async () => {
+    const loadingToast = toast.loading('Loading latest employee data...');
+    try {
+      await employeesQuery.refetch();
+      toast.dismiss(loadingToast);
+    } catch (err) {
+      console.error('Failed to refetch employees:', err);
+      toast.dismiss(loadingToast);
+      toast.warning('Using cached employee data — may be outdated');
+    }
+
+    setIsVacationRun(true);
+
+    let eligibleEmployees = (employeesQuery.data ?? []).filter(emp => isEmployeeEligible(emp, true));
+
+    if (eligibleEmployees.length === 0) {
+      toast.error('No eligible vacation employees found for the current month.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Process Vacation Payroll for ${eligibleEmployees.length} employee(s) for ${processMonth}/${processYear}? Each will receive a nominal 0.100 OMR payout.`
+    );
+    if (confirmed) {
+      await finalizeProcessPayroll({}, true);
+    }
+  };
+
+  const finalizeProcessPayroll = async (
+    adjustments: Record<string, { allowance: number, deduction: number, allowanceNote?: string, deductionNote?: string }>,
+    isVacationOverride?: boolean
+  ) => {
+    const isVacation = isVacationOverride ?? isVacationRun;
     setProcessing(true);
     setProcessingProgress(0);
     try {
-      // Check for an existing run of the same month, year, type 'monthly', and category (stored in notes)
       let runQuery = supabase
         .from('payroll_runs')
         .select('*')
@@ -422,10 +461,18 @@ export default function PayrollPage() {
         .eq('year', processYear)
         .eq('type', 'monthly');
 
-      if (processCategory && processCategory !== 'all') {
-        runQuery = runQuery.eq('notes', `Category: ${processCategory}`);
+      if (isVacation) {
+        if (processCategory && processCategory !== 'all') {
+          runQuery = runQuery.eq('notes', `Vacation Payroll - Category: ${processCategory}`);
+        } else {
+          runQuery = runQuery.eq('notes', 'Vacation Payroll');
+        }
       } else {
-        runQuery = runQuery.or('notes.eq.,notes.is.null');
+        if (processCategory && processCategory !== 'all') {
+          runQuery = runQuery.eq('notes', `Category: ${processCategory}`);
+        } else {
+          runQuery = runQuery.or('notes.eq.,notes.is.null');
+        }
       }
 
       const { data: existingRuns, error: checkError } = await runQuery.limit(1);
@@ -439,7 +486,6 @@ export default function PayrollPage() {
       let targetCreatedAt: string | undefined = undefined;
 
       if (existingRun) {
-        // If the existing run status is exported, check for super_admin permission
         if (existingRun.status === 'exported') {
           let role: string | null = null;
           if (userId) {
@@ -457,9 +503,8 @@ export default function PayrollPage() {
           }
         }
 
-        // Prompt user if they want to update existing run
         const confirmed = window.confirm(
-          `An existing monthly payroll run for ${processMonth}/${processYear} already exists. Do you want to update it with the new data instead of creating a new run?`
+          `An existing ${isVacation ? 'vacation ' : ''}payroll run for ${processMonth}/${processYear} already exists. Do you want to update it with the new data instead of creating a new run?`
         );
 
         if (!confirmed) {
@@ -471,52 +516,44 @@ export default function PayrollPage() {
         targetCreatedAt = existingRun.created_at;
       }
 
-      // Use fresh data from the query (handleProcessPayroll already refetched)
       const currentEmployees = employeesQuery.data ?? [];
-
-      const activeEmployees = currentEmployees.filter(isEmployeeEligible);
-
-      // Exclude employees who already have a leave_settlement or final_settlement for this month/year
-      // Fetch settlement run IDs for this month/year
-      const { data: settlementRuns } = await supabase
-        .from('payroll_runs')
-        .select('id')
-        .in('type', ['leave_settlement', 'final_settlement'])
-        .eq('month', processMonth)
-        .eq('year', processYear);
-
-      const settlementRunIds = (settlementRuns || []).map((r: any) => r.id);
+      const activeEmployees = currentEmployees.filter(emp => isEmployeeEligible(emp, isVacation));
 
       let eligibleEmployees = activeEmployees;
 
-      if (settlementRunIds.length > 0) {
-        const { data: settlementItems } = await supabase
-          .from('payroll_items')
-          .select('employee_id')
-          .in('payroll_run_id', settlementRunIds);
+      if (!isVacation) {
+        const { data: settlementRuns } = await supabase
+          .from('payroll_runs')
+          .select('id')
+          .in('type', ['leave_settlement', 'final_settlement'])
+          .eq('month', processMonth)
+          .eq('year', processYear);
 
-        const settledEmployeeIds = new Set(
-          (settlementItems || []).map((s: any) => s.employee_id)
-        );
+        const settlementRunIds = (settlementRuns || []).map((r: any) => r.id);
 
-        // Filter out already-settled employees, EXCEPT those who rejoined in the current month
-        const currentMonthStr = `${processYear}-${String(processMonth).padStart(2, '0')}`;
-        eligibleEmployees = activeEmployees.filter(e => {
-          if (settledEmployeeIds.has(e.id)) {
-            // Keep them if they rejoined in the current month
-            return !!(e.rejoin_date && e.rejoin_date.startsWith(currentMonthStr));
-          }
-          return true;
-        });
+        if (settlementRunIds.length > 0) {
+          const { data: settlementItems } = await supabase
+            .from('payroll_items')
+            .select('employee_id')
+            .in('payroll_run_id', settlementRunIds);
+
+          const settledEmployeeIds = new Set(
+            (settlementItems || []).map((s: any) => s.employee_id)
+          );
+
+          const currentMonthStr = `${processYear}-${String(processMonth).padStart(2, '0')}`;
+          eligibleEmployees = activeEmployees.filter(e => {
+            if (settledEmployeeIds.has(e.id)) {
+              return !!(e.rejoin_date && e.rejoin_date.startsWith(currentMonthStr));
+            }
+            return true;
+          });
+        }
       }
 
       if (eligibleEmployees.length === 0) {
         toast.error('No eligible employees found in the selected category.');
-        return;
-      }
-
-      if (eligibleEmployees.length === 0) {
-        toast.error('No eligible employees found in the selected category.');
+        setProcessing(false);
         return;
       }
 
@@ -525,30 +562,51 @@ export default function PayrollPage() {
       const newItems: any[] = [];
       const batchSize = 20;
 
-      // Process in batches to allow UI updates
       for (let i = 0; i < totalEmployees; i += batchSize) {
         const batch = eligibleEmployees.slice(i, i + batchSize);
         const batchItems = batch.map(emp => {
+          if (isVacation) {
+            return {
+              employee_id: emp.id,
+              basic_salary: 0.100,
+              housing_allowance: 0,
+              transport_allowance: 0,
+              food_allowance: 0,
+              special_allowance: 0,
+              site_allowance: 0,
+              other_allowance: 0,
+              overtime_hours: 0,
+              overtime_pay: 0,
+              gross_salary: 0.100,
+              absent_days: 0,
+              absence_deduction: 0,
+              leave_deduction: 0,
+              loan_deduction: 0,
+              other_deduction: 0,
+              total_deductions: 0,
+              social_security_deduction: 0,
+              pasi_company_share: 0,
+              net_salary: 0.100,
+              eosb_amount: 0,
+              leave_encashment: 0,
+              air_ticket_balance: 0,
+              final_total: 0,
+              payout_status: emp.is_salary_held ? 'held' : 'pending',
+              hold_reason: emp.is_salary_held ? emp.salary_hold_reason : null,
+              hold_placed_at: emp.is_salary_held ? emp.salary_hold_at || new Date().toISOString() : null,
+              allowance_note: 'VACATION',
+              deduction_note: null,
+              created_at: new Date().toISOString(),
+              loan_schedule_id: null,
+            };
+          }
+
           const empAttendance = (attendanceData || []).filter(a => a.employee_id === emp.id && a.date.startsWith(`${processYear}-${String(processMonth).padStart(2, '0')}`));
           const empTimesheets = (timesheetsData || []).filter(ts => ts.employee_id === emp.id);
           const empLoan = (loansData || []).find(l => l.employee_id === emp.id && l.status === 'active');
           const empRepayment = (repaymentsData || []).find(r => r.loan_id === empLoan?.id && r.month === processMonth && r.year === processYear);
 
-          // Target debug for Abdul Gani
-          if (emp.name_en.toLowerCase().includes('abdul') || emp.name_en.toLowerCase().includes('gani')) {
-            console.log(`>>> ABDUL GANI DEBUG:`);
-            console.log('  Employee:', emp.name_en, '| ID:', emp.id);
-            console.log('  gross_salary:', emp.gross_salary);
-            console.log('  Timesheets count:', empTimesheets.length);
-            empTimesheets.forEach((ts, idx) => {
-              console.log(`  TS[${idx}]: date=${ts.date}, day_type=${ts.day_type}, hours_worked=${ts.hours_worked}, overtime_hours=${ts.overtime_hours}`);
-            });
-            console.log('  Attendance count:', empAttendance.length);
-          }
-
           const adj = adjustments[emp.id] || { allowance: 0, deduction: 0, allowanceNote: '', deductionNote: '' };
-
-          // Filter revisions for this employee
           const empRevisions = payrollRevisions.filter(r => r.employee_id === emp.id);
 
           const result = calculateEmployeePayroll({
@@ -566,17 +624,6 @@ export default function PayrollPage() {
             manualOtherAllowance: adj.allowance,
             manualOtherDeduction: adj.deduction
           });
-
-          // Target debug for Abdul Gani - show result
-          if (emp.name_en.toLowerCase().includes('abdul') || emp.name_en.toLowerCase().includes('gani')) {
-            console.log(`  >>> PAYROLL RESULT for ${emp.name_en}:`);
-            console.log('    overtimeHours:', result.overtimeHours);
-            console.log('    overtimePay:', result.overtimePay);
-            console.log('    grossSalary:', result.grossSalary);
-            console.log('    netSalary:', result.netSalary);
-            console.log('    batchItem.overtime_hours will be:', result.overtimeHours);
-            console.log('    batchItem.overtime_pay will be:', result.overtimePay);
-          }
 
           return {
             employee_id: emp.id,
@@ -616,12 +663,14 @@ export default function PayrollPage() {
         newItems.push(...batchItems);
         const progress = Math.round(((i + batch.length) / totalEmployees) * 100);
         setProcessingProgress(progress);
-
-        // Yield to UI thread to allow progress bar to update
         await new Promise(resolve => setTimeout(resolve, 0));
       }
 
       const totalAmount = newItems.reduce((s, i) => s + i.net_salary, 0);
+      const notesValue = isVacation
+        ? (processCategory !== 'all' ? `Vacation Payroll - Category: ${processCategory}` : 'Vacation Payroll')
+        : (processCategory !== 'all' ? `Category: ${processCategory}` : '');
+
       const newRun: any = {
         company_id: activeCompanyId,
         month: processMonth,
@@ -631,7 +680,7 @@ export default function PayrollPage() {
         total_amount: Math.round(totalAmount * 1000) / 1000,
         total_employees: newItems.length,
         processed_by: userId || '00000000-0000-0000-0000-000000000000',
-        notes: processCategory !== 'all' ? `Category: ${processCategory}` : '',
+        notes: notesValue,
         created_at: targetCreatedAt || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -643,7 +692,6 @@ export default function PayrollPage() {
       const runData = await processPayroll.mutateAsync({ run: newRun, items: newItems });
       setProcessingProgress(100);
       
-      // Auto-select the newly created run
       if (runData && runData.id) {
         setSelectedRunId(runData.id);
       }
@@ -1104,6 +1152,10 @@ export default function PayrollPage() {
               {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               Process Monthly Payroll
             </Button>
+            <Button variant="outline" onClick={handleProcessVacationPayroll} disabled={processing} className="gap-2 border-indigo-500/20 hover:bg-indigo-50 text-indigo-600">
+              {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 text-indigo-500" />}
+              Process Vacation Payroll
+            </Button>
             <Button variant="outline" onClick={() => setLeaveSettlementOpen(true)} className="gap-2 border-emerald-500/20 hover:bg-emerald-50">
               <Play className="w-4 h-4 text-emerald-500" /> Leave Settlement
             </Button>
@@ -1163,6 +1215,7 @@ export default function PayrollPage() {
               {paginatedRuns.map((run) => {
                 const isLeaveSettlement = run.type === 'leave_settlement';
                 const isFinalSettlement = run.type === 'final_settlement';
+                const isVacation = run.type === 'monthly' && run.notes?.startsWith('Vacation Payroll');
                 return (
                 <TableRow key={run.id} className={selectedRunId === run.id ? 'bg-primary/5' : ''}>
                   <TableCell className="font-medium">{format(new Date(run.year, run.month - 1), 'MM/yyyy')}</TableCell>
@@ -1170,9 +1223,10 @@ export default function PayrollPage() {
                     <Badge variant="outline" className={
                       isLeaveSettlement ? 'border-amber-500 text-amber-700 bg-amber-50' :
                       isFinalSettlement ? 'border-red-500 text-red-700 bg-red-50' :
+                      isVacation ? 'border-indigo-500 text-indigo-700 bg-indigo-50' :
                       ''
                     }>
-                      {run.type.replace('_', ' ')}
+                      {isVacation ? 'vacation' : run.type.replace('_', ' ')}
                       {isLeaveSettlement && ' ⚠️'}
                     </Badge>
                   </TableCell>

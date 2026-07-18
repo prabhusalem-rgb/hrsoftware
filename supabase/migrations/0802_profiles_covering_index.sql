@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration 080b: Covering index for profiles PK lookup
+-- Migration 0802: Covering index for profiles PK lookup
 -- Purpose: Make profile fetch index-only scan (no heap access)
 -- ============================================================
 

@@ -47,7 +47,11 @@ export function AirTicketBalanceCard({ employeeId, employeeName, compact = false
 
   // Format cycle display
   const cycleMonths = balance.airTicketCycle || 12;
-  const cycleText = cycleMonths === 24 ? 'Every 24 months (2 years)' : 'Every 12 months (1 year)';
+  const cycleText = cycleMonths === 24 
+    ? 'Every 24 months (2 years)' 
+    : cycleMonths === 18 
+      ? 'Every 18 months (1.5 years)' 
+      : 'Every 12 months (1 year)';
   const ticketsPerCycle = 2;
 
   if (compact) {

@@ -204,7 +204,7 @@ export function AirTicketCurrentYear({ employeeId, employeeName }: AirTicketCurr
             Accrual Breakdown
           </CardTitle>
           <CardDescription>
-            Join Date: {balance.joinDate ? format(parseISO(balance.joinDate), 'dd/MM/yyyy') : 'N/A'} • Cycle: {cycleMonths} months ({cycleMonths === 24 ? 'biennial' : 'annual'})
+            Join Date: {balance.joinDate ? format(parseISO(balance.joinDate), 'dd/MM/yyyy') : 'N/A'} • Cycle: {cycleMonths} months ({cycleMonths === 24 ? 'biennial' : cycleMonths === 18 ? '1.5 years' : 'annual'})
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

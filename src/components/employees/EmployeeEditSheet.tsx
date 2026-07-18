@@ -193,7 +193,7 @@ export function EmployeeEditSheet({
           if (!cat) return 'INDIRECT_STAFF';
           const valid: EmployeeCategory[] = ['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF'];
           if (valid.includes(cat as EmployeeCategory)) return cat as EmployeeCategory;
-          
+
           // Legacy mapping
           if (cat === 'national') return 'OMANI_INDIRECT_STAFF';
           if (cat === 'expat' || cat === 'staff') return 'INDIRECT_STAFF';
@@ -441,7 +441,7 @@ export function EmployeeEditSheet({
       'bank_name', 'bank_bic', 'bank_iban', 'passport_expiry', 'passport_issue_date',
       'visa_no', 'visa_type', 'visa_issue_date', 'visa_expiry'
     ];
-    
+
     if (personalFields.includes(field)) return 'personal';
     if (employmentFields.includes(field)) return 'employment';
     if (bankingFields.includes(field)) return 'banking';
@@ -450,12 +450,12 @@ export function EmployeeEditSheet({
 
   const onInvalid = (errors: any) => {
     console.log('[EmployeeEditSheet] Validation failed:', errors);
-    
+
     const firstErrorField = Object.keys(errors)[0];
     if (firstErrorField) {
       const errorTab = getTabForField(firstErrorField);
       setActiveTab(errorTab);
-      
+
       const errorMsg = errors[firstErrorField]?.message || 'Please check required fields';
       toast.error(`Validation error in "${errorTab.toUpperCase()}" tab: ${errorMsg}`);
     }
@@ -974,6 +974,7 @@ export function EmployeeEditSheet({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="12">12 months (Annual)</SelectItem>
+                      <SelectItem value="18">18 months (1.5 Years)</SelectItem>
                       <SelectItem value="24">24 months (Biennial)</SelectItem>
                     </SelectContent>
                   </Select>

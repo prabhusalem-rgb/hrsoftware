@@ -167,9 +167,9 @@ function PayoutManagementSection({
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</span>
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${status === 'paid' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-200' :
-              status === 'held' ? 'bg-red-500/10 text-red-700 border border-red-200' :
-                status === 'processing' ? 'bg-amber-500/10 text-amber-700 border border-amber-200' :
-                  'bg-slate-500/10 text-slate-700 border border-slate-200'
+            status === 'held' ? 'bg-red-500/10 text-red-700 border border-red-200' :
+              status === 'processing' ? 'bg-amber-500/10 text-amber-700 border border-amber-200' :
+                'bg-slate-500/10 text-slate-700 border border-slate-200'
             }`}>
             {status}
           </span>
