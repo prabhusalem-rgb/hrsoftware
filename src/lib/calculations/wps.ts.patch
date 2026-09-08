@@ -1,0 +1,44 @@
+--- a/src/lib/calculations/wps.ts
++++ b/src/lib/calculations/wps.ts
+@@ -315,6 +315,40 @@ export function generateWPSSIF(
+     itemsWithAmounts.push({ item, employee, amounts });
+   }
+
++  // ── Vacation employees: add 0.100 OMR if not already in payroll
++  // and no leave settlement / rejoin in the same month ──
++  const includedEmployeeIds = new Set(payrollItems.map(item => item.employee_id));
++
++  const isSameMonth = (dateStr: string | null | undefined, yr: number, mo: number): boolean => {
++    if (!dateStr) return false;
++    const d = new Date(dateStr);
++    return d.getFullYear() === yr && d.getMonth() + 1 === mo;
++  };
++
++  for (const employee of employees) {
++    if (employee.status !== 'on_leave') continue;
++    if (includedEmployeeIds.has(employee.id)) continue;
++    if (isSameMonth(employee.leave_settlement_date, year, month)) continue;
++    if (isSameMonth(employee.rejoin_date, year, month)) continue;
++    if (!isValidEmployee(employee)) {
++      console.warn(`Vacation employee ${employee.name_en} missing required WPS fields, skipping 0.100 OMR addition`);
++      continue;
++    }
++
++    const vacationNet = 0.100;
++    const vacationAmounts = {
++      effectiveNet: vacationNet,
++      scaledBasic: 0,
++      scaledOvertime: 0,
++      scaledExtraIncome: 0,
++      scaledDeductions: 0,
++      scaledSocialSecurity: 0,
++      workingDays: 0,
++      notes: 'VACATION',
++    };
++    const vacationItem = { id: `vacation-${employee.id}`, employee_id: employee.id } as PayrollItem;
++    itemsWithAmounts.push({ item: vacationItem, employee, amounts: vacationAmounts as any });
++  }
++
+   if (itemsWithAmounts.length === 0) {
+     throw new Error('No valid employees to export after filtering. Check hold/failed/fully-paid statuses.');
+   }

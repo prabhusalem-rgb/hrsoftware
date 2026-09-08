@@ -1,0 +1,55 @@
+import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
+
+function loadEnv() {
+  const envPath = path.resolve(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf-8');
+    content.split('\n').forEach(line => {
+      const [key, ...valueParts] = line.split('=');
+      if (key && valueParts.length) {
+        const value = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+        if (value && !process.env[key.trim()]) process.env[key.trim()] = value;
+      }
+    });
+  }
+}
+
+loadEnv();
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+console.log('=== Checking ALL admin/HR/foreman profiles ===');
+const { data: profiles } = await supabase
+  .from('profiles')
+  .select(`
+    id, 
+    full_name, 
+    email, 
+    role, 
+    company_id,
+    companies(name_en)
+  `)
+  .order('role');
+
+const roleOrder = ['super_admin', 'company_admin', 'hr', 'foreman', 'finance', 'viewer'];
+profiles?.sort((a, b) => {
+  const idxA = roleOrder.indexOf(a.role);
+  const idxB = roleOrder.indexOf(b.role);
+  return idxA - idxB;
+});
+
+for (const p of profiles || []) {
+  const status = p.company_id ? '✓ HAS COMPANY' : '✗ NO COMPANY';
+  const compName = p.companies?.name_en || 'NO COMPANY';
+  console.log(`\n${p.full_name} (${p.email})`);
+  console.log(`  Role: ${p.role} | ${status}`);
+  console.log(`  Company: ${compName} [${p.company_id || 'null'}]`);
+}
+
+// Count users without company by role
+const noCompany = profiles?.filter(p => !p.company_id) || [];
+console.log(`\n\nTotal profiles without company_id: ${noCompany.length}`);
+for (const p of noCompany) {
+  console.log(`  - ${p.full_name} (${p.role})`);
+}

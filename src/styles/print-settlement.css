@@ -1,0 +1,79 @@
+/* ============================================================
+   Print Styles for Final Settlement
+   ============================================================ */
+
+/* A4 page with safe printer margins (5mm) */
+@page {
+  size: A4 portrait;
+  margin: 5mm;
+}
+
+@media print {
+  /* Isolation: Hide everything except the print wrapper and its contents */
+  body > *:not(.final-settlement-print-wrapper) {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .final-settlement-print-wrapper {
+    display: block !important;
+    visibility: visible !important;
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .final-settlement-print-wrapper * {
+    display: block; /* Default block layout for print flow */
+    visibility: visible !important;
+  }
+
+  /* Specific elements like flex/grid containers should keep their roles */
+  .final-settlement-print-wrapper .flex { display: flex !important; }
+  .final-settlement-print-wrapper .grid { display: grid !important; }
+  .final-settlement-print-wrapper table { display: table !important; }
+  .final-settlement-print-wrapper tr { display: table-row !important; }
+  .final-settlement-print-wrapper td,
+  .final-settlement-print-wrapper th { display: table-cell !important; }
+
+  /* Inner content: Remove fixed height to allow multi-page flow */
+  .final-settlement-print-wrapper > div {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 10mm 15mm !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Page Break Management */
+  .final-settlement-print-wrapper h1,
+  .final-settlement-print-wrapper h2,
+  .final-settlement-print-wrapper .border-b-2 {
+    page-break-after: avoid;
+  }
+
+  .final-settlement-print-wrapper table,
+  .final-settlement-print-wrapper .grid {
+    page-break-inside: avoid;
+  }
+
+  /* Spacing adjustments for print */
+  .final-settlement-print-wrapper .mb-12 { margin-bottom: 8mm !important; }
+  .final-settlement-print-wrapper .mb-10 { margin-bottom: 6mm !important; }
+  .final-settlement-print-wrapper .mt-24 { margin-top: 15mm !important; }
+
+  /* Ensure colors print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

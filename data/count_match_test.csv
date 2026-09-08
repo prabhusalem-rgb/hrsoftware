@@ -1,0 +1,5 @@
+Employer CR-NO,Payer CR-NO,Payer Bank Short Name,Payer Account Number,Salary Year,Salary Month,Total Salaries,Number Of Records,Payment Type
+1156761,1156761,BMCT,0371024323360013,2026,03,430.000,1,Salary
+
+Employee ID Type,Employee ID,Reference Number,Employee Name,Employee BIC Code,Employee Account,Salary Frequency,Number Of Working days,Net Salary,Basic Salary,Extra Hours,Extra Income,Deductions,Social Security Deductions,Notes / Comments
+C,12345678,1,EMPLOYEE 1,BMCT,0371024323360013,M,30,430.000,430.000,0.00,0.000,0.000,0.000,
