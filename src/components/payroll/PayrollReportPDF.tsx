@@ -32,10 +32,11 @@ export function PayrollReportPDF({
 
   const styles = StyleSheet.create({
     page: {
-      padding: 24,
+      padding: 16,
+      paddingBottom: 24,
       fontFamily: 'Helvetica',
-      fontSize: 8,
-      lineHeight: 1.2,
+      fontSize: 7.5,
+      lineHeight: 1.15,
       backgroundColor: '#FFFFFF',
     },
     header: {
@@ -44,8 +45,8 @@ export function PayrollReportPDF({
       alignItems: 'flex-start',
       borderBottomWidth: 1.5,
       borderBottomColor: primaryColor,
-      paddingBottom: 12,
-      marginBottom: 16,
+      paddingBottom: 6,
+      marginBottom: 8,
     },
     headerLeft: {
       flexDirection: 'row',
@@ -53,9 +54,9 @@ export function PayrollReportPDF({
       flex: 1,
     },
     logoContainer: {
-      width: 64,
-      height: 64,
-      marginRight: 15,
+      width: 42,
+      height: 42,
+      marginRight: 10,
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -68,54 +69,54 @@ export function PayrollReportPDF({
       flex: 1,
     },
     companyName: {
-      fontSize: 16,
+      fontSize: 14,
       fontWeight: 'bold',
       color: primaryColor,
-      marginBottom: 3,
+      marginBottom: 2,
       lineHeight: 1.1,
     },
     companyDetail: {
-      fontSize: 8,
+      fontSize: 7,
       color: '#64748b',
-      marginBottom: 2,
+      marginBottom: 1,
     },
     reportMeta: {
       alignItems: 'flex-end',
       textAlign: 'right',
     },
     reportTitle: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: 'bold',
       color: primaryColor,
       textTransform: 'uppercase',
-      letterSpacing: 1,
-      marginBottom: 4,
+      letterSpacing: 0.5,
+      marginBottom: 2,
     },
     metaText: {
-      fontSize: 7,
+      fontSize: 6.5,
       color: '#64748b',
     },
     currencyDeclaration: {
-      fontSize: 8,
+      fontSize: 7,
       fontStyle: 'italic',
       color: primaryColor,
-      marginTop: 6,
+      marginTop: 3,
       fontWeight: 'bold',
     },
     table: {
       width: '100%',
-      marginTop: 8,
+      marginTop: 4,
     },
     tableHeader: {
       flexDirection: 'row',
       backgroundColor: '#f8fafc',
       borderBottomWidth: 1,
       borderBottomColor: '#e2e8f0',
-      minHeight: 24,
+      minHeight: 18,
       alignItems: 'center',
     },
     tableHeaderText: {
-      fontSize: 6,
+      fontSize: 5.8,
       fontWeight: 'bold',
       color: '#334155',
       paddingHorizontal: 2,
@@ -125,7 +126,7 @@ export function PayrollReportPDF({
       flexDirection: 'row',
       borderBottomWidth: 0.5,
       borderBottomColor: '#f1f5f9',
-      minHeight: 20,
+      minHeight: 16,
       alignItems: 'center',
     },
     tableRowAlt: {
@@ -146,25 +147,19 @@ export function PayrollReportPDF({
       borderTopColor: primaryColor,
       borderBottomWidth: 0.5,
       borderBottomColor: primaryColor,
-      minHeight: 28,
+      minHeight: 20,
       alignItems: 'center',
     },
     totalText: {
-      fontSize: 7.5,
+      fontSize: 7,
       fontWeight: 'bold',
       color: primaryColor,
-    },
-    footer: {
-      position: 'absolute',
-      bottom: 24,
-      left: 24,
-      right: 24,
     },
     signatures: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: 32,
-      marginBottom: 16,
+      marginTop: 10,
+      marginBottom: 4,
     },
     signatureBox: {
       width: '28%',
@@ -174,23 +169,29 @@ export function PayrollReportPDF({
       width: '100%',
       borderTopWidth: 1,
       borderTopColor: '#475569',
-      marginTop: 32,
-      marginBottom: 6,
+      marginTop: 14,
+      marginBottom: 3,
     },
     signatureLabel: {
-      fontSize: 7,
+      fontSize: 6.5,
       color: '#64748b',
       fontWeight: 'bold',
+    },
+    footer: {
+      position: 'absolute',
+      bottom: 8,
+      left: 16,
+      right: 16,
     },
     footerMeta: {
       borderTopWidth: 0.5,
       borderTopColor: '#e2e8f0',
-      paddingTop: 8,
+      paddingTop: 3,
       flexDirection: 'row',
       justifyContent: 'space-between',
     },
     footerText: {
-      fontSize: 6,
+      fontSize: 5.5,
       color: '#94a3b8',
     },
     // Column widths (Total 100%)
@@ -287,8 +288,8 @@ export function PayrollReportPDF({
 
         {/* Register Table */}
         <View style={styles.table}>
-          {/* Header Row - Only rendered on first page to prevent layout loop */}
-          <View style={styles.tableHeader}>
+          {/* Header Row - Repeats on every page */}
+          <View style={styles.tableHeader} fixed>
             <Text style={[styles.tableHeaderText, styles.colCode]}>S.No</Text>
             <Text style={[styles.tableHeaderText, styles.colName]}>Employee Name</Text>
             <Text style={[styles.tableHeaderText, styles.colBank]}>Bank Account</Text>
@@ -360,7 +361,7 @@ export function PayrollReportPDF({
           })}
 
           {/* Totals Row */}
-          <View style={styles.totalRow}>
+          <View style={styles.totalRow} wrap={false}>
             <View style={{ width: '27%' }}>
               <Text style={[styles.totalText, { paddingLeft: 4 }]}>TOTALS ({sortedItems.length} Employees)</Text>
             </View>
@@ -388,19 +389,19 @@ export function PayrollReportPDF({
             <View style={styles.signatureLine} />
             <Text style={styles.signatureLabel}>Prepared By</Text>
             <Text style={styles.metaText}>HR / Payroll Administrator</Text>
-            <Text style={[styles.metaText, { marginTop: 4, opacity: 0.6 }]}>Date: ____/____/2026</Text>
+            <Text style={[styles.metaText, { marginTop: 2, opacity: 0.6 }]}>Date: ____/____/{payrollRun?.year || new Date().getFullYear()}</Text>
           </View>
           <View style={styles.signatureBox}>
             <View style={styles.signatureLine} />
             <Text style={styles.signatureLabel}>Checked By</Text>
             <Text style={styles.metaText}>Finance Department</Text>
-            <Text style={[styles.metaText, { marginTop: 4, opacity: 0.6 }]}>Date: ____/____/2026</Text>
+            <Text style={[styles.metaText, { marginTop: 2, opacity: 0.6 }]}>Date: ____/____/{payrollRun?.year || new Date().getFullYear()}</Text>
           </View>
           <View style={styles.signatureBox}>
             <View style={styles.signatureLine} />
             <Text style={styles.signatureLabel}>Authorised By</Text>
             <Text style={styles.metaText}>General Manager / CEO</Text>
-            <Text style={[styles.metaText, { marginTop: 4, opacity: 0.6 }]}>Date: ____/____/2026</Text>
+            <Text style={[styles.metaText, { marginTop: 2, opacity: 0.6 }]}>Date: ____/____/{payrollRun?.year || new Date().getFullYear()}</Text>
           </View>
         </View>
 
