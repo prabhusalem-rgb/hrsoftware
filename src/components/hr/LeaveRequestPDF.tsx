@@ -17,6 +17,17 @@ export function LeaveRequestPDF({
 }: LeaveRequestPDFProps) {
   const { employee, company } = leaveRequest;
 
+  // Company detection for BRIGHT FLOWERS TRADING LLC
+  const companyNameUpper = (company?.name_en || '').trim().toUpperCase();
+  const isBrightFlowers = companyNameUpper.includes('BRIGHT FLOWERS');
+  const dgmSigUrl = leaveRequest.dgm_signature_url;
+  const dgmId = leaveRequest.dgm_id;
+  const dgmApprovedAt = leaveRequest.dgm_approved_at;
+  const dgmRemarks = leaveRequest.dgm_remarks;
+  const dgmName = leaveRequest.dgm_name || 'Deputy General Manager';
+  const showDgm = isBrightFlowers || Boolean(dgmSigUrl || dgmId);
+  const isDgmApproved = Boolean(dgmSigUrl || dgmId || dgmApprovedAt);
+
   // UTC day calculation
   const parseDate = (s: string) => {
     const [y, m, d] = s.split('-').map(Number);
@@ -148,86 +159,195 @@ export function LeaveRequestPDF({
         {/* Section 3: Approval */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>APPROVAL WORKFLOW</Text>
-          <View style={styles.apprGrid}>
-            {/* Employee */}
-            <View style={[styles.apprCard, leaveRequest.employee_signature_url ? styles.apprDone : styles.apprPending]}>
-              <View style={styles.apprHeader}>
-                <Text style={styles.apprRole}>Employee</Text>
-                <View style={[styles.apprBadge, { backgroundColor: leaveRequest.employee_signed_at ? '#10B981' : '#F59E0B' }]}>
-                  <Text style={styles.apprBadgeText}>{leaveRequest.employee_signed_at ? 'SIGNED' : 'PENDING'}</Text>
+          {showDgm ? (
+            <View style={styles.apprWorkflowContainer}>
+              {/* Row 1: Operational Approvals (Employee, HR Manager, Operations) */}
+              <View style={styles.apprRow}>
+                {/* Employee */}
+                <View style={[styles.apprCard3Col, leaveRequest.employee_signature_url ? styles.apprDone : styles.apprPending]}>
+                  <View style={styles.apprHeader}>
+                    <Text style={styles.apprRole}>Employee</Text>
+                    <View style={[styles.apprBadge, { backgroundColor: leaveRequest.employee_signed_at ? '#10B981' : '#F59E0B' }]}>
+                      <Text style={styles.apprBadgeText}>{leaveRequest.employee_signed_at ? 'SIGNED' : 'PENDING'}</Text>
+                    </View>
+                  </View>
+                  {leaveRequest.employee_signature_url ? (
+                    <Image src={leaveRequest.employee_signature_url} style={styles.sigImage} />
+                  ) : (
+                    <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                  )}
+                  <Text style={styles.apprName}>{employee.name_en}</Text>
+                  <Text style={styles.apprDate}>
+                    {leaveRequest.employee_signed_at ? format(new Date(leaveRequest.employee_signed_at), 'dd/MM/yyyy HH:mm') : '—'}
+                  </Text>
                 </View>
-              </View>
-              {leaveRequest.employee_signature_url ? (
-                <Image src={leaveRequest.employee_signature_url} style={styles.sigImage} />
-              ) : (
-                <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
-              )}
-              <Text style={styles.apprName}>{employee.name_en}</Text>
-              <Text style={styles.apprDate}>
-                {leaveRequest.employee_signed_at ? format(new Date(leaveRequest.employee_signed_at), 'dd/MM/yyyy HH:mm') : '—'}
-              </Text>
-            </View>
 
-            {/* HR */}
-            <View style={[styles.apprCard, leaveRequest.hr_id ? styles.apprDone : styles.apprPending]}>
-              <View style={styles.apprHeader}>
-                <Text style={styles.apprRole}>HR Manager</Text>
-                <View style={[styles.apprBadge, { backgroundColor: leaveRequest.hr_id ? '#10B981' : '#F59E0B' }]}>
-                  <Text style={styles.apprBadgeText}>{leaveRequest.hr_id ? 'APPROVED' : 'PENDING'}</Text>
+                {/* HR */}
+                <View style={[styles.apprCard3Col, leaveRequest.hr_id ? styles.apprDone : styles.apprPending]}>
+                  <View style={styles.apprHeader}>
+                    <Text style={styles.apprRole}>HR Manager</Text>
+                    <View style={[styles.apprBadge, { backgroundColor: leaveRequest.hr_id ? '#10B981' : '#F59E0B' }]}>
+                      <Text style={styles.apprBadgeText}>{leaveRequest.hr_id ? 'APPROVED' : 'PENDING'}</Text>
+                    </View>
+                  </View>
+                  {leaveRequest.hr_signature_url ? (
+                    <Image src={leaveRequest.hr_signature_url} style={styles.sigImage} />
+                  ) : (
+                    <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                  )}
+                  {leaveRequest.hr_remarks && <Text style={styles.remarkText}>"{leaveRequest.hr_remarks}"</Text>}
+                  <Text style={styles.apprName}>{leaveRequest.hr_id ? 'HR Manager' : '—'}</Text>
+                  <Text style={styles.apprDate}>
+                    {leaveRequest.hr_approved_at ? format(new Date(leaveRequest.hr_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
+                  </Text>
                 </View>
-              </View>
-              {leaveRequest.hr_signature_url ? (
-                <Image src={leaveRequest.hr_signature_url} style={styles.sigImage} />
-              ) : (
-                <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
-              )}
-              {leaveRequest.hr_remarks && <Text style={styles.remarkText}>"{leaveRequest.hr_remarks}"</Text>}
-              <Text style={styles.apprName}>{leaveRequest.hr_id ? 'HR Manager' : '—'}</Text>
-              <Text style={styles.apprDate}>
-                {leaveRequest.hr_approved_at ? format(new Date(leaveRequest.hr_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
-              </Text>
-            </View>
 
-            {/* Operations */}
-            <View style={[styles.apprCard, leaveRequest.ops_id ? styles.apprDone : styles.apprPending]}>
-              <View style={styles.apprHeader}>
-                <Text style={styles.apprRole}>Operations</Text>
-                <View style={[styles.apprBadge, { backgroundColor: leaveRequest.ops_id ? '#10B981' : '#F59E0B' }]}>
-                  <Text style={styles.apprBadgeText}>{leaveRequest.ops_id ? 'APPROVED' : 'PENDING'}</Text>
+                {/* Operations */}
+                <View style={[styles.apprCard3Col, leaveRequest.ops_id ? styles.apprDone : styles.apprPending]}>
+                  <View style={styles.apprHeader}>
+                    <Text style={styles.apprRole}>Operations</Text>
+                    <View style={[styles.apprBadge, { backgroundColor: leaveRequest.ops_id ? '#10B981' : '#F59E0B' }]}>
+                      <Text style={styles.apprBadgeText}>{leaveRequest.ops_id ? 'APPROVED' : 'PENDING'}</Text>
+                    </View>
+                  </View>
+                  {leaveRequest.ops_signature_url ? (
+                    <Image src={leaveRequest.ops_signature_url} style={styles.sigImage} />
+                  ) : (
+                    <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                  )}
+                  {leaveRequest.ops_remarks && <Text style={styles.remarkText}>"{leaveRequest.ops_remarks}"</Text>}
+                  <Text style={styles.apprName}>{leaveRequest.ops_id ? 'Ops Manager' : '—'}</Text>
+                  <Text style={styles.apprDate}>
+                    {leaveRequest.ops_approved_at ? format(new Date(leaveRequest.ops_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
+                  </Text>
                 </View>
               </View>
-              {leaveRequest.ops_signature_url ? (
-                <Image src={leaveRequest.ops_signature_url} style={styles.sigImage} />
-              ) : (
-                <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
-              )}
-              {leaveRequest.ops_remarks && <Text style={styles.remarkText}>"{leaveRequest.ops_remarks}"</Text>}
-              <Text style={styles.apprName}>{leaveRequest.ops_id ? 'Ops Manager' : '—'}</Text>
-              <Text style={styles.apprDate}>
-                {leaveRequest.ops_approved_at ? format(new Date(leaveRequest.ops_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
-              </Text>
-            </View>
 
-            {/* GM/CEO */}
-            <View style={[styles.apprCard, leaveRequest.gm_id ? styles.apprDone : styles.apprPending]}>
-              <View style={styles.apprHeader}>
-                <Text style={styles.apprRole}>GM / CEO</Text>
-                <View style={[styles.apprBadge, { backgroundColor: leaveRequest.gm_id ? '#10B981' : '#F59E0B' }]}>
-                  <Text style={styles.apprBadgeText}>{leaveRequest.gm_id ? 'APPROVED' : 'PENDING'}</Text>
+              {/* Row 2: Executive Management Approvals (DGM & GM/CEO) */}
+              <View style={[styles.apprRow, { marginTop: 6 }]}>
+                {/* DGM (Deputy General Manager) */}
+                <View style={[styles.apprCard2Col, isDgmApproved ? styles.apprDone : styles.apprPending]}>
+                  <View style={styles.apprHeader}>
+                    <Text style={styles.apprRole}>DGM</Text>
+                    <View style={[styles.apprBadge, { backgroundColor: isDgmApproved ? '#10B981' : '#F59E0B' }]}>
+                      <Text style={styles.apprBadgeText}>{isDgmApproved ? 'APPROVED' : 'PENDING'}</Text>
+                    </View>
+                  </View>
+                  {dgmSigUrl ? (
+                    <Image src={dgmSigUrl} style={styles.sigImage} />
+                  ) : (
+                    <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>Signature / Stamp</Text></View>
+                  )}
+                  {dgmRemarks && <Text style={styles.remarkText}>"{dgmRemarks}"</Text>}
+                  <Text style={styles.apprName}>{dgmName}</Text>
+                  <Text style={styles.apprDate}>
+                    {dgmApprovedAt ? format(new Date(dgmApprovedAt), 'dd/MM/yyyy HH:mm') : '—'}
+                  </Text>
+                </View>
+
+                {/* GM/CEO */}
+                <View style={[styles.apprCard2Col, leaveRequest.gm_id ? styles.apprDone : styles.apprPending]}>
+                  <View style={styles.apprHeader}>
+                    <Text style={styles.apprRole}>GM / CEO</Text>
+                    <View style={[styles.apprBadge, { backgroundColor: leaveRequest.gm_id ? '#10B981' : '#F59E0B' }]}>
+                      <Text style={styles.apprBadgeText}>{leaveRequest.gm_id ? 'APPROVED' : 'PENDING'}</Text>
+                    </View>
+                  </View>
+                  {leaveRequest.gm_signature_url ? (
+                    <Image src={leaveRequest.gm_signature_url} style={styles.sigImage} />
+                  ) : (
+                    <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                  )}
+                  {leaveRequest.gm_remarks && <Text style={styles.remarkText}>"{leaveRequest.gm_remarks}"</Text>}
+                  <Text style={styles.apprName}>{leaveRequest.gm_id ? 'GM / CEO' : '—'}</Text>
+                  <Text style={styles.apprDate}>
+                    {leaveRequest.gm_approved_at ? format(new Date(leaveRequest.gm_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
+                  </Text>
                 </View>
               </View>
-              {leaveRequest.gm_signature_url ? (
-                <Image src={leaveRequest.gm_signature_url} style={styles.sigImage} />
-              ) : (
-                <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
-              )}
-              {leaveRequest.gm_remarks && <Text style={styles.remarkText}>"{leaveRequest.gm_remarks}"</Text>}
-              <Text style={styles.apprName}>{leaveRequest.gm_id ? 'GM / CEO' : '—'}</Text>
-              <Text style={styles.apprDate}>
-                {leaveRequest.gm_approved_at ? format(new Date(leaveRequest.gm_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
-              </Text>
             </View>
-          </View>
+          ) : (
+            <View style={styles.apprGrid}>
+              {/* Employee */}
+              <View style={[styles.apprCard, leaveRequest.employee_signature_url ? styles.apprDone : styles.apprPending]}>
+                <View style={styles.apprHeader}>
+                  <Text style={styles.apprRole}>Employee</Text>
+                  <View style={[styles.apprBadge, { backgroundColor: leaveRequest.employee_signed_at ? '#10B981' : '#F59E0B' }]}>
+                    <Text style={styles.apprBadgeText}>{leaveRequest.employee_signed_at ? 'SIGNED' : 'PENDING'}</Text>
+                  </View>
+                </View>
+                {leaveRequest.employee_signature_url ? (
+                  <Image src={leaveRequest.employee_signature_url} style={styles.sigImage} />
+                ) : (
+                  <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                )}
+                <Text style={styles.apprName}>{employee.name_en}</Text>
+                <Text style={styles.apprDate}>
+                  {leaveRequest.employee_signed_at ? format(new Date(leaveRequest.employee_signed_at), 'dd/MM/yyyy HH:mm') : '—'}
+                </Text>
+              </View>
+
+              {/* HR */}
+              <View style={[styles.apprCard, leaveRequest.hr_id ? styles.apprDone : styles.apprPending]}>
+                <View style={styles.apprHeader}>
+                  <Text style={styles.apprRole}>HR Manager</Text>
+                  <View style={[styles.apprBadge, { backgroundColor: leaveRequest.hr_id ? '#10B981' : '#F59E0B' }]}>
+                    <Text style={styles.apprBadgeText}>{leaveRequest.hr_id ? 'APPROVED' : 'PENDING'}</Text>
+                  </View>
+                </View>
+                {leaveRequest.hr_signature_url ? (
+                  <Image src={leaveRequest.hr_signature_url} style={styles.sigImage} />
+                ) : (
+                  <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                )}
+                {leaveRequest.hr_remarks && <Text style={styles.remarkText}>"{leaveRequest.hr_remarks}"</Text>}
+                <Text style={styles.apprName}>{leaveRequest.hr_id ? 'HR Manager' : '—'}</Text>
+                <Text style={styles.apprDate}>
+                  {leaveRequest.hr_approved_at ? format(new Date(leaveRequest.hr_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
+                </Text>
+              </View>
+
+              {/* Operations */}
+              <View style={[styles.apprCard, leaveRequest.ops_id ? styles.apprDone : styles.apprPending]}>
+                <View style={styles.apprHeader}>
+                  <Text style={styles.apprRole}>Operations</Text>
+                  <View style={[styles.apprBadge, { backgroundColor: leaveRequest.ops_id ? '#10B981' : '#F59E0B' }]}>
+                    <Text style={styles.apprBadgeText}>{leaveRequest.ops_id ? 'APPROVED' : 'PENDING'}</Text>
+                  </View>
+                </View>
+                {leaveRequest.ops_signature_url ? (
+                  <Image src={leaveRequest.ops_signature_url} style={styles.sigImage} />
+                ) : (
+                  <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                )}
+                {leaveRequest.ops_remarks && <Text style={styles.remarkText}>"{leaveRequest.ops_remarks}"</Text>}
+                <Text style={styles.apprName}>{leaveRequest.ops_id ? 'Ops Manager' : '—'}</Text>
+                <Text style={styles.apprDate}>
+                  {leaveRequest.ops_approved_at ? format(new Date(leaveRequest.ops_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
+                </Text>
+              </View>
+
+              {/* GM/CEO */}
+              <View style={[styles.apprCard, leaveRequest.gm_id ? styles.apprDone : styles.apprPending]}>
+                <View style={styles.apprHeader}>
+                  <Text style={styles.apprRole}>GM / CEO</Text>
+                  <View style={[styles.apprBadge, { backgroundColor: leaveRequest.gm_id ? '#10B981' : '#F59E0B' }]}>
+                    <Text style={styles.apprBadgeText}>{leaveRequest.gm_id ? 'APPROVED' : 'PENDING'}</Text>
+                  </View>
+                </View>
+                {leaveRequest.gm_signature_url ? (
+                  <Image src={leaveRequest.gm_signature_url} style={styles.sigImage} />
+                ) : (
+                  <View style={styles.sigPlaceholder}><Text style={styles.sigPlaceholderText}>—</Text></View>
+                )}
+                {leaveRequest.gm_remarks && <Text style={styles.remarkText}>"{leaveRequest.gm_remarks}"</Text>}
+                <Text style={styles.apprName}>{leaveRequest.gm_id ? 'GM / CEO' : '—'}</Text>
+                <Text style={styles.apprDate}>
+                  {leaveRequest.gm_approved_at ? format(new Date(leaveRequest.gm_approved_at), 'dd/MM/yyyy HH:mm') : '—'}
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Footer */}
@@ -492,14 +612,37 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // Approval grid (2x2)
+  // Approval grid
   apprGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
+  apprWorkflowContainer: {
+    marginTop: 2,
+    width: '100%',
+  },
+  apprRow: {
+    flexDirection: 'row',
+    gap: 6,
+    width: '100%',
+  },
   apprCard: {
     width: '48%',
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    gap: 3,
+  },
+  apprCard3Col: {
+    flex: 1,
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 2,
+    gap: 2,
+  },
+  apprCard2Col: {
+    flex: 1,
     padding: 8,
     borderRadius: 6,
     borderWidth: 2,

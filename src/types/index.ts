@@ -199,6 +199,13 @@ export interface LeaveRequest {
   ops_remarks: string | null;
   ops_approved_at: string | null;
 
+  // DGM (Deputy General Manager) approval
+  dgm_id?: string | null;
+  dgm_signature_url?: string | null;
+  dgm_remarks?: string | null;
+  dgm_approved_at?: string | null;
+  dgm_name?: string | null;
+
   // GM/CEO approval
   gm_id: string | null;
   gm_signature_url: string | null;

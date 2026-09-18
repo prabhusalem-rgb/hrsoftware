@@ -652,6 +652,44 @@ export default function LeaveReviewPage() {
               </CardContent>
             </Card>
 
+            {/* DGM Approval - BRIGHT FLOWERS TRADING LLC */}
+            {(leaveRequest.company?.name_en?.toUpperCase().includes('BRIGHT FLOWERS') || (leaveRequest as any).dgm_id || (leaveRequest as any).dgm_signature_url) && (
+              <Card className="border-0 shadow-sm rounded-2xl">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-amber-600" />
+                    DGM Approval
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-600">Status</span>
+                    {(leaveRequest as any).dgm_id || (leaveRequest as any).dgm_signature_url ? (
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Approved</Badge>
+                    ) : (
+                      <Badge variant="secondary">Pending</Badge>
+                    )}
+                  </div>
+                  {(leaveRequest as any).dgm_approved_at && (
+                    <p className="text-xs text-slate-500">
+                      Approved on {format(parseISO((leaveRequest as any).dgm_approved_at), 'dd/MM/yyyy, HH:mm')}
+                    </p>
+                  )}
+                  {(leaveRequest as any).dgm_remarks && (
+                    <div className="pt-2">
+                      <p className="text-sm text-slate-600 mb-1">Remarks</p>
+                      <p className="text-sm bg-slate-50 p-3 rounded-lg">{(leaveRequest as any).dgm_remarks}</p>
+                    </div>
+                  )}
+                  {renderSignature(
+                    (leaveRequest as any).dgm_signature_url,
+                    (leaveRequest as any).dgm_name || 'Deputy General Manager (DGM)',
+                    (leaveRequest as any).dgm_approved_at
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* GM Approval */}
             <Card className="border-0 shadow-sm rounded-2xl">
               <CardHeader className="pb-3">
