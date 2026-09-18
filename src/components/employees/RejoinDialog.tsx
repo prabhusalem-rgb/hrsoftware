@@ -1,154 +1,232 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { useState, useEffect, useMemo } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
-import { Calendar, CheckCircle2, UserCheck, Trash2 } from 'lucide-react';
-import { Employee } from '@/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar, CheckCircle2, UserCheck, Trash2, Clock, ArrowRight } from 'lucide-react';
+import { Employee, Leave } from '@/types';
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
 import { createClient } from '@/lib/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 interface RejoinDialogProps {
   isOpen: boolean;
   onClose: () => void;
   employee: Employee | null;
+  leave?: Leave | null;
+  onSuccess?: () => void;
 }
 
-export function RejoinDialog({ isOpen, onClose, employee }: RejoinDialogProps) {
+export function RejoinDialog({ isOpen, onClose, employee, leave, onSuccess }: RejoinDialogProps) {
   const [rejoinDate, setRejoinDate] = useState(new Date().toISOString().split('T')[0]);
+  const [availableLeaves, setAvailableLeaves] = useState<any[]>([]);
+  const [selectedLeaveId, setSelectedLeaveId] = useState<string>('');
+  const [isLoadingLeaves, setIsLoadingLeaves] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const queryClient = useQueryClient();
   const { updateEmployee } = useEmployeeMutations(employee?.company_id || '');
 
-  useEffect(() => {
-    if (isOpen && employee) {
-      if (employee.rejoin_date) {
-        setRejoinDate(employee.rejoin_date);
-      } else {
-        setRejoinDate(new Date().toISOString().split('T')[0]);
-      }
+  // Format date helper
+  const formatDate = (dateStr?: string | null) => {
+    if (!dateStr) return 'N/A';
+    try {
+      return format(new Date(dateStr), 'dd/MM/yyyy');
+    } catch {
+      return dateStr;
     }
-  }, [employee, isOpen]);
+  };
 
-  const isEdit = !!employee?.rejoin_date;
+  // Load employee leaves if not provided directly
+  useEffect(() => {
+    if (!isOpen || !employee) return;
+
+    if (leave) {
+      setSelectedLeaveId(leave.id);
+      setRejoinDate(leave.return_date || new Date().toISOString().split('T')[0]);
+      setAvailableLeaves([leave]);
+      return;
+    }
+
+    const fetchLeaves = async () => {
+      setIsLoadingLeaves(true);
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('leaves')
+          .select('*, leave_types(name)')
+          .eq('employee_id', employee.id)
+          .eq('status', 'approved')
+          .order('end_date', { ascending: false });
+
+        if (error) throw error;
+
+        const leavesList = data || [];
+        setAvailableLeaves(leavesList);
+
+        // Pick preferred default: the most recent leave without return_date, or first in list
+        const openLeave = leavesList.find((l: any) => !l.return_date);
+        const target = openLeave || leavesList[0];
+
+        if (target) {
+          setSelectedLeaveId(target.id);
+          setRejoinDate(target.return_date || new Date().toISOString().split('T')[0]);
+        } else {
+          setSelectedLeaveId('');
+          setRejoinDate(employee.rejoin_date || new Date().toISOString().split('T')[0]);
+        }
+      } catch (err: any) {
+        console.error('Failed to load employee leaves for rejoining:', err);
+      } finally {
+        setIsLoadingLeaves(false);
+      }
+    };
+
+    fetchLeaves();
+  }, [isOpen, employee, leave]);
+
+  // Selected leave object
+  const activeLeave = useMemo(() => {
+    return availableLeaves.find(l => l.id === selectedLeaveId) || leave || null;
+  }, [availableLeaves, selectedLeaveId, leave]);
+
+  // When selected leave changes, sync rejoinDate
+  const handleLeaveChange = (leaveId: string | null) => {
+    if (!leaveId) return;
+    setSelectedLeaveId(leaveId);
+    const chosen = availableLeaves.find(l => l.id === leaveId);
+    if (chosen?.return_date) {
+      setRejoinDate(chosen.return_date);
+    } else {
+      setRejoinDate(new Date().toISOString().split('T')[0]);
+    }
+  };
+
+  const isEdit = Boolean(activeLeave?.return_date);
 
   const handleDelete = async () => {
     if (!employee) return;
+    setIsSaving(true);
 
     try {
-      const oldRejoinDate = employee.rejoin_date;
       const supabase = createClient();
 
-      // Check if there are any approved leaves (excluding Sick Leave) for this employee
-      const { data: approvedLeaves } = await supabase
-        .from('leaves')
-        .select('id, leave_types(name)')
-        .eq('employee_id', employee.id)
-        .eq('status', 'approved');
-
-      const nonSickLeaves = (approvedLeaves || []).filter((l: any) => {
-        const typeName = l.leave_types?.name || '';
-        return !typeName.toLowerCase().includes('sick');
-      });
-
-      const hasLeaves = nonSickLeaves.length > 0;
-      const targetStatus = hasLeaves ? 'on_leave' : 'active';
-
-      // Update employee: clear rejoin date, set status accordingly
-      await updateEmployee.mutateAsync({
-        id: employee.id,
-        updates: {
-          status: targetStatus,
-          rejoin_date: null,
-          leave_settlement_date: null
-        }
-      });
-
-      // Clear the return date on associated leave records
-      if (oldRejoinDate) {
+      // 1. Clear return_date on target leave
+      if (selectedLeaveId) {
         await supabase
           .from('leaves')
           .update({ return_date: null })
-          .eq('employee_id', employee.id)
-          .eq('status', 'approved')
-          .eq('return_date', oldRejoinDate);
+          .eq('id', selectedLeaveId);
       }
 
-      toast.success(`${employee.name_en}'s rejoining record has been deleted.`);
+      // 2. Fetch all approved leaves to compute remaining status & latest rejoin date
+      const { data: allApproved } = await supabase
+        .from('leaves')
+        .select('id, return_date, leave_types(name)')
+        .eq('employee_id', employee.id)
+        .eq('status', 'approved');
+
+      const remainingLeaves: Array<{ id: string; return_date: string | null }> = allApproved || [];
+
+      // Check if any leave (excluding current deleted one) is still open
+      const hasOpenLeave = remainingLeaves.some((l: { id: string; return_date: string | null }) => {
+        if (l.id === selectedLeaveId) return false;
+        return !l.return_date;
+      });
+
+      // Find highest remaining return_date
+      const remainingReturnDates = remainingLeaves
+        .filter((l: { id: string; return_date: string | null }) => l.id !== selectedLeaveId && l.return_date)
+        .map((l: { id: string; return_date: string | null }) => l.return_date as string)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+      const latestRejoin = remainingReturnDates.length > 0 ? remainingReturnDates[0] : null;
+
+      // 3. Update employee
+      await updateEmployee.mutateAsync({
+        id: employee.id,
+        updates: {
+          status: hasOpenLeave ? 'on_leave' : 'active',
+          rejoin_date: latestRejoin,
+          leave_settlement_date: null,
+        }
+      });
+
+      // Invalidate queries
+      queryClient.invalidateQueries({ queryKey: ['leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+
+      toast.success(`Rejoining record for ${employee.name_en} has been removed.`);
+      onSuccess?.();
       onClose();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error.message || 'Failed to remove rejoining record');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleSave = async () => {
     if (!employee) return;
+    if (!rejoinDate) {
+      toast.error('Please specify a rejoining date');
+      return;
+    }
 
+    setIsSaving(true);
     try {
-      const oldRejoinDate = employee.rejoin_date;
+      const supabase = createClient();
 
-      // Update employee status and rejoin date
+      // 1. Update return_date on target leave instance
+      if (selectedLeaveId) {
+        const { error: leaveErr } = await supabase
+          .from('leaves')
+          .update({ return_date: rejoinDate })
+          .eq('id', selectedLeaveId);
+
+        if (leaveErr) throw leaveErr;
+      }
+
+      // 2. Check all employee approved leaves to determine overall employee status & latest rejoin date
+      const { data: allApproved } = await supabase
+        .from('leaves')
+        .select('id, return_date')
+        .eq('employee_id', employee.id)
+        .eq('status', 'approved');
+
+      const allApprovedList: Array<{ id: string; return_date: string | null }> = allApproved || [];
+      const allLeaves = allApprovedList.map((l: { id: string; return_date: string | null }) => ({
+        id: l.id,
+        return_date: l.id === selectedLeaveId ? rejoinDate : l.return_date
+      }));
+
+      // Any other leave still open?
+      const anyStillOpen = allLeaves.some((l: { id: string; return_date: string | null }) => !l.return_date);
+
+      // Latest return date across all instances
+      const allDates = allLeaves
+        .filter((l: { id: string; return_date: string | null }) => Boolean(l.return_date))
+        .map((l: { id: string; return_date: string | null }) => l.return_date as string)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+      const latestRejoinDate = allDates.length > 0 ? allDates[0] : rejoinDate;
+
+      // 3. Update employee record
       await updateEmployee.mutateAsync({
         id: employee.id,
         updates: {
-          status: 'active',
-          rejoin_date: rejoinDate,
-          // Clear settlement date once rejoined to allow new cycles
-          leave_settlement_date: null
+          status: anyStillOpen ? 'on_leave' : 'active',
+          rejoin_date: latestRejoinDate,
+          leave_settlement_date: null,
         }
       });
 
-      // Also update the employee's approved leave return date
-      const supabase = createClient();
-      let targetLeaveId: string | null = null;
-
-      // 1. Try to find leave with return_date equal to the old rejoin_date
-      if (oldRejoinDate) {
-        const { data: oldLeave, error: oldLeaveError } = await supabase
-          .from('leaves')
-          .select('id')
-          .eq('employee_id', employee.id)
-          .eq('status', 'approved')
-          .eq('return_date', oldRejoinDate)
-          .order('end_date', { ascending: false })
-          .limit(1);
-
-        if (!oldLeaveError && oldLeave && oldLeave.length > 0) {
-          targetLeaveId = oldLeave[0].id;
-        }
-      }
-
-      // 2. If not found or no oldRejoinDate, check if there's an approved leave without a return date
-      if (!targetLeaveId) {
-        const { data: leavesToUpdate, error: checkError } = await supabase
-          .from('leaves')
-          .select('id')
-          .eq('employee_id', employee.id)
-          .eq('status', 'approved')
-          .is('return_date', null)
-          .order('end_date', { ascending: false })
-          .limit(1);
-
-        if (!checkError && leavesToUpdate && leavesToUpdate.length > 0) {
-          targetLeaveId = leavesToUpdate[0].id;
-        }
-      }
-
-      if (targetLeaveId) {
-        // Update that specific leave record's return_date
-        const { error: updateError } = await supabase
-          .from('leaves')
-          .update({ return_date: rejoinDate })
-          .eq('id', targetLeaveId);
-
-        if (updateError) {
-          console.error('Failed to update leave return_date:', updateError);
-        }
-      }
-
-      // If employee had any active vacation advance loans, align their schedule due_date to the rejoin month
+      // 4. Align vacation advance loan schedule if any
       try {
         const rejoinParts = rejoinDate.split('-');
         const rejoinMonthStart = `${rejoinParts[0]}-${rejoinParts[1]}-01`;
@@ -169,16 +247,24 @@ export function RejoinDialog({ isOpen, onClose, employee }: RejoinDialogProps) {
           }
         }
       } catch (loanSyncErr) {
-        console.error('Failed to sync vacation loan schedule with rejoin date:', loanSyncErr);
+        console.error('Failed to sync vacation loan schedule:', loanSyncErr);
       }
 
-      toast.success(isEdit 
-        ? `${employee.name_en}'s rejoining record has been successfully updated.`
-        : `${employee.name_en} has successfully rejoined.`
+      // Invalidate queries
+      queryClient.invalidateQueries({ queryKey: ['leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+
+      toast.success(
+        isEdit
+          ? `Rejoining date updated for ${employee.name_en}.`
+          : `${employee.name_en} has successfully rejoined.`
       );
+      onSuccess?.();
       onClose();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error.message || 'Failed to record rejoining');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -186,72 +272,139 @@ export function RejoinDialog({ isOpen, onClose, employee }: RejoinDialogProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[480px] rounded-3xl p-0 overflow-hidden border-0 shadow-2xl">
-        <div className="bg-emerald-600 px-6 py-8 text-white relative">
-          <div className="absolute top-0 right-0 p-8 opacity-10">
+      <DialogContent className="sm:max-w-[500px] rounded-3xl p-0 overflow-hidden border-0 shadow-2xl">
+        {/* Header Banner */}
+        <div className="bg-emerald-600 px-6 py-6 text-white relative">
+          <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
             <UserCheck className="w-24 h-24" />
           </div>
-          <DialogTitle className="text-2xl font-black mb-2 flex items-center gap-2">
-             {isEdit ? 'Employee Rejoining Recorded' : 'Record Employee Rejoining'}
+          <DialogTitle className="text-xl font-black mb-1 flex items-center gap-2 text-white">
+            {isEdit ? 'Edit Rejoining Date' : 'Record Employee Rejoining'}
           </DialogTitle>
-          <p className="text-emerald-100 text-sm font-medium">
-            {isEdit ? 'This employee has already rejoined. To change the return date, you must delete this record first.' : 'Record the actual return date to resume salary payroll.'}
+          <p className="text-emerald-100 text-xs font-medium">
+            {activeLeave
+              ? `Recording rejoining for leave instance (${formatDate(activeLeave.start_date)} → ${formatDate(activeLeave.end_date)})`
+              : 'Record the actual reporting date to duty to resume payroll calculation.'}
           </p>
         </div>
 
-        <div className="p-8 space-y-6">
-          <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-            <div className="h-12 w-12 rounded-xl bg-white shadow-sm flex items-center justify-center text-emerald-600 font-black">
+        <div className="p-6 space-y-5">
+          {/* Employee Info Header */}
+          <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+            <div className="h-10 w-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-emerald-600 font-black text-sm">
               {employee.name_en.charAt(0)}
             </div>
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Employee</p>
-              <h4 className="font-bold text-slate-900">{employee.name_en}</h4>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">Employee</p>
+              <h4 className="font-bold text-slate-900 text-sm truncate">{employee.name_en}</h4>
+              <p className="text-xs text-slate-500">{employee.emp_code} • {employee.designation || 'Staff'}</p>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs font-black uppercase text-slate-400 flex items-center gap-2">
-              <Calendar className="w-3 h-3 text-emerald-600" /> Date of Rejoining
+          {/* Leave Instance Selection (if employee has multiple leaves or none passed directly) */}
+          {!leave && availableLeaves.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-black uppercase text-slate-400 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-emerald-600" /> Select Leave Instance
+              </Label>
+              <Select value={selectedLeaveId} onValueChange={handleLeaveChange} disabled={isLoadingLeaves || isSaving}>
+                <SelectTrigger className="h-11 rounded-2xl border-2 focus:border-emerald-500 font-medium text-xs">
+                  <SelectValue placeholder="Choose leave instance..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableLeaves.map(l => (
+                    <SelectItem key={l.id} value={l.id} className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800">{l.leave_types?.name || 'Leave'}</span>
+                        <span className="text-slate-500 font-mono">
+                          {formatDate(l.start_date)} → {formatDate(l.end_date)} ({l.days}d)
+                        </span>
+                        {l.return_date ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                            Returned {formatDate(l.return_date)}
+                          </span>
+                        ) : (
+                          <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                            Pending Rejoin
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Active Leave Details Card */}
+          {activeLeave && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-100 text-xs space-y-1.5">
+              <div className="flex justify-between items-center text-emerald-950 font-bold">
+                <span>Leave Duration: {activeLeave.days} Days</span>
+                <span className="text-[11px] font-medium text-emerald-700">
+                  {activeLeave.leave_types?.name || 'Approved Leave'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 font-mono text-emerald-900 text-[11px]">
+                <span>Departed: {formatDate(activeLeave.start_date)}</span>
+                <ArrowRight className="w-3 h-3 text-emerald-600" />
+                <span>Scheduled End: {formatDate(activeLeave.end_date)}</span>
+              </div>
+              {activeLeave.return_date && (
+                <div className="text-[11px] text-emerald-800 font-medium pt-0.5">
+                  Currently recorded return: <strong>{formatDate(activeLeave.return_date)}</strong>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Date Picker Input */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-black uppercase text-slate-400 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-emerald-600" /> Actual Date of Rejoining
             </Label>
-            <DatePickerInput 
-              value={rejoinDate} 
+            <DatePickerInput
+              value={rejoinDate}
               onChange={e => setRejoinDate(e.target.value)}
-              disabled={isEdit}
-              className="h-12 rounded-2xl border-2 focus:border-emerald-500 font-mono transition-all"
+              disabled={isSaving}
+              className="h-11 rounded-2xl border-2 focus:border-emerald-500 font-mono transition-all"
             />
-            <p className="text-[10px] text-slate-500 font-medium">
-              {isEdit 
-                ? 'To modify this date, please delete this rejoining record first.' 
-                : 'Salary will be pro-rated from this date forward in the next payroll run.'}
+            <p className="text-[11px] text-slate-500 font-medium">
+              Salary in the payroll month of this return date will be pro-rated starting from this day.
             </p>
           </div>
         </div>
 
-        <DialogFooter className="p-8 pt-0 bg-slate-50/50 flex flex-col-reverse sm:flex-row gap-2 sm:gap-0 justify-between items-center">
+        {/* Footer Actions */}
+        <DialogFooter className="p-6 pt-0 bg-slate-50/50 flex flex-col-reverse sm:flex-row gap-2 sm:gap-0 justify-between items-center">
           <div>
             {isEdit && (
-              <Button 
-                variant="destructive" 
-                onClick={handleDelete} 
-                className="w-full sm:w-auto rounded-2xl px-4 font-black h-12 gap-2"
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={isSaving}
+                className="w-full sm:w-auto rounded-2xl px-4 font-black h-11 gap-1.5 text-xs"
               >
-                <Trash2 className="w-4 h-4" /> Delete Rejoining
+                <Trash2 className="w-3.5 h-3.5" /> Remove Rejoin
               </Button>
             )}
           </div>
-          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-0 w-full sm:w-auto justify-end">
-            <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto rounded-2xl px-6 font-black text-slate-500">
-              {isEdit ? 'Close' : 'Cancel'}
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2 w-full sm:w-auto justify-end">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              disabled={isSaving}
+              className="w-full sm:w-auto rounded-2xl px-5 font-black text-slate-500 h-11 text-xs"
+            >
+              Cancel
             </Button>
-            {!isEdit && (
-              <Button
-                onClick={handleSave}
-                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl px-8 font-black h-12 shadow-xl shadow-emerald-600/20 gap-2"
-              >
-                <CheckCircle2 className="w-4 h-4" /> Confirm Rejoining
-              </Button>
-            )}
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl px-6 font-black h-11 shadow-lg shadow-emerald-600/20 gap-1.5 text-xs"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> {isEdit ? 'Update Rejoining' : 'Confirm Rejoining'}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

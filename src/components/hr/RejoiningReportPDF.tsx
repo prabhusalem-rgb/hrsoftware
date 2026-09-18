@@ -1,13 +1,14 @@
 'use client';
 
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { Employee, Company } from '@/types';
+import { Employee, Company, Leave } from '@/types';
 import { format } from 'date-fns';
 
 interface RejoiningReportPDFProps {
   employee: Employee;
   company: Company;
-  rejoinDate: string;
+  rejoinDate?: string;
+  leave?: (Leave & { leave_types?: { name?: string } }) | null;
   showLogo?: boolean;
   primaryColor?: string;
 }
@@ -16,9 +17,12 @@ export function RejoiningReportPDF({
   employee,
   company,
   rejoinDate,
+  leave,
   showLogo = true,
   primaryColor = '#1e3a5f'
 }: RejoiningReportPDFProps) {
+  const actualRejoinDate = rejoinDate || leave?.return_date || employee.rejoin_date || format(new Date(), 'yyyy-MM-dd');
+
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'N/A';
     try {
@@ -87,11 +91,34 @@ export function RejoiningReportPDF({
 
         {/* 2. Rejoining Details */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>2. REJOINING PARTICULARS</Text>
+          <Text style={styles.sectionTitle}>2. REJOINING & LEAVE PARTICULARS</Text>
+          
+          {leave && (
+            <View style={[styles.row, { marginBottom: 10, padding: 8, backgroundColor: '#f8fafc', borderRadius: 4 }]}>
+              <View style={[styles.col, { width: '50%' }]}>
+                <View style={styles.field}><Text style={styles.label}>Leave Type</Text><Text style={[styles.value, styles.bold]}>{leave.leave_types?.name || 'Authorized Leave'}</Text></View>
+                <View style={styles.field}><Text style={styles.label}>Departure Date</Text><Text style={styles.value}>{formatDate(leave.start_date)}</Text></View>
+                <View style={styles.field}><Text style={styles.label}>Scheduled End</Text><Text style={styles.value}>{formatDate(leave.end_date)}</Text></View>
+              </View>
+              <View style={[styles.col, { width: '50%' }]}>
+                <View style={styles.field}><Text style={styles.label}>Leave Duration</Text><Text style={[styles.value, styles.bold]}>{leave.days} Days</Text></View>
+                <View style={styles.field}><Text style={styles.label}>Actual Rejoin Date</Text><Text style={[styles.value, styles.bold, { color: primaryColor }]}>{formatDate(actualRejoinDate)}</Text></View>
+                <View style={styles.field}>
+                  <Text style={styles.label}>Reporting Status</Text>
+                  <Text style={styles.value}>
+                    {new Date(actualRejoinDate) <= new Date(leave.end_date)
+                      ? 'Reported On Schedule / Early'
+                      : `Reported with Overstay (${Math.round((new Date(actualRejoinDate).getTime() - new Date(leave.end_date).getTime()) / (1000 * 60 * 60 * 24))} days)`}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           <View style={styles.narrative}>
             <Text style={styles.paragraph}>
               This is to certify that the above-named employee has resumed active duty on{' '}
-              <Text style={[styles.value, styles.bold, { color: primaryColor }]}>{formatDate(rejoinDate)}</Text>{' '}
+              <Text style={[styles.value, styles.bold, { color: primaryColor }]}>{formatDate(actualRejoinDate)}</Text>{' '}
               following an authorized leave period.
             </Text>
             <Text style={styles.paragraph}>

@@ -6,6 +6,7 @@
 // ============================================================
 
 import { useState, useMemo, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +32,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { Plus, Pencil, Trash2, Search, CalendarDays, Check, X, ShieldCheck, ArrowUpRight, Download, CalendarX, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, CalendarDays, Check, X, ShieldCheck, ArrowUpRight, Download, CalendarX, Info, UserCheck, FileDown } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +56,9 @@ import { Loader2 } from 'lucide-react';
 import { checkLeaveEligibility } from '@/lib/leave-eligibility';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
+import { downloadRejoiningReportPDF } from '@/lib/pdf-utils';
+
+const RejoinDialog = dynamic(() => import('@/components/employees/RejoinDialog').then(mod => mod.RejoinDialog), { ssr: false });
 
 const statusColors: Record<LeaveStatus, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
@@ -69,7 +73,7 @@ const settlementColors: Record<SettlementStatus, string> = {
 };
 
 export default function LeavesPage() {
-  const { activeCompanyId } = useCompany();
+  const { activeCompanyId, activeCompany } = useCompany();
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [search, setSearch] = useState('');
   const [employeeSearchOpen, setEmployeeSearchOpen] = useState(false);
@@ -84,6 +88,9 @@ export default function LeavesPage() {
   const [historyDateFrom, setHistoryDateFrom] = useState<string>('');
   const [historyDateTo, setHistoryDateTo] = useState<string>('');
   const [editing, setEditing] = useState<Leave | null>(null);
+  const [rejoinLeave, setRejoinLeave] = useState<Leave | null>(null);
+  const [rejoinEmployee, setRejoinEmployee] = useState<Employee | null>(null);
+  const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [form, setForm] = useState({ employee_id: '', leave_type_id: '', start_date: '', end_date: '', days: 0, notes: '', settlement_status: 'none' as SettlementStatus });
   const [typeForm, setTypeForm] = useState({ name: '', is_paid: true, max_days: 30, carry_forward_max: 0, company_id: activeCompanyId });
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -230,6 +237,44 @@ export default function LeavesPage() {
     });
 
     return [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  };
+
+  const handleOpenRejoin = (leave: Leave) => {
+    const emp = employees.find(e => e.id === leave.employee_id) || null;
+    setRejoinEmployee(emp);
+    setRejoinLeave(leave);
+  };
+
+  const handleDownloadRejoiningReport = async (leave: Leave) => {
+    const emp = employees.find(e => e.id === leave.employee_id);
+    if (!emp) {
+      toast.error('Employee details not found');
+      return;
+    }
+    if (!activeCompany) {
+      toast.error('Company details not loaded');
+      return;
+    }
+    const lt = leaveTypes.find(t => t.id === leave.leave_type_id);
+    const leaveWithTypeName = {
+      ...leave,
+      leave_types: { name: lt?.name || 'Annual Leave' }
+    };
+    try {
+      setGeneratingPdfId(leave.id);
+      await downloadRejoiningReportPDF({
+        employee: emp,
+        company: activeCompany,
+        rejoinDate: leave.return_date || undefined,
+        leave: leaveWithTypeName,
+      });
+      toast.success('Rejoining Report PDF downloaded');
+    } catch (err: any) {
+      console.error('Failed to generate rejoining report:', err);
+      toast.error(err.message || 'Failed to generate Rejoining Report PDF');
+    } finally {
+      setGeneratingPdfId(null);
+    }
   };
 
   const openNew = () => {
@@ -413,6 +458,49 @@ export default function LeavesPage() {
                               <>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600" onClick={() => handleApprove(leave.id)}><Check className="w-3.5 h-3.5" /></Button>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleReject(leave.id)}><X className="w-3.5 h-3.5" /></Button>
+                              </>
+                            )}
+                            {leave.status === 'approved' && (
+                              <>
+                                {leave.return_date ? (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 px-2 text-xs text-blue-700 hover:bg-blue-50 border-blue-200 gap-1 font-medium"
+                                      onClick={() => handleOpenRejoin(leave)}
+                                      title="Edit Rejoining Date"
+                                    >
+                                      <UserCheck className="w-3.5 h-3.5" />
+                                      Edit Rejoin
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                      disabled={generatingPdfId === leave.id}
+                                      onClick={() => handleDownloadRejoiningReport(leave)}
+                                      title="Download Rejoining Report PDF"
+                                    >
+                                      {generatingPdfId === leave.id ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <FileDown className="w-3.5 h-3.5" />
+                                      )}
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    className="h-8 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-sm font-medium"
+                                    onClick={() => handleOpenRejoin(leave)}
+                                    title="Record Employee Rejoin"
+                                  >
+                                    <UserCheck className="w-3.5 h-3.5" />
+                                    Rejoin
+                                  </Button>
+                                )}
                               </>
                             )}
                             {leave.settlement_status === 'settled' ? (
@@ -649,8 +737,9 @@ export default function LeavesPage() {
                       <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Period</TableHead>
                       <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Days</TableHead>
                       <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Status</TableHead>
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Return / Rejoin</TableHead>
                       <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Settlement</TableHead>
-                      <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Settlement Date</TableHead>
+                      <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400 text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -683,14 +772,70 @@ export default function LeavesPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
+                            {leave.return_date ? (
+                              <Badge className="bg-blue-100 text-blue-700 border-0 rounded-lg px-2 py-0.5 text-[10px] font-bold">
+                                {format(new Date(leave.return_date), 'dd/MM/yyyy')}
+                              </Badge>
+                            ) : leave.status === 'approved' ? (
+                              <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50/50 rounded-lg px-2 py-0.5 text-[10px] font-medium">
+                                Pending Rejoin
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-400 text-xs">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {leave.settlement_status !== 'none' && (
                               <Badge className={`${settlementColors[leave.settlement_status]} border-0 rounded-lg px-2 py-0.5 text-[10px] font-bold`}>
                                 {leave.settlement_status.replace('_', ' ')}
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm text-slate-500">
-                            {'-'}
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {leave.status === 'approved' && (
+                                <>
+                                  {leave.return_date ? (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                        onClick={() => handleOpenRejoin(leave)}
+                                        title="Edit Rejoin Date"
+                                      >
+                                        <UserCheck className="w-3.5 h-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                        disabled={generatingPdfId === leave.id}
+                                        onClick={() => handleDownloadRejoiningReport(leave)}
+                                        title="Download Rejoining Report PDF"
+                                      >
+                                        {generatingPdfId === leave.id ? (
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                          <FileDown className="w-3.5 h-3.5" />
+                                        )}
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2 text-[11px] text-emerald-700 border-emerald-300 hover:bg-emerald-50 gap-1 font-medium"
+                                      onClick={() => handleOpenRejoin(leave)}
+                                      title="Record Employee Rejoin"
+                                    >
+                                      <UserCheck className="w-3 h-3" />
+                                      Rejoin
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -1408,6 +1553,17 @@ export default function LeavesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Instance Rejoin Dialog */}
+      <RejoinDialog
+        isOpen={Boolean(rejoinLeave)}
+        onClose={() => {
+          setRejoinLeave(null);
+          setRejoinEmployee(null);
+        }}
+        employee={rejoinEmployee}
+        leave={rejoinLeave}
+      />
     </div>
   );
 }

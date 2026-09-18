@@ -219,16 +219,38 @@ export function PayrollReportPDF({
     let effectiveStartDay = 1;
     if (emp) {
       const joinDate = emp.join_date ? new Date(emp.join_date) : null;
-      const rejoinDate = emp.rejoin_date ? new Date(emp.rejoin_date) : null;
+      const matchingLeave = (data.leaves || []).find(l => {
+        if (l.employee_id !== emp.id || l.status !== 'approved' || !l.return_date) return false;
+        const retDate = new Date(l.return_date);
+        return !isNaN(retDate.getTime()) &&
+               retDate.getMonth() + 1 === payrollRun.month &&
+               retDate.getFullYear() === payrollRun.year;
+      });
+      const effectiveRejoinDateStr = matchingLeave?.return_date || emp.rejoin_date;
+      const rejoinDate = effectiveRejoinDateStr ? new Date(effectiveRejoinDateStr) : null;
       const isJoiningThisMonth = joinDate && !isNaN(joinDate.getTime()) &&
                                  joinDate.getMonth() + 1 === payrollRun.month &&
                                  joinDate.getFullYear() === payrollRun.year;
-      const isRejoiningThisMonth = rejoinDate && !isNaN(rejoinDate.getTime()) &&
+      let isRejoiningThisMonth = Boolean(rejoinDate && !isNaN(rejoinDate.getTime()) &&
                                    rejoinDate.getMonth() + 1 === payrollRun.month &&
-                                   rejoinDate.getFullYear() === payrollRun.year;
+                                   rejoinDate.getFullYear() === payrollRun.year);
+
       if (isRejoiningThisMonth) {
+        const hasWorkedBeforeLeave = (data.leaves || []).some(leave => {
+          if (leave.employee_id !== emp.id || leave.status !== 'approved') return false;
+          const leaveStart = new Date(leave.start_date);
+          return leaveStart.getFullYear() === payrollRun.year &&
+                 leaveStart.getMonth() + 1 === payrollRun.month &&
+                 leaveStart.getDate() > 1;
+        });
+        if (hasWorkedBeforeLeave) {
+          isRejoiningThisMonth = false;
+        }
+      }
+
+      if (isRejoiningThisMonth && rejoinDate) {
         effectiveStartDay = rejoinDate.getDate();
-      } else if (isJoiningThisMonth) {
+      } else if (isJoiningThisMonth && joinDate) {
         effectiveStartDay = joinDate.getDate();
       }
     }
@@ -319,16 +341,38 @@ export function PayrollReportPDF({
             let effectiveStartDay = 1;
             if (emp) {
               const joinDate = emp.join_date ? new Date(emp.join_date) : null;
-              const rejoinDate = emp.rejoin_date ? new Date(emp.rejoin_date) : null;
+              const matchingLeave = (data.leaves || []).find(l => {
+                if (l.employee_id !== emp.id || l.status !== 'approved' || !l.return_date) return false;
+                const retDate = new Date(l.return_date);
+                return !isNaN(retDate.getTime()) &&
+                       retDate.getMonth() + 1 === payrollRun.month &&
+                       retDate.getFullYear() === payrollRun.year;
+              });
+              const effectiveRejoinDateStr = matchingLeave?.return_date || emp.rejoin_date;
+              const rejoinDate = effectiveRejoinDateStr ? new Date(effectiveRejoinDateStr) : null;
               const isJoiningThisMonth = joinDate && !isNaN(joinDate.getTime()) &&
                                          joinDate.getMonth() + 1 === payrollRun.month &&
                                          joinDate.getFullYear() === payrollRun.year;
-              const isRejoiningThisMonth = rejoinDate && !isNaN(rejoinDate.getTime()) &&
+              let isRejoiningThisMonth = Boolean(rejoinDate && !isNaN(rejoinDate.getTime()) &&
                                            rejoinDate.getMonth() + 1 === payrollRun.month &&
-                                           rejoinDate.getFullYear() === payrollRun.year;
+                                           rejoinDate.getFullYear() === payrollRun.year);
+
               if (isRejoiningThisMonth) {
+                const hasWorkedBeforeLeave = (data.leaves || []).some(leave => {
+                  if (leave.employee_id !== emp.id || leave.status !== 'approved') return false;
+                  const leaveStart = new Date(leave.start_date);
+                  return leaveStart.getFullYear() === payrollRun.year &&
+                         leaveStart.getMonth() + 1 === payrollRun.month &&
+                         leaveStart.getDate() > 1;
+                });
+                if (hasWorkedBeforeLeave) {
+                  isRejoiningThisMonth = false;
+                }
+              }
+
+              if (isRejoiningThisMonth && rejoinDate) {
                 effectiveStartDay = rejoinDate.getDate();
-              } else if (isJoiningThisMonth) {
+              } else if (isJoiningThisMonth && joinDate) {
                 effectiveStartDay = joinDate.getDate();
               }
             }

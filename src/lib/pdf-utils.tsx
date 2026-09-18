@@ -4,7 +4,7 @@
 // to ensure heavy PDF logic is not included in the initial bundle.
 import { format } from 'date-fns';
 
-import { Employee, PayrollItem, Company, Project } from '@/types';
+import { Employee, PayrollItem, Company, Project, Leave } from '@/types';
 import { SettlementStatementData } from '@/types/settlement';
 import { Timesheet } from '@/types';
 import type { LeaveRequest } from '@/types';
@@ -327,7 +327,8 @@ export async function openEmployeeOnboardingReportPDFInNewTab(options: EmployeeO
 export interface RejoiningReportPDFOptions {
   employee: Employee;
   company: Company;
-  rejoinDate: string;
+  rejoinDate?: string;
+  leave?: (Leave & { leave_types?: { name?: string } }) | null;
   showLogo?: boolean;
   primaryColor?: string;
 }
@@ -336,6 +337,7 @@ export async function generateRejoiningReportPDF({
   employee,
   company,
   rejoinDate,
+  leave,
   showLogo = true,
   primaryColor = '#1e3a5f'
 }: RejoiningReportPDFOptions): Promise<Blob> {
@@ -349,6 +351,7 @@ export async function generateRejoiningReportPDF({
       employee={employee}
       company={company}
       rejoinDate={rejoinDate}
+      leave={leave}
       showLogo={showLogo}
       primaryColor={primaryColor}
     />
@@ -363,6 +366,7 @@ export async function downloadRejoiningReportPDF({
   employee,
   company,
   rejoinDate,
+  leave,
   fileName,
   showLogo = true,
   primaryColor = '#1e3a5f'
@@ -371,6 +375,7 @@ export async function downloadRejoiningReportPDF({
     employee,
     company,
     rejoinDate,
+    leave,
     showLogo,
     primaryColor
   });

@@ -71,11 +71,21 @@ export function calculateEmployeePayroll(input: PayrollInput): PayrollOutput {
     .sort((a, b) => new Date(a.effective_date).getTime() - new Date(b.effective_date).getTime());
 
   // --- Handle Rejoining Date (Pro-rata Salary) ---
-  const rejoinDate = employee.rejoin_date ? new Date(employee.rejoin_date) : null;
-  let isRejoiningThisMonth = rejoinDate &&
+  // 1. Check if an approved leave instance has return_date in the current payroll month
+  const instanceLeaveWithReturn = leaveRecords.find(leave => {
+    if (leave.employee_id !== employee.id || leave.status !== 'approved' || !leave.return_date) return false;
+    const retDate = new Date(leave.return_date);
+    return !isNaN(retDate.getTime()) &&
+           retDate.getMonth() + 1 === month &&
+           retDate.getFullYear() === year;
+  });
+
+  const effectiveRejoinDateStr = instanceLeaveWithReturn?.return_date || employee.rejoin_date;
+  const rejoinDate = effectiveRejoinDateStr ? new Date(effectiveRejoinDateStr) : null;
+  let isRejoiningThisMonth = Boolean(rejoinDate &&
                              !isNaN(rejoinDate.getTime()) &&
                              rejoinDate.getMonth() + 1 === month &&
-                             rejoinDate.getFullYear() === year;
+                             rejoinDate.getFullYear() === year);
 
   // If the employee has an approved leave starting in the current month (after day 1),
   // they worked days before the leave. We should not pro-rate their baseline salary from the rejoin date;

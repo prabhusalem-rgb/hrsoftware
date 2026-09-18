@@ -528,6 +528,47 @@ describe('Payroll Calculations', () => {
       // Net salary: 100 - 33.333 = 66.667
       expect(result.netSalary).toBeCloseTo(66.667, 3);
     });
+
+    it('should pro-rate salary using leave instance return_date', () => {
+      const employee = createEmployee({
+        basic_salary: 300,
+        housing_allowance: 0,
+        transport_allowance: 0,
+        other_allowance: 0,
+        rejoin_date: null, // Employee-level scalar is null
+      });
+
+      // Employee went on leave in previous month and returned on May 16, 2025
+      const leaveRecord: any = {
+        id: 'leave-inst-1',
+        employee_id: 'emp-1',
+        leave_type_id: 'lt-annual',
+        start_date: '2025-04-15',
+        end_date: '2025-05-15',
+        days: 30,
+        status: 'approved',
+        return_date: '2025-05-16', // Instance-level return date in May
+      };
+
+      const input: PayrollInput = {
+        employee,
+        attendanceRecords: [],
+        timesheetRecords: [],
+        leaveRecords: [leaveRecord],
+        leaveTypes: [],
+        activeLoan: null,
+        loanRepayment: null,
+        workingDaysInMonth: 26,
+        month: 5, // May (31 days)
+        year: 2025,
+      };
+
+      const result = calculateEmployeePayroll(input);
+
+      // May 16 to May 31 = 16 calendar days out of 31 days
+      const expectedRatio = 16 / 31;
+      expect(result.basicSalary).toBeCloseTo(300 * expectedRatio, 2);
+    });
   });
 
   describe('getWorkingDaysInMonth', () => {
