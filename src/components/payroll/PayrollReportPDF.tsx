@@ -23,6 +23,13 @@ export function PayrollReportPDF({
 
   const formatNumber = (val: number) => Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
+  // Format IBAN with spaces for readability
+  const formatIban = (iban: string) => {
+    if (!iban || iban === '-') return '-';
+    const cleaned = iban.replace(/\s/g, '');
+    return cleaned.replace(/(.{4})/g, '$1 ').trim();
+  };
+
   const styles = StyleSheet.create({
     page: {
       padding: 24,
@@ -280,8 +287,8 @@ export function PayrollReportPDF({
 
         {/* Register Table */}
         <View style={styles.table}>
-          {/* Header Row - Marked as 'fixed' to repeat on every page */}
-          <View style={styles.tableHeader} fixed>
+          {/* Header Row - Only rendered on first page to prevent layout loop */}
+          <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderText, styles.colCode]}>S.No</Text>
             <Text style={[styles.tableHeaderText, styles.colName]}>Employee Name</Text>
             <Text style={[styles.tableHeaderText, styles.colBank]}>Bank Account</Text>
@@ -329,10 +336,10 @@ export function PayrollReportPDF({
             const leaveDays = getLeaveDaysInMonth(item.employee_id, data.leaves || [], payrollRun.month, payrollRun.year, effectiveStartDay);
             const wDays = Math.max(0, activeCalendarDays - Number(item.absent_days || 0) - leaveDays);
             return (
-              <View key={idx} style={[styles.tableRow, idx % 2 === 1 ? styles.tableRowAlt : {}]}>
+              <View key={idx} style={[styles.tableRow, idx % 2 === 1 ? styles.tableRowAlt : {}]} wrap={false}>
                 <Text style={[styles.tableCell, styles.colCode]}>{idx + 1}</Text>
                 <Text style={[styles.tableCell, styles.colName]}>{emp?.name_en || 'Unknown'}</Text>
-                <Text style={[styles.tableCell, styles.colBank]}>{emp?.bank_iban || '-'}</Text>
+                <Text style={[styles.tableCell, styles.colBank]}>{formatIban(emp?.bank_iban || '-')}</Text>
                 <Text style={[styles.tableCell, styles.colMDays]}>{daysInMonth}</Text>
                 <Text style={[styles.tableCell, styles.colWDays]}>{wDays}</Text>
                 <Text style={[styles.tableCell, styles.colNumeric]}>{formatNumber(item.basic_salary)}</Text>
@@ -398,10 +405,10 @@ export function PayrollReportPDF({
         </View>
 
         {/* System Footer Metadata - Remains absolute */}
-        <View style={styles.footer}>
+        <View style={styles.footer} fixed>
           <View style={styles.footerMeta}>
             <Text style={styles.footerText}>This is a system-generated document. Run Date: {new Date().toLocaleDateString()}</Text>
-            <Text style={styles.footerText}>Page 1 of 1</Text>
+            <Text style={styles.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
           </View>
         </View>
       </Page>
