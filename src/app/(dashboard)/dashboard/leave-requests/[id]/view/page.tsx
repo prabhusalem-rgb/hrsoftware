@@ -26,7 +26,9 @@ import {
   PenLine,
   Download,
   Building,
-  AlertCircle
+  AlertCircle,
+  Paperclip,
+  ExternalLink
 } from 'lucide-react';
 import { SignaturePad } from '@/components/hr/SignaturePad';
 import { toast } from 'sonner';
@@ -515,6 +517,32 @@ export default function LeaveReviewPage() {
                     </div>
                   </div>
                 </div>
+
+                {leaveRequest.attachment_url && (
+                  <div className="pt-2 border-t">
+                    <p className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                      <Paperclip className="w-4 h-4 text-indigo-600" />
+                      Supporting Document
+                    </p>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <FileText className="w-5 h-5 text-indigo-600 shrink-0" />
+                        <span className="text-sm font-medium text-slate-800 truncate" title={leaveRequest.attachment_name || 'Attached Document'}>
+                          {leaveRequest.attachment_name || 'Attached Document'}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs gap-1 border-indigo-200 text-indigo-700 hover:bg-indigo-50 shrink-0 ml-2"
+                        onClick={() => window.open(leaveRequest.attachment_url!, '_blank')}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        View
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {leaveRequest.leave_type === 'Annual Leave' && leaveBalance !== null && (
                   <div className="pt-2 border-t">

@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, Printer, RotateCcw, Eye, Calendar, User } from 'lucide-react';
+import { FileText, Printer, RotateCcw, Eye, Calendar, User, Paperclip, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useSettlementPDF } from '@/hooks/queries/useSettlementMutations';
@@ -255,6 +255,40 @@ export function SettlementHistoryDrawer({
                     </div>
                   </div>
                 </div>
+
+                {/* Notes */}
+                {selectedEntry.notes && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Notes</p>
+                    <p className="text-sm bg-muted/40 p-2.5 rounded-md border text-foreground">{selectedEntry.notes}</p>
+                  </div>
+                )}
+
+                {/* Attached Clearance Document */}
+                {(selectedEntry.attachmentUrl || (selectedEntry.snapshot as any)?.payrollItem?.attachment_url) && (
+                  <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="h-4 w-4 text-primary shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Clearance Document</p>
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {selectedEntry.attachmentName || (selectedEntry.snapshot as any)?.payrollItem?.attachment_name || 'Attached Document'}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={selectedEntry.attachmentUrl || (selectedEntry.snapshot as any)?.payrollItem?.attachment_url || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-medium transition-colors shadow-sm shrink-0"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        View / Download
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 <Separator />
 

@@ -13,6 +13,7 @@ import { EmployeePicker } from '@/components/employees/EmployeePicker';
 import { AirportSelect } from '@/components/hr/AirportSelect';
 import { SignaturePad } from '@/components/hr/SignaturePad';
 import { submitLeaveRequest, getEmployeeLeaveBalance } from './actions';
+import { FileUpload } from '@/components/ui/file-upload';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2, Plane, Calendar, User, MapPin, FileText, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,8 @@ export function LeaveForm({ companyId, employees }: LeaveFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
+  const [attachmentName, setAttachmentName] = useState<string | null>(null);
   const [leaveDays, setLeaveDays] = useState(0);
   const [annualLeaveBalance, setAnnualLeaveBalance] = useState<number | null>(null);
 
@@ -145,6 +148,8 @@ export function LeaveForm({ companyId, employees }: LeaveFormProps) {
         companyId,
         days: leaveDays,
         signatureDataUrl: signatureData,
+        attachmentUrl,
+        attachmentName,
       });
 
       if (result.success) {
@@ -344,6 +349,35 @@ export function LeaveForm({ companyId, employees }: LeaveFormProps) {
                 <p className="text-sm text-red-500">{errors.sector.message}</p>
               )}
             </div>
+          </div>
+
+          {/* Supporting Document Card */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+              <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <FileText className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-slate-900">Supporting Document</h2>
+                <p className="text-sm text-slate-500">Attach doctor's report, travel ticket, visa, or letter (optional)</p>
+              </div>
+            </div>
+
+            <FileUpload
+              value={attachmentUrl}
+              fileName={attachmentName}
+              onChange={(url, name) => {
+                setAttachmentUrl(url);
+                setAttachmentName(name);
+              }}
+              onRemove={() => {
+                setAttachmentUrl(null);
+                setAttachmentName(null);
+              }}
+              label="Attach Document"
+              description="Upload PDF, Image (JPG/PNG), or Word Document up to 10MB"
+              folder="leave-requests"
+            />
           </div>
 
           {/* Signature Card */}

@@ -73,6 +73,8 @@ export async function POST(request: NextRequest) {
       leave_request_id,
       hr_signature,
       gm_signature,
+      attachment_url,
+      attachment_name,
     } = parsed.data;
 
     // Compute sums from itemized arrays
@@ -255,6 +257,8 @@ export async function POST(request: NextRequest) {
       notes,
       settlement_date: terminationDate,
       leave_request_id,
+      attachment_url: attachment_url || null,
+      attachment_name: attachment_name || null,
     };
 
     // Upload signatures if provided
@@ -424,6 +428,8 @@ export async function POST(request: NextRequest) {
         settlement_date: terminationDate,
         notes: notes || '',
         additional_payments: additionsSum,
+        attachment_url: attachment_url || null,
+        attachment_name: attachment_name || null,
       },
       meta: {
         terminationDate,
@@ -434,16 +440,22 @@ export async function POST(request: NextRequest) {
       },
     };
 
+    const historyRecord: any = {
+      payroll_item_id: payrollItem.id,
+      employee_id: employeeId,
+      processed_by: authRequest.userId,
+      action: 'created',
+      snapshot,
+      notes: notes || `Settlement processed. Reason: ${reason}`,
+    };
+    if (attachment_url) {
+      historyRecord.attachment_url = attachment_url;
+      historyRecord.attachment_name = attachment_name || null;
+    }
+
     const { error: historyError } = await supabase
       .from('settlement_history')
-      .insert({
-        payroll_item_id: payrollItem.id,
-        employee_id: employeeId,
-        processed_by: authRequest.userId,
-        action: 'created',
-        snapshot,
-        notes: notes || `Settlement processed. Reason: ${reason}`,
-      });
+      .insert(historyRecord);
 
     if (historyError) {
       console.error('Settlement history log error:', historyError);

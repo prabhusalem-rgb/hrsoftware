@@ -287,6 +287,8 @@ export const createSettlementSchema = settlementConfigSchema
     leave_request_id: z.string().uuid().optional().nullable(),
     hr_signature: z.string().optional().nullable(),
     gm_signature: z.string().optional().nullable(),
+    attachment_url: z.string().optional().nullable(),
+    attachment_name: z.string().optional().nullable(),
   });
 
 /**

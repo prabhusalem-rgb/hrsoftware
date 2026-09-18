@@ -208,9 +208,11 @@ export function usePayrollMutations(companyId: string) {
           rest.gm_signature_url = gm_signature;
         }
 
-        // Keep notes if it is a settlement run
+        // Keep notes and attachments if it is a settlement run
         if (run.type === 'final_settlement' || run.type === 'leave_settlement') {
           rest.notes = notes;
+          if (item.attachment_url) rest.attachment_url = item.attachment_url;
+          if (item.attachment_name) rest.attachment_name = item.attachment_name;
         }
 
         return rest;
@@ -235,6 +237,8 @@ export function usePayrollMutations(companyId: string) {
             gm_signature_url: existing.gm_signature_url ?? item.gm_signature_url,
             gm_id: existing.gm_id ?? item.gm_id,
             gm_approved_at: existing.gm_approved_at ?? item.gm_approved_at,
+            attachment_url: existing.attachment_url ?? item.attachment_url,
+            attachment_name: existing.attachment_name ?? item.attachment_name,
           };
         }
         return {

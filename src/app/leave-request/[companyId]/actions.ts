@@ -105,6 +105,8 @@ export async function submitLeaveRequest(formData: {
   days: number;
   sector: string;
   signatureDataUrl: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
 }) {
   const supabase = await createClient();
   const supabaseAdmin = getAdminClient();
@@ -159,6 +161,8 @@ export async function submitLeaveRequest(formData: {
       sector: formData.sector,
       employee_signature_url: publicUrlData.publicUrl,
       employee_signed_at: new Date().toISOString(),
+      attachment_url: formData.attachmentUrl || null,
+      attachment_name: formData.attachmentName || null,
       status: 'pending',
     })
     .select()

@@ -101,6 +101,8 @@ export interface SettlementHistoryEntry {
   snapshot: SettlementSnapshot;
   reversalOf?: string;
   notes: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
 }
 
 export interface SettlementSnapshot {

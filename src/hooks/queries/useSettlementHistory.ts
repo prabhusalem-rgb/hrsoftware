@@ -53,8 +53,31 @@ export function useSettlementHistory(params?: {
         throw new Error(error.message);
       }
 
+      const items: SettlementHistoryEntry[] = (data || []).map((row: any) => ({
+        id: row.id,
+        payrollItemId: row.payroll_item_id,
+        employeeId: row.employee_id,
+        employeeName: row.employee?.name_en || row.snapshot?.employee?.name_en || 'Unknown',
+        employeeCode: row.employee?.emp_code || row.snapshot?.employee?.emp_code || '',
+        processedAt: row.created_at,
+        processedBy: {
+          id: row.processed_by || '',
+          name: row.processed_by_profile?.full_name || 'System',
+          email: row.processed_by_profile?.email || '',
+        },
+        action: row.action,
+        netTotal: Number(row.snapshot?.payrollItem?.final_total ?? row.snapshot?.payrollItem?.gross_salary ?? 0),
+        terminationDate: row.snapshot?.meta?.terminationDate || '',
+        reason: row.snapshot?.meta?.reason || 'other',
+        snapshot: row.snapshot || {},
+        reversalOf: row.reversal_of,
+        notes: row.notes || '',
+        attachmentUrl: row.attachment_url || row.snapshot?.payrollItem?.attachment_url || null,
+        attachmentName: row.attachment_name || row.snapshot?.payrollItem?.attachment_name || null,
+      }));
+
       return {
-        items: (data || []) as SettlementHistoryEntry[],
+        items,
         total: count || 0,
         page,
         limit,
@@ -88,7 +111,14 @@ export function useSettlement(id?: string) {
         .single();
 
       if (error) throw new Error(error.message);
-      return data;
+      if (!data) return null;
+
+      const row: any = data;
+      return {
+        ...row,
+        attachmentUrl: row.attachment_url || row.snapshot?.payrollItem?.attachment_url || null,
+        attachmentName: row.attachment_name || row.snapshot?.payrollItem?.attachment_name || null,
+      };
     },
     enabled: !!id,
   });

@@ -125,6 +125,8 @@ function SettlementPageContent() {
                     leave_request_id: data.leave_request_id || null,
                     hr_signature: data.hr_signature || null,
                     gm_signature: data.gm_signature || null,
+                    attachment_url: data.attachment_url || null,
+                    attachment_name: data.attachment_name || null,
                   };
                   return createSettlement.mutateAsync(apiData as any);
                 }}

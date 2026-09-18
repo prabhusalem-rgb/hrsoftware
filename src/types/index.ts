@@ -160,6 +160,8 @@ export interface Leave {
   notes: string;
   approved_by: string | null;
   return_date: string | null;  // Date when employee returned from leave (set on rejoin)
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   created_at: string;
   updated_at: string;
   employee?: Employee;
@@ -209,6 +211,8 @@ export interface LeaveRequest {
 
   // Original request reference (for approved copies)
   original_leave_request_id: string | null;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
 
   created_at: string;
   updated_at: string;
@@ -627,6 +631,8 @@ export interface PayrollItem {
   allowance_note?: string | null;
   deduction_note?: string | null;
   // Frontend control fields (not stored in DB)
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   includePendingLoans?: boolean;
   includeActiveLoans?: boolean;
   date?: string; // Temporary frontend field

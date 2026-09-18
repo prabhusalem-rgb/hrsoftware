@@ -23,6 +23,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { LeaveRequestSelector } from './LeaveRequestSelector';
 import { SignaturePad } from '@/components/hr/SignaturePad';
+import { FileUpload } from '@/components/ui/file-upload';
 
 interface FinalSettlementWizardProps {
   isOpen: boolean;
@@ -51,6 +52,8 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
   const [selectedLeaveRequestId, setSelectedLeaveRequestId] = useState<string | null>(preselectedLeaveRequestId || null);
   const [hrSignature, setHrSignature] = useState('');
   const [gmSignature, setGmSignature] = useState('');
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
+  const [attachmentName, setAttachmentName] = useState<string | null>(null);
 
   // Data fetching
   const activeEmployees = employees.filter(e => e.status !== 'terminated');
@@ -200,11 +203,15 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
       other_deductions: otherDeductions.filter(d => d.label && d.amount > 0),
       reason,
       notice_served: noticeServed,
+      attachment_url: attachmentUrl,
+      attachment_name: attachmentName,
     };
 
     await onProcess(settlementData);
     setStep(1);
     setSelectedEmpId('');
+    setAttachmentUrl(null);
+    setAttachmentName(null);
   };
 
   if (!isOpen) return null;
@@ -595,6 +602,24 @@ export function FinalSettlementWizard({ isOpen, onClose, employees, onProcess, p
                       </div>
                     </div>
                   )}
+
+                  <div className="space-y-2">
+                    <FileUpload
+                      value={attachmentUrl}
+                      fileName={attachmentName}
+                      onChange={(url, name) => {
+                        setAttachmentUrl(url);
+                        setAttachmentName(name);
+                      }}
+                      onRemove={() => {
+                        setAttachmentUrl(null);
+                        setAttachmentName(null);
+                      }}
+                      label="Clearance & Settlement Documents (Optional)"
+                      description="Attach signed clearance form, resignation letter, visa cancellation, or handover checklist (PDF, Images, DOC up to 10MB)"
+                      folder="settlement"
+                    />
+                  </div>
 
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase text-slate-400">Internal Audit Remarks</Label>

@@ -32,7 +32,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { Plus, Pencil, Trash2, Search, CalendarDays, Check, X, ShieldCheck, ArrowUpRight, Download, CalendarX, Info, UserCheck, FileDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, CalendarDays, Check, X, ShieldCheck, ArrowUpRight, Download, CalendarX, Info, UserCheck, FileDown, Paperclip } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +57,7 @@ import { checkLeaveEligibility } from '@/lib/leave-eligibility';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import { downloadRejoiningReportPDF } from '@/lib/pdf-utils';
+import { FileUpload } from '@/components/ui/file-upload';
 
 const RejoinDialog = dynamic(() => import('@/components/employees/RejoinDialog').then(mod => mod.RejoinDialog), { ssr: false });
 
@@ -91,7 +92,17 @@ export default function LeavesPage() {
   const [rejoinLeave, setRejoinLeave] = useState<Leave | null>(null);
   const [rejoinEmployee, setRejoinEmployee] = useState<Employee | null>(null);
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
-  const [form, setForm] = useState({ employee_id: '', leave_type_id: '', start_date: '', end_date: '', days: 0, notes: '', settlement_status: 'none' as SettlementStatus });
+  const [form, setForm] = useState({ 
+    employee_id: '', 
+    leave_type_id: '', 
+    start_date: '', 
+    end_date: '', 
+    days: 0, 
+    notes: '', 
+    settlement_status: 'none' as SettlementStatus,
+    attachment_url: '',
+    attachment_name: '',
+  });
   const [typeForm, setTypeForm] = useState({ name: '', is_paid: true, max_days: 30, carry_forward_max: 0, company_id: activeCompanyId });
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [currentBalance, setCurrentBalance] = useState<LeaveBalance | null>(null);
@@ -279,7 +290,17 @@ export default function LeavesPage() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ employee_id: '', leave_type_id: '', start_date: '', end_date: '', days: 0, notes: '', settlement_status: 'none' });
+    setForm({ 
+      employee_id: '', 
+      leave_type_id: '', 
+      start_date: '', 
+      end_date: '', 
+      days: 0, 
+      notes: '', 
+      settlement_status: 'none',
+      attachment_url: '',
+      attachment_name: '',
+    });
     setIsHalfDay(false);
     setCurrentBalance(null);
     setDialogOpen(true);
@@ -435,7 +456,23 @@ export default function LeavesPage() {
                       return (
                         <TableRow key={leave.id}>
                           <TableCell className="font-medium text-sm">{getEmpName(leave.employee_id)}</TableCell>
-                          <TableCell><Badge variant="outline">{getTypeName(leave.leave_type_id)}</Badge></TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1 items-start">
+                              <Badge variant="outline">{getTypeName(leave.leave_type_id)}</Badge>
+                              {leave.attachment_url && (
+                                <a
+                                  href={leave.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 hover:underline"
+                                  title={leave.attachment_name || 'View Attachment'}
+                                >
+                                  <Paperclip className="w-3 h-3" />
+                                  <span className="truncate max-w-[120px]">{leave.attachment_name || 'Attachment'}</span>
+                                </a>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell className="text-sm">{leave.start_date} → {leave.end_date}</TableCell>
                           <TableCell className="text-sm font-medium">{leave.days}</TableCell>
                           <TableCell>
@@ -755,9 +792,23 @@ export default function LeavesPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px] font-bold">
-                              {lt?.name || 'Unknown'}
-                            </Badge>
+                            <div className="flex flex-col gap-1 items-start">
+                              <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px] font-bold">
+                                {lt?.name || 'Unknown'}
+                              </Badge>
+                              {leave.attachment_url && (
+                                <a
+                                  href={leave.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 hover:underline"
+                                  title={leave.attachment_name || 'View Attachment'}
+                                >
+                                  <Paperclip className="w-2.5 h-2.5" />
+                                  <span className="truncate max-w-[110px]">{leave.attachment_name || 'Attachment'}</span>
+                                </a>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-sm">
                             <div className="flex flex-col">
@@ -1401,6 +1452,15 @@ export default function LeavesPage() {
               </div>
             </div>
             <div className="space-y-1.5"><Label>Notes</Label><Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} /></div>
+            <FileUpload
+              value={form.attachment_url}
+              fileName={form.attachment_name}
+              onChange={(url, name) => setForm(prev => ({ ...prev, attachment_url: url, attachment_name: name }))}
+              onRemove={() => setForm(prev => ({ ...prev, attachment_url: '', attachment_name: '' }))}
+              label="Supporting Document (Optional)"
+              description="Attach medical certificate, travel ticket, or leave letter (PDF, PNG, JPG, DOC up to 10MB)"
+              folder="leaves"
+            />
           </div>
           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto" disabled={saveLeave.isPending}>Cancel</Button>
