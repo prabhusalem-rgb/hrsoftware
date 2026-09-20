@@ -127,16 +127,17 @@ export function RejoinDialog({ isOpen, onClose, employee, leave, onSuccess }: Re
       // 2. Fetch all approved leaves to compute remaining status & latest rejoin date
       const { data: allApproved } = await supabase
         .from('leaves')
-        .select('id, return_date, leave_types(name)')
+        .select('id, return_date, end_date, leave_types(name)')
         .eq('employee_id', employee.id)
         .eq('status', 'approved');
 
-      const remainingLeaves: Array<{ id: string; return_date: string | null }> = allApproved || [];
+      const remainingLeaves: Array<{ id: string; return_date: string | null; end_date?: string }> = allApproved || [];
 
       // Check if any leave (excluding current deleted one) is still open
-      const hasOpenLeave = remainingLeaves.some((l: { id: string; return_date: string | null }) => {
+      const hasOpenLeave = remainingLeaves.some((l: { id: string; return_date: string | null; end_date?: string }) => {
         if (l.id === selectedLeaveId) return false;
-        return !l.return_date;
+        if (l.return_date) return false;
+        return l.end_date ? new Date(l.end_date) >= new Date() : false;
       });
 
       // Find highest remaining return_date
@@ -195,18 +196,22 @@ export function RejoinDialog({ isOpen, onClose, employee, leave, onSuccess }: Re
       // 2. Check all employee approved leaves to determine overall employee status & latest rejoin date
       const { data: allApproved } = await supabase
         .from('leaves')
-        .select('id, return_date')
+        .select('id, return_date, end_date')
         .eq('employee_id', employee.id)
         .eq('status', 'approved');
 
-      const allApprovedList: Array<{ id: string; return_date: string | null }> = allApproved || [];
-      const allLeaves = allApprovedList.map((l: { id: string; return_date: string | null }) => ({
+      const allApprovedList: Array<{ id: string; return_date: string | null; end_date?: string }> = allApproved || [];
+      const allLeaves = allApprovedList.map((l: { id: string; return_date: string | null; end_date?: string }) => ({
         id: l.id,
+        end_date: l.end_date,
         return_date: l.id === selectedLeaveId ? rejoinDate : l.return_date
       }));
 
-      // Any other leave still open?
-      const anyStillOpen = allLeaves.some((l: { id: string; return_date: string | null }) => !l.return_date);
+      // Any other leave still open? (only count leaves without return_date that end on or after the rejoining date)
+      const anyStillOpen = allLeaves.some((l) => {
+        if (l.return_date) return false;
+        return l.end_date ? new Date(l.end_date) >= new Date(rejoinDate) : false;
+      });
 
       // Latest return date across all instances
       const allDates = allLeaves

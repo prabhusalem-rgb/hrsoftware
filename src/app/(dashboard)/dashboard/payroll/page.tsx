@@ -342,6 +342,9 @@ export default function PayrollPage() {
       return true;
     } else {
       if (emp.status === 'on_leave' || emp.status === 'leave_settled') {
+        if (emp.rejoin_date && !isAfterEndOfMonth(emp.rejoin_date)) {
+          return true;
+        }
         return false;
       }
       if (emp.status === 'active' || emp.status === 'probation') {
