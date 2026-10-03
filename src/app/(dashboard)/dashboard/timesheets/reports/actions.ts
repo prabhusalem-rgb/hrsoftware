@@ -101,6 +101,53 @@ export async function getTimesheetReports(companyId: string, month: string) {
       projectCosts = Array.from(map.values());
     }
 
+    // Ensure regular hourly costs are normalized to 208 hours (26 days * 8h)
+    // even if the database stored procedure is running the legacy 240-hour formula
+    if (projectCosts.length > 0) {
+      const { data: employees } = await supabase
+        .from('employees')
+        .select('emp_code, gross_salary')
+        .eq('company_id', companyId);
+
+      if (employees && employees.length > 0) {
+        const empMap = new Map<string, number>();
+        employees.forEach((e: any) => {
+          if (e.emp_code && Number(e.gross_salary) > 0) {
+            empMap.set(e.emp_code, Number(e.gross_salary));
+          }
+        });
+
+        // Detect if database stored procedure used legacy 240-hour formula
+        let isLegacy240 = false;
+        for (const pc of projectCosts) {
+          const gross = empMap.get(pc.emp_code);
+          const days = Number(pc.days_worked || 0);
+          if (gross && days > 0) {
+            const actualReg = Number(pc.total_cost || 0) - Number(pc.ot_cost || 0);
+            const expected240 = (days * 8 * gross) / 240;
+            const expected208 = (days * 8 * gross) / 208;
+            if (Math.abs(actualReg - expected240) < 0.1 && Math.abs(actualReg - expected208) > 0.5) {
+              isLegacy240 = true;
+              break;
+            }
+          }
+        }
+
+        // If legacy 240-hour formula was used by DB, convert regular hours component to 208 hours
+        if (isLegacy240) {
+          projectCosts = projectCosts.map((pc: any) => {
+            const otCost = Number(pc.ot_cost || 0);
+            const legacyRegCost = Number(pc.total_cost || 0) - otCost;
+            const updatedRegCost = legacyRegCost * (240 / 208);
+            return {
+              ...pc,
+              total_cost: Math.round((updatedRegCost + otCost) * 1000) / 1000,
+            };
+          });
+        }
+      }
+    }
+
     // 2. Fetch OT summary per employee
     let otSummary: any[] = [];
     const { data: rpcOT, error: otErr } = await supabase.rpc('get_ot_summary_report', {
