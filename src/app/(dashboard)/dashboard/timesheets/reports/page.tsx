@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Download, Building2, TrendingUp, Clock, AlertTriangle, FileText, Trash2, Calendar, RefreshCw } from 'lucide-react';
+import { Download, Building2, TrendingUp, Clock, AlertTriangle, FileText, Trash2, Calendar, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTimesheetReports, getDetailedTimesheetEntries } from './actions';
 import { deleteTimesheetsByRange } from '../actions';
 import { useProjects } from '@/hooks/queries/useProjects';
@@ -73,11 +73,11 @@ export default function TimesheetReportsPage() {
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
   const [loading, setLoading] = useState(false);
 
-  // Generate month options (past 24 months + current + next month)
+  // Generate month options (past 24 months + current + next 2 months)
   const monthOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
     const now = new Date();
-    for (let i = -1; i <= 24; i++) {
+    for (let i = -2; i <= 24; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -90,10 +90,22 @@ export default function TimesheetReportsPage() {
         value: selectedMonth,
         label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
       });
-      options.sort((a, b) => b.value.localeCompare(a.value));
     }
+    options.sort((a, b) => b.value.localeCompare(a.value));
     return options;
   }, [selectedMonth]);
+
+  const handlePrevMonth = () => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const prev = new Date(y, m - 2, 1);
+    setSelectedMonth(`${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const handleNextMonth = () => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const next = new Date(y, m, 1);
+    setSelectedMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`);
+  };
   const [reports, setReports] = useState<ReportsData | null>(null);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
@@ -583,11 +595,26 @@ export default function TimesheetReportsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Timesheet Reports</h1>
           <p className="text-muted-foreground text-sm">Analyze project costs, overtime, and absences.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={selectedMonth} onValueChange={(val) => { if (val) setSelectedMonth(val); }}>
-            <SelectTrigger className="w-[200px] bg-background">
-              <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
-              <SelectValue placeholder="Select month" />
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={handlePrevMonth}
+            title="Previous month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Select
+            items={monthOptions}
+            value={selectedMonth}
+            onValueChange={(val) => { if (val) setSelectedMonth(val); }}
+          >
+            <SelectTrigger className="w-[210px] h-9 bg-background font-medium">
+              <Calendar className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
+              <SelectValue placeholder="Select month">
+                {monthOptions.find(o => o.value === selectedMonth)?.label || selectedMonth}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent className="max-h-[300px]">
               {monthOptions.map((opt) => (
@@ -597,7 +624,23 @@ export default function TimesheetReportsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={loadReports} disabled={loading} title="Refresh">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={handleNextMonth}
+            title="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 ml-1"
+            onClick={loadReports}
+            disabled={loading}
+            title="Refresh"
+          >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
