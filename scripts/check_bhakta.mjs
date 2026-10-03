@@ -63,7 +63,7 @@ async function main() {
 
   timesheets.forEach(t => {
     let regularCost = 0;
-    const regularRate = employee.gross_salary / 240;
+    const regularRate = employee.gross_salary / 208; // 26 days * 8 hours/day
     const otRate = employee.basic_salary / 240;
 
     if (t.day_type === 'working_day') {

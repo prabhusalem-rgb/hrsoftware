@@ -852,7 +852,7 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
     const emp = ts.employees;
     const basicSalary = Number(emp?.basic_salary || 0);
     const grossSalary = Number(emp?.gross_salary || 0);
-    const regularHourlyRate = grossSalary / 240;
+    const regularHourlyRate = grossSalary / 208; // 26 days * 8 hours/day
     const otHourlyRate = basicSalary / 240;
 
     summary.totalHours += Number(ts.hours_worked || 0);
