@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Download, Building2, TrendingUp, Clock, AlertTriangle, FileText, Trash2 } from 'lucide-react';
+import { Download, Building2, TrendingUp, Clock, AlertTriangle, FileText, Trash2, Calendar, RefreshCw } from 'lucide-react';
 import { getTimesheetReports, getDetailedTimesheetEntries } from './actions';
 import { deleteTimesheetsByRange } from '../actions';
 import { useProjects } from '@/hooks/queries/useProjects';
@@ -72,6 +72,28 @@ export default function TimesheetReportsPage() {
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
   const [loading, setLoading] = useState(false);
+
+  // Generate month options (past 24 months + current + next month)
+  const monthOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = -1; i <= 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      options.push({ value, label });
+    }
+    if (selectedMonth && !options.some(o => o.value === selectedMonth)) {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const d = new Date(y, m - 1, 1);
+      options.push({
+        value: selectedMonth,
+        label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      });
+      options.sort((a, b) => b.value.localeCompare(a.value));
+    }
+    return options;
+  }, [selectedMonth]);
   const [reports, setReports] = useState<ReportsData | null>(null);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
@@ -187,10 +209,6 @@ export default function TimesheetReportsPage() {
       loadDetailedEntries();
     }
   }, [activeCompanyId, startDate, endDate, selectedProject, selectedEmployee, activeTab]);
-
-  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedMonth(e.target.value);
-  };
 
   const exportDetailedToCSV = () => {
     if (detailedEntries.length === 0) return;
@@ -566,8 +584,22 @@ export default function TimesheetReportsPage() {
           <p className="text-muted-foreground text-sm">Analyze project costs, overtime, and absences.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Input type="month" value={selectedMonth} onChange={handleMonthChange} className="w-[180px]" max={`${currentYear}-${currentMonth}`} />
-          <Button variant="outline" size="icon" onClick={loadReports} disabled={loading} title="Refresh"><Download className="h-4 w-4" /></Button>
+          <Select value={selectedMonth} onValueChange={(val) => { if (val) setSelectedMonth(val); }}>
+            <SelectTrigger className="w-[200px] bg-background">
+              <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue placeholder="Select month" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              {monthOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="icon" onClick={loadReports} disabled={loading} title="Refresh">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 
