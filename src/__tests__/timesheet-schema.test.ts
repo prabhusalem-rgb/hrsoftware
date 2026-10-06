@@ -352,4 +352,46 @@ describe('Timesheet Schema Validation', () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe('Friday day type validation', () => {
+    // 2025-05-16 is a Friday
+    it('accepts Friday with holiday_overtime and valid OT hours', () => {
+      const payload = {
+        ...validBasePayload,
+        date: '2025-05-16',
+        day_type: 'holiday_overtime',
+        hours_worked: 0,
+        overtime_hours: 4,
+        reason: 'Friday holiday work',
+      };
+      expect(() => timesheetSubmitSchema.parse(payload)).not.toThrow();
+    });
+
+    it('rejects Friday with working_day', () => {
+      const payload = {
+        ...validBasePayload,
+        date: '2025-05-16',
+        day_type: 'working_day',
+        hours_worked: 8,
+        overtime_hours: 0,
+      };
+      const result = timesheetSubmitSchema.safeParse(payload);
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.some(i => i.message.includes('Friday is a weekly holiday'))).toBe(true);
+    });
+
+    it('rejects Friday with absent', () => {
+      const payload = {
+        ...validBasePayload,
+        date: '2025-05-16',
+        day_type: 'absent',
+        hours_worked: 0,
+        overtime_hours: 0,
+        reason: 'Absent on Friday',
+      };
+      const result = timesheetSubmitSchema.safeParse(payload);
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.some(i => i.message.includes('Friday is a weekly holiday'))).toBe(true);
+    });
+  });
 });

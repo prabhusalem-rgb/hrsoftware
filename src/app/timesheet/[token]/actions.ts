@@ -3,6 +3,7 @@
 import { getAdminClient } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { timesheetSubmitSchema } from '@/lib/validations/schemas';
+import { isFriday } from '@/lib/attendance-calculations';
 import { logAudit } from '@/lib/audit/audit-logger.server';
 import type { Timesheet, Company } from '@/types';
 
@@ -151,6 +152,11 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
   if (dayType === 'absent') {
     hoursWorked = 0;
     overtimeHours = 0;
+  }
+
+  // Friday must be holiday_overtime
+  if (isFriday(date) && dayType !== 'holiday_overtime') {
+    return { success: false, error: 'ERR_FRIDAY_DAY_TYPE: Friday is a weekly holiday. Day type must be Holiday Overtime.' };
   }
 
   try {

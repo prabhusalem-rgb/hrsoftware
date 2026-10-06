@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm, UseFormReturn, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { submitTimesheet, type SubmitTimesheetResponse } from './actions';
 import { timesheetSubmitSchema, type DayType } from '@/lib/validations/schemas';
+import { isFriday } from '@/lib/attendance-calculations';
 import { type Timesheet, type Company } from '@/types';
 import { downloadTimesheetConfirmationPDF } from '@/lib/pdf-utils';
 import { Button } from '@/components/ui/button';
@@ -50,9 +51,10 @@ interface TimesheetFormProps {
   token: string;
   employees: Array<{ id: string; name_en: string; emp_code: string }>;
   projects: Array<{ id: string; name: string }>;
+  defaultDate?: string;
 }
 
-export function TimesheetForm({ token, employees, projects }: TimesheetFormProps) {
+export function TimesheetForm({ token, employees, projects, defaultDate }: TimesheetFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingData, setPendingData] = useState<FormDataWithToken | null>(null);
@@ -74,6 +76,9 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
     );
   });
 
+  const initialDate = defaultDate || new Date().toISOString().split('T')[0];
+  const initialIsFriday = isFriday(initialDate);
+
   const {
     register,
     handleSubmit,
@@ -86,21 +91,47 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
     resolver: zodResolver(timesheetSubmitSchema),
     defaultValues: {
       token,
-      date: new Date().toISOString().split('T')[0],
-      day_type: 'working_day' as DayType,
-      hours_worked: 8,
-      overtime_hours: 0,
+      date: initialDate,
+      day_type: initialIsFriday ? 'holiday_overtime' : ('working_day' as DayType),
+      hours_worked: initialIsFriday ? 0 : 8,
+      overtime_hours: initialIsFriday ? 1 : 0,
       reason: '',
       employee_id: '',
       project_id: '',
     },
   });
 
+  const selectedDate = watch('date');
   const dayType = watch('day_type');
   const hoursWorked = watch('hours_worked');
   const overtimeHours = watch('overtime_hours');
   const requiresReason = dayType === 'absent' || (typeof overtimeHours === 'number' && overtimeHours > 0);
   const employeeId = watch('employee_id');
+
+  const isSelectedFriday = isFriday(selectedDate);
+  const prevDateRef = useRef(selectedDate);
+
+  // When date changes, automatically enforce Holiday Overtime for Fridays
+  useEffect(() => {
+    const prevDate = prevDateRef.current;
+    const wasFriday = isFriday(prevDate);
+    const nowFriday = isFriday(selectedDate);
+    prevDateRef.current = selectedDate;
+
+    if (nowFriday) {
+      if (dayType !== 'holiday_overtime') {
+        setValue('day_type', 'holiday_overtime');
+        setValue('hours_worked', 0);
+        setValue('overtime_hours', 1);
+      }
+    } else if (wasFriday && !nowFriday) {
+      if (dayType === 'holiday_overtime') {
+        setValue('day_type', 'working_day');
+        setValue('hours_worked', 8);
+        setValue('overtime_hours', 0);
+      }
+    }
+  }, [selectedDate, dayType, setValue]);
 
   // Auto-reset hours and set defaults based on day type
   useEffect(() => {
@@ -111,7 +142,10 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
     } else if (dayType === 'holiday_overtime') {
       // Holiday Overtime: no regular hours, overtime selectable (default 1)
       setValue('hours_worked', 0);
-      setValue('overtime_hours', 1);
+      // Keep existing overtime hours if already valid (1-8), otherwise default to 1
+      if (!overtimeHours || overtimeHours < 1 || overtimeHours > 8) {
+        setValue('overtime_hours', 1);
+      }
       setValue('reason', '');
     } else {
       // working_day: default to 8 regular hours, 0 OT
@@ -191,10 +225,11 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
     setSubmittedCompany(null);
     // Reset form but keep token and set date to today
     const today = new Date().toISOString().split('T')[0];
+    const todayIsFriday = isFriday(today);
     setValue('date', today);
-    setValue('day_type', 'working_day');
-    setValue('hours_worked', 8);
-    setValue('overtime_hours', 0);
+    setValue('day_type', todayIsFriday ? 'holiday_overtime' : 'working_day');
+    setValue('hours_worked', todayIsFriday ? 0 : 8);
+    setValue('overtime_hours', todayIsFriday ? 1 : 0);
     setValue('reason', '');
     setValue('employee_id', '');
     setValue('project_id', '');
@@ -291,15 +326,23 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
 
       {/* Day Type */}
       <div className="space-y-3">
-        <Label>
-          Day Type <span className="text-red-500">*</span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label>
+            Day Type <span className="text-red-500">*</span>
+          </Label>
+          {isSelectedFriday && (
+            <span className="text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-medium">
+              Friday (Weekly Holiday)
+            </span>
+          )}
+        </div>
         <div className="flex flex-wrap gap-x-6 gap-y-3">
-          <label className="flex items-center space-x-2 cursor-pointer">
+          <label className={`flex items-center space-x-2 ${isSelectedFriday ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input
               type="radio"
               {...register('day_type')}
               value="working_day"
+              disabled={isSelectedFriday}
               className="h-4 w-4 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm">Working Day</span>
@@ -313,16 +356,22 @@ export function TimesheetForm({ token, employees, projects }: TimesheetFormProps
             />
             <span className="text-sm">Holiday Overtime</span>
           </label>
-          <label className="flex items-center space-x-2 cursor-pointer">
+          <label className={`flex items-center space-x-2 ${isSelectedFriday ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input
               type="radio"
               {...register('day_type')}
               value="absent"
+              disabled={isSelectedFriday}
               className="h-4 w-4 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm">Absent</span>
           </label>
         </div>
+        {isSelectedFriday && (
+          <p className="text-xs text-amber-600 font-medium">
+            Friday is a weekly holiday. Working hours must be recorded as Holiday Overtime.
+          </p>
+        )}
         {errors.day_type && (
           <p className="text-xs text-red-500 flex items-center gap-1">
             <AlertCircle className="w-3 h-3" /> {errors.day_type.message}

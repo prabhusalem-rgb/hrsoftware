@@ -4,6 +4,7 @@
 // ============================================================
 
 import { z } from 'zod';
+import { isFriday } from '@/lib/attendance-calculations';
 
 // --- Nationality ---
 export const nationalityEnum = [
@@ -209,6 +210,18 @@ export const timesheetSubmitSchema = timesheetSchema.extend({
   {
     message: 'Reason is required for absences and overtime entries',
     path: ['reason'],
+  }
+).refine(
+  (data) => {
+    // If the day is Friday, day_type must be holiday_overtime
+    if (isFriday(data.date)) {
+      return data.day_type === 'holiday_overtime';
+    }
+    return true;
+  },
+  {
+    message: 'Friday is a weekly holiday. Day type must be Holiday Overtime.',
+    path: ['day_type'],
   }
 );
 

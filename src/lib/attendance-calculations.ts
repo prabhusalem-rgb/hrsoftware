@@ -54,6 +54,36 @@ export function isWeekend(date: Date): boolean {
 }
 
 /**
+ * Check if a date string or Date object is a Friday (Middle East standard weekly holiday).
+ * Timezone-safe string parsing to prevent UTC day shifts.
+ */
+export function isFriday(date: string | Date | null | undefined): boolean {
+  if (!date) return false;
+  if (typeof date === 'string') {
+    if (date.includes('-')) {
+      const parts = date.split('-');
+      if (parts.length === 3) {
+        const [year, month, day] = parts.map(Number);
+        if (year && month && day) {
+          return new Date(year, month - 1, day).getDay() === 5;
+        }
+      }
+    } else if (date.includes('/')) {
+      const parts = date.split('/');
+      if (parts.length === 3) {
+        const [day, month, year] = parts.map(Number);
+        if (year && month && day) {
+          return new Date(year, month - 1, day).getDay() === 5;
+        }
+      }
+    }
+    const d = new Date(date);
+    return !isNaN(d.getTime()) && d.getDay() === 5;
+  }
+  return date.getDay() === 5;
+}
+
+/**
  * Check if a date is a company holiday
  */
 export function isHoliday(

@@ -297,4 +297,114 @@ describe('TimesheetForm', () => {
       });
     });
   });
+
+  describe('Friday Holiday Overtime Behavior', () => {
+    // 2025-05-16 is a Friday, 2025-05-15 is a Thursday
+    it('defaults to Holiday Overtime and disables Working Day & Absent when date is Friday', () => {
+      render(<TimesheetForm {...defaultProps} defaultDate="2025-05-16" />);
+
+      const holidayOtRadio = screen.getByLabelText('Holiday Overtime') as HTMLInputElement;
+      const workingDayRadio = screen.getByLabelText('Working Day') as HTMLInputElement;
+      const absentRadio = screen.getByLabelText('Absent') as HTMLInputElement;
+
+      expect(holidayOtRadio.checked).toBe(true);
+      expect(workingDayRadio.disabled).toBe(true);
+      expect(absentRadio.disabled).toBe(true);
+
+      expect(screen.getByText(/Friday \(Weekly Holiday\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Friday is a weekly holiday. Working hours must be recorded as Holiday Overtime./i)).toBeInTheDocument();
+      expect(screen.getByText(/Holiday Overtime Hours/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Regular Hours/i)).not.toBeInTheDocument();
+    });
+
+    it('automatically switches to Holiday Overtime when date is changed to a Friday', async () => {
+      render(<TimesheetForm {...defaultProps} defaultDate="2025-05-15" />);
+
+      const workingDayRadio = screen.getByLabelText('Working Day') as HTMLInputElement;
+      expect(workingDayRadio.checked).toBe(true);
+      expect(workingDayRadio.disabled).toBe(false);
+
+      const dateInput = screen.getByLabelText(/Date/i);
+      // 16/05/2025 is a Friday
+      fireEvent.change(dateInput, { target: { value: '16/05/2025' } });
+
+      await waitFor(() => {
+        const holidayOtRadio = screen.getByLabelText('Holiday Overtime') as HTMLInputElement;
+        expect(holidayOtRadio.checked).toBe(true);
+        expect(screen.getByLabelText('Working Day')).toBeDisabled();
+        expect(screen.getByLabelText('Absent')).toBeDisabled();
+      });
+    });
+
+    it('reverts to Working Day when date is changed from Friday to a weekday', async () => {
+      render(<TimesheetForm {...defaultProps} defaultDate="2025-05-16" />);
+
+      const holidayOtRadio = screen.getByLabelText('Holiday Overtime') as HTMLInputElement;
+      expect(holidayOtRadio.checked).toBe(true);
+
+      const dateInput = screen.getByLabelText(/Date/i);
+      // 15/05/2025 is a Thursday
+      fireEvent.change(dateInput, { target: { value: '15/05/2025' } });
+
+      await waitFor(() => {
+        const workingDayRadio = screen.getByLabelText('Working Day') as HTMLInputElement;
+        expect(workingDayRadio.checked).toBe(true);
+        expect(workingDayRadio.disabled).toBe(false);
+        expect(screen.getByLabelText('Absent')).not.toBeDisabled();
+      });
+    });
+
+    it('submits Holiday Overtime successfully for Friday', async () => {
+      const mockSubmit = vi.fn().mockResolvedValue({
+        success: true,
+        timesheet: {
+          id: 'ts-123',
+          employee_id: mockEmployees[0].id,
+          project_id: mockProjects[0].id,
+          date: '2025-05-16',
+          day_type: 'holiday_overtime',
+          hours_worked: 0,
+          overtime_hours: 6,
+          reason: 'Weekend maintenance work',
+          employees: { name_en: 'John Doe', emp_code: 'EMP001', basic_salary: 500, gross_salary: 600 },
+          projects: { name: 'Project Alpha' },
+        },
+        company: { name_en: 'Test Corp' },
+      });
+      const { submitTimesheet } = await import('@/app/timesheet/[token]/actions');
+      vi.mocked(submitTimesheet).mockImplementation(mockSubmit);
+
+      render(<TimesheetForm {...defaultProps} defaultDate="2025-05-16" />);
+
+      // Select project
+      const projectSelect = screen.getByLabelText(/Select project/i);
+      fireEvent.change(projectSelect, { target: { value: 'b0f0c090-9c0b-4ef8-bb6d-6bb9bd380c11' } });
+
+      // Change OT hours to 6
+      const otSelect = screen.getByRole('combobox', { name: /Holiday Overtime Hours/i });
+      fireEvent.change(otSelect, { target: { value: '6' } });
+
+      // Select employee
+      const comboboxInput = screen.getByPlaceholderText(/Search employee by name or code.../i);
+      await userEvent.click(comboboxInput);
+      const option = await screen.findByText('John Doe');
+      await userEvent.click(option);
+
+      // Add reason
+      const reasonTextarea = screen.getByPlaceholderText(/Please provide a reason/i);
+      await userEvent.type(reasonTextarea, 'Weekend maintenance work');
+
+      // Submit
+      const submitBtn = screen.getByRole('button', { name: /Submit Timesheet/i });
+      await userEvent.click(submitBtn);
+
+      // Click Confirm & Submit in the dialog
+      const confirmBtn = await screen.findByRole('button', { name: /Confirm & Submit/i });
+      await userEvent.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(mockSubmit).toHaveBeenCalled();
+      });
+    });
+  });
 });
