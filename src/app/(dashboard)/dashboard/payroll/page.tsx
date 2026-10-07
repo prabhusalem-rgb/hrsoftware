@@ -328,6 +328,15 @@ export default function PayrollPage() {
       if (emp.status !== 'on_leave' && emp.status !== 'leave_settled') {
         return false;
       }
+      // If leave settlement happened after the end of this month, employee was not yet on leave in this month
+      if (emp.leave_settlement_date && isAfterEndOfMonth(emp.leave_settlement_date)) {
+        return false;
+      }
+      // If employee's approved leave starts after the end of this month, they are not on vacation yet
+      const empLeaves = (leavesData || []).filter((l: any) => l.employee_id === emp.id && l.status === 'approved');
+      if (empLeaves.length > 0 && empLeaves.every((l: any) => isAfterEndOfMonth(l.start_date))) {
+        return false;
+      }
       const isSameMonthLocal = (dateStr: string | null | undefined): boolean => {
         if (!dateStr) return false;
         const d = new Date(dateStr);
@@ -341,7 +350,18 @@ export default function PayrollPage() {
       }
       return true;
     } else {
+      if (isAfterEndOfMonth(emp.join_date)) return false;
+
       if (emp.status === 'on_leave' || emp.status === 'leave_settled') {
+        // If leave settlement date is in a future month, employee was still active in this month
+        if (emp.leave_settlement_date && isAfterEndOfMonth(emp.leave_settlement_date)) {
+          return true;
+        }
+        // If employee has approved leave(s) and all start after the end of this month, they were active in this month
+        const empLeaves = (leavesData || []).filter((l: any) => l.employee_id === emp.id && l.status === 'approved');
+        if (empLeaves.length > 0 && empLeaves.every((l: any) => isAfterEndOfMonth(l.start_date))) {
+          return true;
+        }
         if (emp.rejoin_date && !isAfterEndOfMonth(emp.rejoin_date)) {
           return true;
         }
@@ -351,10 +371,13 @@ export default function PayrollPage() {
         if (isAfterEndOfMonth(emp.rejoin_date)) {
           return false;
         }
-        if (isAfterEndOfMonth(emp.join_date)) return false;
         return true;
       }
       if (emp.status === 'final_settled' || emp.status === 'terminated') {
+        // If termination / settlement date is after the end of this month, employee was still employed in this month
+        if (emp.termination_date && isAfterEndOfMonth(emp.termination_date)) {
+          return true;
+        }
         return false;
       }
       return false;

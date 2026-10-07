@@ -390,9 +390,20 @@ export function generateWPSSIF(
         console.log(`[WPS]   -> SKIP: already included in another payroll run for this month`);
         continue;
       }
-      // Skip if leave settlement was done in the export month
+      // Skip if leave settlement was done in the export month or a future month
       if (isSameMonth(employee.leave_settlement_date, year, month)) {
         console.log(`[WPS]   -> SKIP: leave_settlement_date in same month (${employee.leave_settlement_date})`);
+        continue;
+      }
+      const isAfterExportMonth = (dateStr: string | null | undefined): boolean => {
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        if (d.getFullYear() > year) return true;
+        if (d.getFullYear() < year) return false;
+        return d.getMonth() + 1 > month;
+      };
+      if (isAfterExportMonth(employee.leave_settlement_date)) {
+        console.log(`[WPS]   -> SKIP: leave_settlement_date in future month (${employee.leave_settlement_date})`);
         continue;
       }
       // Skip if employee rejoins in the export month (salary resumes)

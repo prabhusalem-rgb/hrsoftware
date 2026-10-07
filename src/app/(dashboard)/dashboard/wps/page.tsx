@@ -127,7 +127,15 @@ export default function WPSPage() {
           const d = new Date(dateStr);
           return d.getFullYear() === yr && d.getMonth() + 1 === mo;
         };
+        const isAfterMonth = (dateStr: string | null | undefined, yr: number, mo: number): boolean => {
+          if (!dateStr) return false;
+          const d = new Date(dateStr);
+          if (d.getFullYear() > yr) return true;
+          if (d.getFullYear() < yr) return false;
+          return d.getMonth() + 1 > mo;
+        };
         if (isSameMonth(employee.leave_settlement_date, run.year, run.month)) return false;
+        if (isAfterMonth(employee.leave_settlement_date, run.year, run.month)) return false;
         if (isSameMonth(employee.rejoin_date, run.year, run.month)) return false;
         return true;
       }
