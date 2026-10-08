@@ -29,17 +29,15 @@ export default function DashboardLayout({
     if (isSuperAdmin) return null;
 
     if (isViewer) {
-      // Allowed paths for viewer: attendance, timesheets, timesheet reports, attendance reports
-      const isViewerAllowed =
-        pathname.startsWith('/dashboard/attendance') ||
-        pathname.startsWith('/dashboard/timesheets');
+      // Allowed paths for viewer: timesheets and timesheet sub-routes only
+      const isViewerAllowed = pathname.startsWith('/dashboard/timesheets');
 
       if (!isViewerAllowed) {
         return {
           title: 'Access Restricted',
-          message: 'Your role (Viewer) has permission to access the Attendance & Timesheets module only. Other modules are hidden.',
-          redirectHref: '/dashboard/attendance',
-          redirectLabel: 'Go to Attendance & Timesheets',
+          message: 'Your role (Viewer) has permission to access the Timesheets module only. Other modules are hidden.',
+          redirectHref: '/dashboard/timesheets',
+          redirectLabel: 'Go to Timesheets',
         };
       }
       return null;
@@ -143,10 +141,10 @@ export default function DashboardLayout({
     return null;
   }, [loading, profile, isSuperAdmin, isViewer, pathname, hasPermission]);
 
-  // If a viewer visits root /dashboard, smoothly redirect to /dashboard/attendance
+  // If a viewer visits root /dashboard or /dashboard/attendance, smoothly redirect to /dashboard/timesheets
   useEffect(() => {
-    if (!loading && isViewer && pathname === '/dashboard') {
-      router.replace('/dashboard/attendance');
+    if (!loading && isViewer && (pathname === '/dashboard' || pathname.startsWith('/dashboard/attendance'))) {
+      router.replace('/dashboard/timesheets');
     }
   }, [loading, isViewer, pathname, router]);
 

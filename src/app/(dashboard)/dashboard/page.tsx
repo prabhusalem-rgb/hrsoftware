@@ -39,7 +39,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (profile?.role === 'viewer') {
-      router.replace('/dashboard/attendance');
+      router.replace('/dashboard/timesheets');
     }
   }, [profile, router]);
 

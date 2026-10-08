@@ -41,14 +41,11 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const isViewer = profile?.role === 'viewer';
 
   const navItems = useMemo(() => {
-    // For viewer role: ONLY show Attendance & Timesheets module!
+    // For viewer role: ONLY show Timesheets in Attendance & Timesheets module!
     if (isViewer) {
       return [
         { type: 'separator' as const, label: 'Attendance & Timesheets' },
-        { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
         { label: 'Timesheets', href: '/dashboard/timesheets', icon: Clock },
-        { label: 'Timesheet Reports', href: '/dashboard/timesheets/reports', icon: FileSpreadsheet },
-        { label: 'Attendance Reports', href: '/dashboard/attendance-reports', icon: FileText },
       ];
     }
 
