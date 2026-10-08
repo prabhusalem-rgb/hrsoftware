@@ -12,6 +12,17 @@ function generateTempPassword(length = 12) {
   return password;
 }
 
+// Helper to normalize user roles to database-allowed values
+function normalizeRole(role?: string): string {
+  if (!role) return 'viewer';
+  const roleMap: Record<string, string> = {
+    superadmin: 'super_admin',
+    hr_manager: 'hr',
+    employee: 'viewer',
+  };
+  return roleMap[role] || role;
+}
+
 // Helper: verify current user is super_admin using Admin API (bypasses RLS entirely)
 async function verifySuperAdmin(supabase: any): Promise<boolean> {
   try {
@@ -52,23 +63,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only Super Admins can create new users' }, { status: 403 });
     }
 
-    // 2. Use provided password or generate one
+    // 2. Normalize role
+    const normalizedRole = normalizeRole(role);
+
+    // 3. Use provided password or generate one
     const password = (manualPassword && manualPassword.trim()) ? manualPassword.trim() : generateTempPassword();
 
-    // 3. Normalize company_id — 'all' or empty = null (Global Access)
+    // 4. Normalize company_id — 'all' or empty = null (Global Access)
     const normalizedCompanyId = (!company_id || company_id === 'all' || company_id === '') ? null : company_id;
 
-    // 4. Map User ID to internal email (always lowercase for consistency)
+    // 5. Map User ID to internal email (always lowercase for consistency)
     const email = userId.includes('@') ? userId.trim().toLowerCase() : `${userId.trim().toLowerCase()}@hr.system`;
 
-    // 5. Create user via Admin API
+    // 6. Create user via Admin API
     const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: { 
         full_name, 
-        role: role || 'viewer', 
+        role: normalizedRole, 
         company_id: normalizedCompanyId,
         username: userId.trim().toLowerCase()
       }
@@ -78,17 +92,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: createError.message }, { status: 500 });
     }
 
-    // 6. Upsert the profile directly (trigger may lag behind)
+    // 7. Upsert the profile directly (trigger may lag behind)
     if (userData?.user) {
-      await supabaseAdmin.from('profiles').upsert({
+      const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
         id: userData.user.id,
         email,
         full_name,
-        role: role || 'viewer',
+        role: normalizedRole,
         company_id: normalizedCompanyId,
         username: userId.trim().toLowerCase(),
         is_active: true,
       }, { onConflict: 'id' });
+
+      if (profileError) {
+        console.error('PROFILE_UPSERT_ERROR:', profileError);
+        await supabaseAdmin.auth.admin.deleteUser(userData.user.id);
+        return NextResponse.json({ error: profileError.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ 
@@ -145,7 +165,7 @@ export async function PUT(request: Request) {
     // 4. Update Profile (via admin to bypass any RLS issues)
     const profileUpdate: any = { updated_at: new Date().toISOString() };
     if (full_name !== undefined) profileUpdate.full_name = full_name;
-    if (role !== undefined) profileUpdate.role = role;
+    if (role !== undefined) profileUpdate.role = normalizeRole(role);
     if (company_id !== undefined) profileUpdate.company_id = normalizedCompanyId;
     if (is_active !== undefined) profileUpdate.is_active = is_active;
     if (userId !== undefined) profileUpdate.username = userId.trim().toLowerCase();
@@ -167,7 +187,7 @@ export async function PUT(request: Request) {
       authUpdate.user_metadata.username = userId.trim().toLowerCase();
     }
     if (full_name) authUpdate.user_metadata.full_name = full_name;
-    if (role) authUpdate.user_metadata.role = role;
+    if (role) authUpdate.user_metadata.role = normalizeRole(role);
     if (company_id !== undefined) authUpdate.user_metadata.company_id = normalizedCompanyId;
 
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, authUpdate);

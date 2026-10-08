@@ -1,13 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import type { Employee } from '@/types';
+import type { Employee, UserRole } from '@/types';
 
 interface CreateProfileData {
-  email: string;
+  userId?: string;
+  email?: string;
   full_name: string;
-  role: 'company_admin' | 'hr_manager' | 'employee' | 'superadmin';
+  role: UserRole;
   company_id?: string;
+  phone_number?: string;
+  password?: string;
+  is_active?: boolean;
 }
 
 interface UpdateProfileData {

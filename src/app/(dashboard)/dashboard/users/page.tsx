@@ -142,17 +142,6 @@ export default function UsersPage() {
       return;
     }
 
-    // Map role to API format
-    const roleMap: Record<UserRole, string> = {
-      super_admin: 'superadmin',
-      company_admin: 'company_admin',
-      hr: 'hr_manager',
-      finance: 'employee',
-      viewer: 'employee',
-      foreman: 'foreman',
-      operations: 'operations',
-    };
-
     try {
       if (isUpdate && viewingUser) {
         await updateProfile.mutateAsync({ id: viewingUser.id, ...form });
@@ -160,10 +149,7 @@ export default function UsersPage() {
         toast.success('User updated successfully');
         setSheetOpen(false);
       } else {
-        const result = await createProfile.mutateAsync({
-          ...form,
-          role: roleMap[form.role] as any,
-        });
+        const result = await createProfile.mutateAsync(form);
         setGeneratedPassword(result.generatedPassword);
         toast.success('User registered successfully');
         setDialogOpen(false); // Close the entry form

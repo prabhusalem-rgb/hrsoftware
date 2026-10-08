@@ -253,9 +253,11 @@ export class SupabaseQueryBuilder<T = any> {
       }
 
       if (this._pendingUpsert) {
-        const { values, options } = this._pendingUpsert as any;
+        const upsertPayload = this._pendingUpsert as any;
+        const values = upsertPayload.values !== undefined ? upsertPayload.values : upsertPayload;
+        const options = upsertPayload.options;
         const conflictKey = options?.onConflict || 'id';
-        const existingIndex = this._data.findIndex((item: any) => item[conflictKey] === values[conflictKey]);
+        const existingIndex = this._data.findIndex((item: any) => item && item[conflictKey] === values?.[conflictKey]);
         if (existingIndex >= 0) {
           this._data[existingIndex] = { ...this._data[existingIndex], ...values } as T;
         } else {
@@ -405,8 +407,8 @@ export class SupabaseQueryBuilder<T = any> {
     this._insertError = error;
   }
 
-  upsert(values: Partial<T>): this {
-    this._pendingUpsert = values;
+  upsert(values: Partial<T>, options?: any): this {
+    this._pendingUpsert = { values, options };
     return this;
   }
 
