@@ -24,16 +24,24 @@ import { useDashboardStats } from '@/hooks/queries/useDashboardStats';
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
 import { PayoutSummaryWidget } from '@/components/dashboard/PayoutSummaryWidget';
 import { OfferLetterWizard } from '@/components/hr/OfferLetterWizard';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Employee } from '@/types';
 import { format } from 'date-fns';
 
 export default function DashboardPage() {
-  const { activeCompanyId } = useCompany();
+  const { activeCompanyId, profile } = useCompany();
+  const router = useRouter();
   const { data: dashboardData, isLoading, error } = useDashboardStats(activeCompanyId);
   const { createEmployee } = useEmployeeMutations(activeCompanyId);
   const [offerWizardOpen, setOfferWizardOpen] = useState(false);
+
+  useEffect(() => {
+    if (profile?.role === 'viewer') {
+      router.replace('/dashboard/attendance');
+    }
+  }, [profile, router]);
 
   console.log('[DashboardPage] render - activeCompanyId:', activeCompanyId, 'isLoading:', isLoading, 'error:', error);
 

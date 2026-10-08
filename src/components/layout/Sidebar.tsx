@@ -27,7 +27,7 @@ import {
   FileSpreadsheet,
   FileText
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -36,41 +36,113 @@ import { useCompany } from '@/components/providers/CompanyProvider';
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { profile, activeCompany } = useCompany();
+  const { profile, activeCompany, hasPermission } = useCompany();
   const isSuperAdmin = profile?.role === 'super_admin';
+  const isViewer = profile?.role === 'viewer';
 
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    ...(isSuperAdmin ? [
-      { label: 'Companies', href: '/dashboard/companies', icon: Flower },
-      { label: 'Users', href: '/dashboard/users', icon: Users },
-    ] : []),
-    { label: 'Employees', href: '/dashboard/employees', icon: UserCircle },
-    { label: 'Onboarding', href: '/dashboard/onboarding', icon: UserPlus },
-    { label: 'Contract Renewals', href: '/dashboard/contract-renewal', icon: ClipboardCheck },
-    { type: 'separator' as const, label: 'HR Operations' },
-    { label: 'Leave Management', href: '/dashboard/leaves', icon: CalendarDays },
-    { label: 'Leave Requests', href: '/dashboard/leave-requests', icon: ClipboardCheck },
-    { label: 'Loan Management', href: '/dashboard/loans', icon: Wallet },
-    { label: 'Air Tickets', href: '/dashboard/air-tickets', icon: Plane },
-    { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
-    { label: 'Timesheets', href: '/dashboard/timesheets', icon: Clock },
-    { type: 'separator' as const, label: 'Payroll & Finance' },
-    { label: 'Payroll', href: '/dashboard/payroll', icon: Calculator },
-    { label: 'Salary Payouts', href: '/dashboard/payroll/payouts', icon: Landmark },
-    { type: 'separator' as const, label: 'Analytics' },
-    { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
-    { label: 'Timesheet Reports', href: '/dashboard/timesheets/reports', icon: FileSpreadsheet },
-    { label: 'Attendance Reports', href: '/dashboard/attendance-reports', icon: FileText },
-    ...(isSuperAdmin ? [
-      { type: 'separator' as const, label: 'Audit & Compliance' },
-      { label: 'Audit Logs', href: '/dashboard/audit-logs', icon: Shield },
-      { label: 'Exceptions', href: '/dashboard/audit-exceptions', icon: Bug },
-    ] : []),
-    { type: 'separator' as const, label: 'System' },
-    { label: 'Settings', href: '/dashboard/settings', icon: Settings },
-    { label: 'About', href: '/dashboard/about', icon: Database },
-  ];
+  const navItems = useMemo(() => {
+    // For viewer role: ONLY show Attendance & Timesheets module!
+    if (isViewer) {
+      return [
+        { type: 'separator' as const, label: 'Attendance & Timesheets' },
+        { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
+        { label: 'Timesheets', href: '/dashboard/timesheets', icon: Clock },
+        { label: 'Timesheet Reports', href: '/dashboard/timesheets/reports', icon: FileSpreadsheet },
+        { label: 'Attendance Reports', href: '/dashboard/attendance-reports', icon: FileText },
+      ];
+    }
+
+    const sections: Array<{
+      label?: string;
+      items: Array<{
+        label: string;
+        href: string;
+        icon: any;
+        moduleId?: string;
+        superAdminOnly?: boolean;
+      }>;
+    }> = [
+      {
+        items: [
+          { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+        ],
+      },
+      ...(isSuperAdmin ? [{
+        items: [
+          { label: 'Companies', href: '/dashboard/companies', icon: Flower, superAdminOnly: true },
+          { label: 'Users', href: '/dashboard/users', icon: Users, superAdminOnly: true },
+        ],
+      }] : []),
+      {
+        items: [
+          { label: 'Employees', href: '/dashboard/employees', icon: UserCircle, moduleId: 'employees' },
+          { label: 'Onboarding', href: '/dashboard/onboarding', icon: UserPlus, moduleId: 'employees' },
+          { label: 'Contract Renewals', href: '/dashboard/contract-renewal', icon: ClipboardCheck, moduleId: 'employees' },
+        ],
+      },
+      {
+        label: 'HR Operations',
+        items: [
+          { label: 'Leave Management', href: '/dashboard/leaves', icon: CalendarDays, moduleId: 'leaves' },
+          { label: 'Leave Requests', href: '/dashboard/leave-requests', icon: ClipboardCheck, moduleId: 'leaves' },
+          { label: 'Loan Management', href: '/dashboard/loans', icon: Wallet, moduleId: 'loans' },
+          { label: 'Air Tickets', href: '/dashboard/air-tickets', icon: Plane, moduleId: 'leaves' },
+          { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck, moduleId: 'attendance' },
+          { label: 'Timesheets', href: '/dashboard/timesheets', icon: Clock, moduleId: 'attendance' },
+        ],
+      },
+      {
+        label: 'Payroll & Finance',
+        items: [
+          { label: 'Payroll', href: '/dashboard/payroll', icon: Calculator, moduleId: 'payroll' },
+          { label: 'Salary Payouts', href: '/dashboard/payroll/payouts', icon: Landmark, moduleId: 'payroll' },
+        ],
+      },
+      {
+        label: 'Analytics',
+        items: [
+          { label: 'Reports', href: '/dashboard/reports', icon: BarChart3, moduleId: 'reports' },
+          { label: 'Timesheet Reports', href: '/dashboard/timesheets/reports', icon: FileSpreadsheet, moduleId: 'attendance' },
+          { label: 'Attendance Reports', href: '/dashboard/attendance-reports', icon: FileText, moduleId: 'attendance' },
+        ],
+      },
+      ...(isSuperAdmin ? [{
+        label: 'Audit & Compliance',
+        items: [
+          { label: 'Audit Logs', href: '/dashboard/audit-logs', icon: Shield, superAdminOnly: true },
+          { label: 'Exceptions', href: '/dashboard/audit-exceptions', icon: Bug, superAdminOnly: true },
+        ],
+      }] : []),
+      {
+        label: 'System',
+        items: [
+          { label: 'Settings', href: '/dashboard/settings', icon: Settings, moduleId: 'settings' },
+          { label: 'About', href: '/dashboard/about', icon: Database },
+        ],
+      },
+    ];
+
+    const result: Array<{ type: 'separator'; label: string } | { label: string; href: string; icon: any }> = [];
+
+    for (const section of sections) {
+      const filtered = section.items.filter((item) => {
+        if (item.superAdminOnly) return isSuperAdmin;
+        if (item.moduleId) return hasPermission(item.moduleId, 'read');
+        return true;
+      });
+
+      if (filtered.length > 0) {
+        if (section.label) {
+          result.push({ type: 'separator', label: section.label });
+        }
+        for (const it of filtered) {
+          result.push(it);
+        }
+      }
+    }
+
+    return result;
+  }, [profile, isSuperAdmin, isViewer, hasPermission]);
 
   return (
     <>

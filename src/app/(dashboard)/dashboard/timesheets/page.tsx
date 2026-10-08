@@ -77,7 +77,12 @@ const dayTypeColors: Record<string, string> = {
 };
 
 export default function TimesheetsDashboard() {
-  const { activeCompanyId, profile } = useCompany();
+  const { activeCompanyId, profile, hasPermission } = useCompany();
+  const isSuperAdmin = profile?.role === 'super_admin';
+  const isForeman = profile?.role === 'foreman';
+  const canCreate = isSuperAdmin || isForeman || hasPermission('attendance', 'create');
+  const canUpdate = isSuperAdmin || isForeman || hasPermission('attendance', 'update');
+  const canDelete = isSuperAdmin || hasPermission('attendance', 'delete');
 
   // State
   const [activeTab, setActiveTab] = useState<'submissions' | 'projects' | 'reports-link'>('submissions');
@@ -378,26 +383,30 @@ export default function TimesheetsDashboard() {
         >
           Timesheet Entries
         </button>
-        <button
-          onClick={() => setActiveTab('projects')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'projects'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Projects
-        </button>
-        <button
-          onClick={() => setActiveTab('reports-link')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'reports-link'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Public Link
-        </button>
+        {profile?.role !== 'viewer' && (
+          <>
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'projects'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Projects
+            </button>
+            <button
+              onClick={() => setActiveTab('reports-link')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'reports-link'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Public Link
+            </button>
+          </>
+        )}
       </div>
 
       {/* ===== TIMESHEET ENTRIES TAB ===== */}
@@ -597,9 +606,11 @@ export default function TimesheetsDashboard() {
                 </Button>
 
                 {/* Add New */}
-                <Button size="sm" onClick={openNewTimesheet} className="h-9 gap-2">
-                  <Plus className="w-4 h-4" /> Add Entry
-                </Button>
+                {canCreate && (
+                  <Button size="sm" onClick={openNewTimesheet} className="h-9 gap-2">
+                    <Plus className="w-4 h-4" /> Add Entry
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -654,17 +665,21 @@ export default function TimesheetsDashboard() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditTimesheet(ts)}>
-                                <Edit className="w-3.5 h-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => handleDeleteTimesheet(ts.id)}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
+                              {canUpdate && (
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditTimesheet(ts)}>
+                                  <Edit className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                              {canDelete && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => handleDeleteTimesheet(ts.id)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

@@ -34,7 +34,12 @@ import {
 } from '@/components/ui/combobox';
 
 export default function AttendancePage() {
-  const { activeCompanyId } = useCompany();
+  const { activeCompanyId, profile, hasPermission } = useCompany();
+  const isSuperAdmin = profile?.role === 'super_admin';
+  const canCreate = isSuperAdmin || hasPermission('attendance', 'create');
+  const canUpdate = isSuperAdmin || hasPermission('attendance', 'update');
+  const canDelete = isSuperAdmin || hasPermission('attendance', 'delete');
+
   const employees = useEmployees({ companyId: activeCompanyId }).data ?? [];
   const attendanceQuery = useAttendance(activeCompanyId);
   const attendanceData = (attendanceQuery.data ?? []) as Attendance[];
@@ -137,16 +142,18 @@ export default function AttendancePage() {
           <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
           <p className="text-muted-foreground text-sm">Mark absent (daily) or record total monthly overtime hours.</p>
         </div>
-        <Button onClick={() => {
-          setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '', additions: 0, deductions: 0, addition_reason: '', deduction_reason: '' });
-          setFormEmployeeId('');
-          setFormEmployeeSearchQuery('');
-          setEditingRecord(null);
-          setMode('daily');
-          setDialogOpen(true);
-        }} className="gap-2 shadow-sm">
-          <Plus className="w-4 h-4" /> Record Absent, OT & Adjustments
-        </Button>
+        {canCreate && (
+          <Button onClick={() => {
+            setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '', additions: 0, deductions: 0, addition_reason: '', deduction_reason: '' });
+            setFormEmployeeId('');
+            setFormEmployeeSearchQuery('');
+            setEditingRecord(null);
+            setMode('daily');
+            setDialogOpen(true);
+          }} className="gap-2 shadow-sm">
+            <Plus className="w-4 h-4" /> Record Absent, OT & Adjustments
+          </Button>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -246,8 +253,8 @@ export default function AttendancePage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(record)}><Pencil className="w-3.5 h-3.5" /></Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(record.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        {canUpdate && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(record)}><Pencil className="w-3.5 h-3.5" /></Button>}
+                        {canDelete && <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(record.id)}><Trash2 className="w-3.5 h-3.5" /></Button>}
                       </div>
                     </TableCell>
                   </TableRow>

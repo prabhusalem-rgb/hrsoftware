@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Company } from '@/types';
+import { Company, SystemSettings } from '@/types';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
@@ -13,6 +13,8 @@ interface CompanyContextType {
   loading: boolean;
   userId: string | undefined;
   profile: any | null;
+  systemSettings: SystemSettings | null;
+  hasPermission: (moduleId: string, action?: 'read' | 'create' | 'update' | 'delete') => boolean;
   refresh: () => Promise<void>;
   reinitAuth: () => void;
 }
@@ -35,6 +37,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [profile, setProfile] = useState<any | null>(null);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
 
   const hasFetchedRef = useRef(false);
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
@@ -44,6 +47,26 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     setSupabase(createClient());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchSystemSettings = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const res: any = await (supabase.from('system_settings') as any)
+        .select('*')
+        .eq('id', 'global')
+        .maybeSingle();
+      if (res?.data) {
+        setSystemSettings(res.data as SystemSettings);
+      }
+    } catch (err) {
+      console.warn('[CompanyProvider] System settings load error:', err);
+    }
+  }, [supabase]);
+
+  // Fetch system settings for role permissions
+  useEffect(() => {
+    fetchSystemSettings();
+  }, [fetchSystemSettings]);
 
   const setActiveCompanyId = useCallback((id: string) => {
     setActiveCompanyIdState(id);
@@ -260,11 +283,14 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   }, [supabase]);
 
-  // Force refetch of profile and companies — used after mutations
+  // Force refetch of profile, companies and system settings — used after mutations
   const refresh = useCallback(async (): Promise<void> => {
     hasFetchedRef.current = false;
-    await fetchProfile(true); // true = skip routine logging
-  }, [fetchProfile]);
+    await Promise.all([
+      fetchProfile(true), // true = skip routine logging
+      fetchSystemSettings(),
+    ]);
+  }, [fetchProfile, fetchSystemSettings]);
 
   // Recreate Supabase client — call after login/logout to pick up new session
   const reinitAuth = useCallback(() => {
@@ -352,6 +378,40 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     [availableCompanies, activeCompanyIdState]
   );
 
+  const hasPermission = useCallback((moduleId: string, action: 'read' | 'create' | 'update' | 'delete' = 'read'): boolean => {
+    if (!profile) return false;
+    if (profile.role === 'super_admin') return true;
+
+    // Check system_settings role_permissions if available
+    const rolePerms = (systemSettings?.role_permissions as any)?.[profile.role];
+    if (rolePerms && rolePerms[moduleId]) {
+      const actions = rolePerms[moduleId];
+      return Array.isArray(actions) && actions.includes(action);
+    }
+
+    // Role-specific defaults
+    if (profile.role === 'viewer') {
+      return moduleId === 'attendance' && action === 'read';
+    }
+    if (profile.role === 'foreman') {
+      return moduleId === 'attendance';
+    }
+    if (profile.role === 'company_admin') {
+      return moduleId !== 'users' || action === 'read';
+    }
+    if (profile.role === 'hr') {
+      return ['employees', 'attendance', 'leaves', 'reports'].includes(moduleId);
+    }
+    if (profile.role === 'finance') {
+      return ['payroll', 'loans', 'reports', 'attendance'].includes(moduleId);
+    }
+    if (profile.role === 'operations') {
+      return ['attendance', 'leaves', 'reports'].includes(moduleId);
+    }
+
+    return false;
+  }, [profile, systemSettings]);
+
   const value = useMemo(() => ({
     activeCompanyId: activeCompanyIdState,
     activeCompany,
@@ -360,9 +420,11 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     loading,
     userId,
     profile,
+    systemSettings,
+    hasPermission,
     refresh,
     reinitAuth,
-  }), [activeCompanyIdState, activeCompany, availableCompanies, loading, userId, profile, refresh, reinitAuth]);
+  }), [activeCompanyIdState, activeCompany, availableCompanies, loading, userId, profile, systemSettings, hasPermission, refresh, reinitAuth]);
 
   return (
     <CompanyContext.Provider value={value}>

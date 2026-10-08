@@ -27,7 +27,7 @@ export default function SettingsPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const [isUpdatingSystem, setIsUpdatingSystem] = useState(false);
-  const [activeTab, setActiveTab] = useState<'company_admin' | 'hr' | 'finance' | 'viewer'>('company_admin');
+  const [activeTab, setActiveTab] = useState<'company_admin' | 'hr' | 'finance' | 'viewer' | 'foreman' | 'operations'>('company_admin');
   const supabase = createClient();
 
   const modules = [
@@ -137,6 +137,7 @@ export default function SettingsPage() {
 
       if (error) throw error;
       toast.success('System settings updated');
+      if (refresh) await refresh();
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -304,16 +305,22 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex flex-wrap gap-2 border-b pb-4 mb-4">
-                {(['company_admin', 'hr', 'finance', 'viewer'] as const).map((r) => (
+                {[
+                  { id: 'company_admin', label: 'Company Admin' },
+                  { id: 'hr', label: 'HR Manager' },
+                  { id: 'finance', label: 'Finance' },
+                  { id: 'viewer', label: 'Viewer' },
+                  { id: 'foreman', label: 'Foreman' },
+                  { id: 'operations', label: 'Operations' },
+                ].map(({ id, label }) => (
                   <Button
-                    key={r}
+                    key={id}
                     type="button"
-                    variant={activeTab === r ? 'default' : 'outline'}
+                    variant={activeTab === id ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => setActiveTab(r)}
-                    className="capitalize"
+                    onClick={() => setActiveTab(id as any)}
                   >
-                    {r.replace('_', ' ')}
+                    {label}
                   </Button>
                 ))}
               </div>
