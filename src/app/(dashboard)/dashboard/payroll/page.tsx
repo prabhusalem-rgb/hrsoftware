@@ -352,14 +352,29 @@ export default function PayrollPage() {
     } else {
       if (isAfterEndOfMonth(emp.join_date)) return false;
 
-      if (emp.status === 'on_leave' || emp.status === 'leave_settled') {
+      // Check if employee has an approved leave for the payroll month with settlement settled
+      const empApprovedLeaves = (leavesData || []).filter((l: any) => l.employee_id === emp.id && l.status === 'approved');
+
+      const monthStart = new Date(processYear, processMonth - 1, 1);
+      const monthEnd = new Date(processYear, processMonth, 0, 23, 59, 59, 999);
+
+      const hasSettledLeaveThisMonth = empApprovedLeaves.some((l: any) => {
+        if (l.settlement_status !== 'settled') return false;
+        const lStart = new Date(l.start_date);
+        const lEnd = new Date(l.end_date);
+        return lStart <= monthEnd && lEnd >= monthStart;
+      });
+
+      const isSettled = emp.status === 'leave_settled' || hasSettledLeaveThisMonth;
+
+      if (isSettled) {
+        // Exclude from regular payroll ONLY if the settlement is settled
         // If leave settlement date is in a future month, employee was still active in this month
         if (emp.leave_settlement_date && isAfterEndOfMonth(emp.leave_settlement_date)) {
           return true;
         }
         // If employee has approved leave(s) and all start after the end of this month, they were active in this month
-        const empLeaves = (leavesData || []).filter((l: any) => l.employee_id === emp.id && l.status === 'approved');
-        if (empLeaves.length > 0 && empLeaves.every((l: any) => isAfterEndOfMonth(l.start_date))) {
+        if (empApprovedLeaves.length > 0 && empApprovedLeaves.every((l: any) => isAfterEndOfMonth(l.start_date))) {
           return true;
         }
         if (emp.rejoin_date && !isAfterEndOfMonth(emp.rejoin_date)) {
@@ -367,7 +382,7 @@ export default function PayrollPage() {
         }
         return false;
       }
-      if (emp.status === 'active' || emp.status === 'probation') {
+      if (emp.status === 'active' || emp.status === 'probation' || emp.status === 'on_leave') {
         if (isAfterEndOfMonth(emp.rejoin_date)) {
           return false;
         }
@@ -1659,20 +1674,7 @@ export default function PayrollPage() {
       <ManualAdjustmentModal
         isOpen={adjustmentModalOpen}
         onClose={() => setAdjustmentModalOpen(false)}
-        employees={employees.filter(e => {
-          // Match the same eligible statuses as the payroll processing (exclude on_leave)
-          const eligibleStatuses = ['active', 'probation'];
-          const normalizeCat = (cat: string | null): string => {
-            if (!cat) return 'INDIRECT_STAFF';
-            const c = (cat || '').toUpperCase();
-            if (['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF'].includes(c)) return c;
-            if (c === 'NATIONAL') return 'OMANI_INDIRECT_STAFF';
-            if (c === 'STAFF' || c === 'EXPAT') return 'INDIRECT_STAFF';
-            if (c === 'DIRECT_WORKER') return 'DIRECT_STAFF';
-            return 'INDIRECT_STAFF';
-          };
-          return eligibleStatuses.includes(e.status) && (processCategory === 'all' || normalizeCat(e.category) === processCategory);
-        })}
+        employees={employees.filter(e => isEmployeeEligible(e, false))}
         attendanceData={attendanceData || []}
         timesheetData={timesheetsData || []}
         loansData={loansData || []}

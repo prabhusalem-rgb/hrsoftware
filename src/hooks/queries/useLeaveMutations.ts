@@ -81,8 +81,62 @@ export function useLeaveMutations(companyId: string) {
       }
 
       if (id) {
+        // Fetch existing leave to compare status and days
+        const { data: existingLeave } = await supabase
+          .from('leaves')
+          .select('status, days, employee_id, leave_type_id, start_date')
+          .eq('id', id)
+          .single();
+
         const { error } = await supabase.from('leaves').update(formData).eq('id', id);
         if (error) throw new Error(error.message || 'Failed');
+
+        const prevApproved = existingLeave?.status === 'approved';
+        const newApproved = (formData.status || existingLeave?.status) === 'approved';
+        const prevDays = Number(existingLeave?.days || 0);
+        const newDays = Number(formData.days !== undefined ? formData.days : prevDays);
+
+        let delta = 0;
+        if (!prevApproved && newApproved) {
+          delta = newDays;
+        } else if (prevApproved && !newApproved) {
+          delta = -prevDays;
+        } else if (prevApproved && newApproved) {
+          delta = newDays - prevDays;
+        }
+
+        const targetEmployeeId = formData.employee_id || existingLeave?.employee_id;
+        const targetLeaveTypeId = formData.leave_type_id || existingLeave?.leave_type_id;
+        const targetStartDate = formData.start_date || existingLeave?.start_date;
+        const leaveYear = targetStartDate ? new Date(targetStartDate).getFullYear() : new Date().getFullYear();
+
+        if (delta !== 0 && targetEmployeeId && targetLeaveTypeId) {
+          const { data: balance, error: balError } = await supabase
+            .from('leave_balances')
+            .select('id, used')
+            .eq('employee_id', targetEmployeeId)
+            .eq('leave_type_id', targetLeaveTypeId)
+            .eq('year', leaveYear)
+            .maybeSingle();
+
+          if (!balError && balance) {
+            const newUsed = Math.max(0, Number(balance.used) + delta);
+            await supabase
+              .from('leave_balances')
+              .update({ used: newUsed })
+              .eq('id', balance.id);
+          }
+
+          try {
+            await supabase.rpc('sync_leave_balance_used', {
+              p_employee_id: targetEmployeeId,
+              p_leave_type_id: targetLeaveTypeId,
+              p_year: leaveYear
+            });
+          } catch (rpcErr) {
+            console.warn('[saveLeave update] sync_leave_balance_used RPC failed:', rpcErr);
+          }
+        }
       } else {
         const { data: newLeave, error } = await supabase.from('leaves').insert([formData]).select().single();
         if (error) {
@@ -90,15 +144,15 @@ export function useLeaveMutations(companyId: string) {
           throw new Error(error.message || 'Failed');
         }
 
-        // Deduct from balance on application
-        if (newLeave) {
+        // Deduct from balance ONLY if the leave is approved immediately upon creation
+        if (newLeave && newLeave.status === 'approved') {
+          const leaveYear = newLeave.start_date ? new Date(newLeave.start_date).getFullYear() : new Date().getFullYear();
           const { data: balance, error: balError } = await supabase
             .from('leave_balances')
             .select('id, used')
             .eq('employee_id', newLeave.employee_id)
             .eq('leave_type_id', newLeave.leave_type_id)
-            .order('year', { ascending: false })
-            .limit(1)
+            .eq('year', leaveYear)
             .maybeSingle();
 
           if (!balError && balance) {
@@ -107,12 +161,23 @@ export function useLeaveMutations(companyId: string) {
               .update({ used: Number(balance.used) + Number(newLeave.days) })
               .eq('id', balance.id);
           }
+
+          try {
+            await supabase.rpc('sync_leave_balance_used', {
+              p_employee_id: newLeave.employee_id,
+              p_leave_type_id: newLeave.leave_type_id,
+              p_year: leaveYear
+            });
+          } catch (rpcErr) {
+            console.warn('[saveLeave insert] sync_leave_balance_used RPC failed:', rpcErr);
+          }
         }
       }
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['leaves', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['leave_balances'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast.success('Leave saved and balance updated');
     },
     onError: (err: any) => toast.error(err.message),
@@ -125,7 +190,7 @@ export function useLeaveMutations(companyId: string) {
 
       const { data: leave, error: fetchError } = await supabase
         .from('leaves')
-        .select('status, employee_id, days, leave_type_id')
+        .select('status, employee_id, days, leave_type_id, start_date')
         .eq('id', id)
         .single();
 
@@ -138,16 +203,18 @@ export function useLeaveMutations(companyId: string) {
         previousStatus: leave?.status,
         employeeId: leave?.employee_id,
         days: leave?.days,
-        leave_type_id: leave?.leave_type_id
+        leave_type_id: leave?.leave_type_id,
+        start_date: leave?.start_date
       };
     },
     onSuccess: async (data, { status }) => {
       if (!supabase || !data) return;
 
-      // Adjust balance and employee status
-      const countsAsUsed = (s: string) => s === 'pending' || s === 'approved';
+      // Adjust balance: ONLY 'approved' status counts as used
+      const countsAsUsed = (s: string) => s === 'approved';
       const prevCounts = countsAsUsed(data.previousStatus);
       const newCounts = countsAsUsed(status);
+      const leaveYear = data.start_date ? new Date(data.start_date).getFullYear() : new Date().getFullYear();
 
       if (prevCounts !== newCounts && data.days) {
         const delta = Number(data.days) * (newCounts ? 1 : -1);
@@ -157,8 +224,7 @@ export function useLeaveMutations(companyId: string) {
           .select('id, used')
           .eq('employee_id', data.employeeId)
           .eq('leave_type_id', data.leave_type_id)
-          .order('year', { ascending: false })
-          .limit(1)
+          .eq('year', leaveYear)
           .maybeSingle();
 
         if (!balError && balance) {
@@ -167,6 +233,16 @@ export function useLeaveMutations(companyId: string) {
             .from('leave_balances')
             .update({ used: newUsed })
             .eq('id', balance.id);
+        }
+
+        try {
+          await supabase.rpc('sync_leave_balance_used', {
+            p_employee_id: data.employeeId,
+            p_leave_type_id: data.leave_type_id,
+            p_year: leaveYear
+          });
+        } catch (rpcErr) {
+          console.warn('[updateLeaveStatus] sync_leave_balance_used RPC failed:', rpcErr);
         }
       }
 
@@ -192,7 +268,7 @@ export function useLeaveMutations(companyId: string) {
           .from('leaves')
           .select('id, leave_types(name)')
           .eq('employee_id', data.employeeId)
-          .in('status', ['approved', 'pending'])
+          .eq('status', 'approved')
           .gte('days', 1);
 
         const nonSickRemaining = (remainingLeaves || []).filter((l: any) => {
@@ -204,10 +280,10 @@ export function useLeaveMutations(companyId: string) {
         await supabase.from('employees').update({ status: newStatus }).eq('id', data.employeeId);
       }
 
-      queryClient.invalidateQueries({ queryKey: ['leaves', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['employees', companyId] });
-      toast.success('Leave status updated');
+      queryClient.invalidateQueries({ queryKey: ['leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['leave_balances'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Leave status updated and balance adjusted');
     },
     onError: (err: any) => toast.error(err.message),
   });
@@ -254,15 +330,15 @@ export function useLeaveMutations(companyId: string) {
       if (error) throw new Error(error.message || 'Failed');
 
       // Restore balance and reset employee status on deletion
-      // 1. Restore Balance
-      if (leave.status === 'approved' || leave.status === 'pending') {
+      // 1. Restore Balance ONLY if it was approved
+      if (leave.status === 'approved') {
+        const leaveYear = leave.start_date ? new Date(leave.start_date).getFullYear() : new Date().getFullYear();
         const { data: balance, error: balError } = await supabase
           .from('leave_balances')
           .select('id, used')
           .eq('employee_id', leave.employee_id)
           .eq('leave_type_id', leave.leave_type_id)
-          .order('year', { ascending: false })
-          .limit(1)
+          .eq('year', leaveYear)
           .maybeSingle();
 
         if (balError) {
@@ -283,15 +359,25 @@ export function useLeaveMutations(companyId: string) {
         } else {
           console.warn('[deleteLeave] No balance record found for employee:', leave.employee_id, 'leave_type:', leave.leave_type_id);
         }
+
+        try {
+          await supabase.rpc('sync_leave_balance_used', {
+            p_employee_id: leave.employee_id,
+            p_leave_type_id: leave.leave_type_id,
+            p_year: leaveYear
+          });
+        } catch (rpcErr) {
+          console.warn('[deleteLeave] sync_leave_balance_used RPC failed:', rpcErr);
+        }
       }
 
-      // 2. Reset Employee Status based on remaining approved/pending leaves (excluding sick leave)
-      if (leave.status === 'approved' || leave.status === 'pending') {
+      // 2. Reset Employee Status based on remaining approved leaves (excluding sick leave)
+      if (leave.status === 'approved') {
         const { data: remainingLeaves } = await supabase
           .from('leaves')
           .select('id, leave_types(name)')
           .eq('employee_id', leave.employee_id)
-          .in('status', ['approved', 'pending'])
+          .eq('status', 'approved')
           .gte('days', 1);
 
         const nonSickRemaining = (remainingLeaves || []).filter((l: any) => {
@@ -304,9 +390,9 @@ export function useLeaveMutations(companyId: string) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leaves', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['employees', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['leave_balances'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast.success('Leave request deleted and employee status updated');
     },
     onError: (err: any) => toast.error(err.message),
@@ -407,6 +493,23 @@ export function useLeaveMutations(companyId: string) {
         .eq('company_id', companyId)
         .eq('year', targetYear);
 
+      // Fetch approved leaves to ensure 'used' reflects actual approved leaves
+      const { data: approvedLeaves } = await supabase
+        .from('leaves')
+        .select('employee_id, leave_type_id, days, start_date')
+        .eq('company_id', companyId)
+        .eq('status', 'approved');
+
+      const approvedDaysMap = new Map<string, number>();
+      (approvedLeaves || []).forEach((l: any) => {
+        if (!l.start_date) return;
+        const leaveYear = new Date(l.start_date).getFullYear();
+        if (leaveYear === targetYear) {
+          const key = `${l.employee_id}_${l.leave_type_id}`;
+          approvedDaysMap.set(key, (approvedDaysMap.get(key) || 0) + Number(l.days || 0));
+        }
+      });
+
       const usedMap = new Map();
       const lapsedMap = new Map();
       const reasonMap = new Map();
@@ -433,7 +536,7 @@ export function useLeaveMutations(companyId: string) {
 
           const carried_forward = isAnnual ? (emp.opening_leave_balance || 0) : 0;
           const key = `${emp.id}_${lt.id}`;
-          const currentUsed = usedMap.get(key) || 0;
+          const currentUsed = approvedDaysMap.has(key) ? approvedDaysMap.get(key)! : (usedMap.get(key) || 0);
           const currentLapsed = lapsedMap.get(key) || 0;
           const currentReason = reasonMap.get(key) || null;
 
@@ -467,7 +570,7 @@ export function useLeaveMutations(companyId: string) {
       return { count: upsertData.length, silent };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['leave_balances', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['leave_balances'] });
 
       if (data?.silent) return;
 

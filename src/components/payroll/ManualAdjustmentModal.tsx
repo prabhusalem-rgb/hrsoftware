@@ -52,7 +52,7 @@ export function ManualAdjustmentModal({
   const [previews, setPreviews] = useState<Record<string, any>>({});
   const [searchOpen, setSearchOpen] = useState(false);
   
-  const activeEmployees = employees.filter(e => e.status === 'active');
+  const activeEmployees = employees;
   const availableEmployees = activeEmployees.filter(e => !selectedIds.includes(e.id));
   const workingDays = getWorkingDaysInMonth(year, month);
 
