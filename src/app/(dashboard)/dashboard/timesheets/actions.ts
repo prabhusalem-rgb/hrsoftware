@@ -21,8 +21,8 @@ async function getAuthorizedCompany() {
   const { request } = await validateRequest();
   if (!request?.profile) throw new Error('Unauthorized');
 
-  // Allow: super_admin, company_admin, hr
-  if (!['super_admin', 'company_admin', 'hr'].includes(request.profile.role)) {
+  // Allow: super_admin, company_admin, hr, foreman
+  if (!['super_admin', 'company_admin', 'hr', 'foreman'].includes(request.profile.role)) {
     throw new Error('Insufficient permissions');
   }
 
@@ -134,7 +134,7 @@ export async function getTimesheet(id: string, companyId: string) {
  * Foremen can only create for employees at their assigned site.
  */
 export async function createTimesheet(formData: z.infer<typeof timesheetAdminSchema>) {
-  const supabase = await createClient();
+  const supabase = getAdminClient() || await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
   if (!request?.profile) throw new Error('Unauthorized');
@@ -143,6 +143,21 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
 
   // Validate input
   const validated = timesheetAdminSchema.parse(formData);
+
+  // If companyId is null (e.g. super_admin), resolve company_id from employee
+  let targetCompanyId = companyId;
+  if (!targetCompanyId) {
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('company_id')
+      .eq('id', validated.employee_id)
+      .single();
+    targetCompanyId = emp?.company_id || null;
+  }
+
+  if (!targetCompanyId) {
+    throw new Error('Target company could not be resolved for employee');
+  }
 
   // Check for duplicate
   const { data: existing } = await supabase
@@ -160,9 +175,9 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
   const { data, error } = await supabase
     .from('timesheets')
     .insert({
-      company_id: companyId,
+      company_id: targetCompanyId,
       employee_id: validated.employee_id,
-      project_id: validated.project_id,
+      project_id: validated.project_id || null,
       date: validated.date,
       day_type: validated.day_type,
       hours_worked: validated.hours_worked,
@@ -186,7 +201,7 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
   // Audit log
   try {
     await logAudit({
-      company_id: companyId,
+      company_id: targetCompanyId,
       user_id: request.userId,
       entity_type: 'timesheet',
       entity_id: data.id,
@@ -198,7 +213,11 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
     console.error('[createTimesheet] Audit failed:', auditErr);
   }
 
-  revalidatePath('/dashboard/timesheets');
+  try {
+    revalidatePath('/dashboard/timesheets');
+  } catch (e) {
+    console.warn('[createTimesheet] revalidatePath warning:', e);
+  }
   return data;
 }
 
@@ -206,7 +225,7 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
  * Update an existing timesheet entry.
  */
 export async function updateTimesheet(id: string, formData: z.infer<typeof timesheetAdminSchema>) {
-  const supabase = await createClient();
+  const supabase = getAdminClient() || await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
   if (!request?.profile) throw new Error('Unauthorized');
@@ -247,7 +266,7 @@ export async function updateTimesheet(id: string, formData: z.infer<typeof times
     .from('timesheets')
     .update({
       employee_id: validated.employee_id,
-      project_id: validated.project_id,
+      project_id: validated.project_id || null,
       date: validated.date,
       day_type: validated.day_type,
       hours_worked: validated.hours_worked,
@@ -267,7 +286,7 @@ export async function updateTimesheet(id: string, formData: z.infer<typeof times
   // Audit log
   try {
     await logAudit({
-      company_id: companyId,
+      company_id: companyId || oldData.company_id,
       user_id: request.userId,
       entity_type: 'timesheet',
       entity_id: id,
@@ -280,8 +299,12 @@ export async function updateTimesheet(id: string, formData: z.infer<typeof times
     console.error('[updateTimesheet] Audit failed:', auditErr);
   }
 
-  revalidatePath('/dashboard/timesheets');
-  revalidatePath('/dashboard/timesheets/reports');
+  try {
+    revalidatePath('/dashboard/timesheets');
+    revalidatePath('/dashboard/timesheets/reports');
+  } catch (e) {
+    console.warn('[updateTimesheet] revalidatePath warning:', e);
+  }
   return data;
 }
 
@@ -290,7 +313,7 @@ export async function updateTimesheet(id: string, formData: z.infer<typeof times
  * Foremen can only delete timesheets for employees at their assigned site.
  */
 export async function deleteTimesheet(id: string) {
-  const supabase = await createClient();
+  const supabase = getAdminClient() || await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
   if (!request?.profile) throw new Error('Unauthorized');
@@ -314,7 +337,7 @@ export async function deleteTimesheet(id: string) {
   // Audit log
   try {
     await logAudit({
-      company_id: companyId,
+      company_id: companyId || oldData.company_id,
       user_id: request.userId,
       entity_type: 'timesheet',
       entity_id: id,
@@ -326,8 +349,12 @@ export async function deleteTimesheet(id: string) {
     console.error('[deleteTimesheet] Audit failed:', auditErr);
   }
 
-  revalidatePath('/dashboard/timesheets');
-  revalidatePath('/dashboard/timesheets/reports');
+  try {
+    revalidatePath('/dashboard/timesheets');
+    revalidatePath('/dashboard/timesheets/reports');
+  } catch (e) {
+    console.warn('[deleteTimesheet] revalidatePath warning:', e);
+  }
   return { success: true };
 }
 
@@ -355,7 +382,7 @@ export async function getProjects(companyId: string) {
  * Create a new project.
  */
 export async function createProject(companyId: string, name: string, description?: string, email?: string) {
-  const supabase = await createClient();
+  const supabase = getAdminClient() || await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
   if (!request?.profile) throw new Error('Unauthorized');
@@ -393,7 +420,11 @@ export async function createProject(companyId: string, name: string, description
     console.error('[createProject] Audit failed:', auditErr);
   }
 
-  revalidatePath('/dashboard/timesheets');
+  try {
+    revalidatePath('/dashboard/timesheets');
+  } catch (e) {
+    console.warn('[createProject] revalidatePath warning:', e);
+  }
   return data;
 }
 
@@ -401,7 +432,7 @@ export async function createProject(companyId: string, name: string, description
  * Update a project.
  */
 export async function updateProject(id: string, updates: { name?: string; description?: string; status?: string; email?: string }) {
-  const supabase = await createClient();
+  const supabase = getAdminClient() || await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
   if (!request?.profile) throw new Error('Unauthorized');
@@ -433,7 +464,7 @@ export async function updateProject(id: string, updates: { name?: string; descri
   // Audit log
   try {
     await logAudit({
-      company_id: request.profile.company_id,
+      company_id: request.profile.company_id || oldData.company_id,
       user_id: request.userId,
       entity_type: 'project',
       entity_id: id,
@@ -445,7 +476,11 @@ export async function updateProject(id: string, updates: { name?: string; descri
     console.error('[updateProject] Audit failed:', auditErr);
   }
 
-  revalidatePath('/dashboard/timesheets');
+  try {
+    revalidatePath('/dashboard/timesheets');
+  } catch (e) {
+    console.warn('[updateProject] revalidatePath warning:', e);
+  }
   return data;
 }
 
@@ -453,7 +488,7 @@ export async function updateProject(id: string, updates: { name?: string; descri
  * Delete a project (only if no timesheets reference it).
  */
 export async function deleteProject(id: string) {
-  const supabase = await createClient();
+  const supabase = getAdminClient() || await createClient();
   if (!supabase) throw new Error('Database client not available');
   const { request } = await validateRequest();
   if (!request?.profile) throw new Error('Unauthorized');
@@ -483,7 +518,7 @@ export async function deleteProject(id: string) {
   // Audit log
   try {
     await logAudit({
-      company_id: request.profile.company_id,
+      company_id: request.profile.company_id || oldData.company_id,
       user_id: request.userId,
       entity_type: 'project',
       entity_id: id,
@@ -494,7 +529,11 @@ export async function deleteProject(id: string) {
     console.error('[deleteProject] Audit failed:', auditErr);
   }
 
-  revalidatePath('/dashboard/timesheets');
+  try {
+    revalidatePath('/dashboard/timesheets');
+  } catch (e) {
+    console.warn('[deleteProject] revalidatePath warning:', e);
+  }
   return { success: true };
 }
 

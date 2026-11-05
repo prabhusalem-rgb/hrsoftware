@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useCompany } from '@/components/providers/CompanyProvider';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,6 +77,7 @@ const dayTypeColors: Record<string, string> = {
 };
 
 export default function TimesheetsDashboard() {
+  const queryClient = useQueryClient();
   const { activeCompanyId, profile, hasPermission } = useCompany();
   const isSuperAdmin = profile?.role === 'super_admin';
   const isForeman = profile?.role === 'foreman';
@@ -88,6 +89,16 @@ export default function TimesheetsDashboard() {
   const [activeTab, setActiveTab] = useState<'submissions' | 'projects' | 'reports-link'>('submissions');
   const [link, setLink] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [origin, setOrigin] = useState('');
+  const [isSavingTimesheet, setIsSavingTimesheet] = useState(false);
+  const [isSavingProject, setIsSavingProject] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setOrigin(window.location.origin);
+    }
+  }, []);
 
   // Filter state
   const [dateFrom, setDateFrom] = useState('');
@@ -177,9 +188,12 @@ export default function TimesheetsDashboard() {
 
   const handleCopyLink = () => {
     if (!link) return;
-    const url = `${window.location.origin}/timesheet/${link.token}`;
-    navigator.clipboard.writeText(url);
-    toast.success('Link copied to clipboard');
+    const currentOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : '');
+    const url = `${currentOrigin}/timesheet/${link.token}`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard');
+    }
   };
 
   const handleRevokeLink = async () => {
@@ -215,6 +229,25 @@ export default function TimesheetsDashboard() {
     return Math.ceil(filteredTimesheets.length / itemsPerPage);
   }, [filteredTimesheets.length]);
 
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheet_stats'] }),
+        queryClient.invalidateQueries({ queryKey: ['projects'] }),
+        timesheetsQuery.refetch(),
+        statsQuery.refetch(),
+        projectsQuery.refetch(),
+      ]);
+      toast.success('Timesheets refreshed');
+    } catch (err: any) {
+      toast.error('Failed to refresh: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // Modal handlers
   const openNewTimesheet = () => {
     setEditingTimesheet(null);
@@ -239,8 +272,8 @@ export default function TimesheetsDashboard() {
       project_id: ts.project_id || '',
       date: ts.date,
       day_type: ts.day_type,
-      hours_worked: ts.day_type === 'absent' ? 0 : ts.hours_worked,
-      overtime_hours: ts.overtime_hours || 0,
+      hours_worked: ts.day_type === 'absent' || ts.day_type === 'holiday_overtime' || ts.day_type === 'working_holiday' ? 0 : ts.hours_worked,
+      overtime_hours: ts.overtime_hours || (ts.day_type === 'working_holiday' ? 8 : (ts.day_type === 'holiday_overtime' ? 1 : 0)),
       reason: ts.reason || '',
     });
     setFormEmployeeId(ts.employee_id);
@@ -254,7 +287,7 @@ export default function TimesheetsDashboard() {
       toast.error('Please select an employee');
       return;
     }
-    if (!form.project_id) {
+    if (form.day_type !== 'absent' && !form.project_id) {
       toast.error('Please select a project');
       return;
     }
@@ -262,21 +295,38 @@ export default function TimesheetsDashboard() {
       toast.error('Please select a date');
       return;
     }
+    if ((form.day_type === 'absent' || form.overtime_hours > 0) && !form.reason?.trim()) {
+      toast.error('Reason is required for absences and overtime entries');
+      return;
+    }
 
     const payload = {
       ...form,
       employee_id: formEmployeeId,
+      project_id: form.day_type === 'absent' && !form.project_id ? null : (form.project_id || null),
     };
 
+    setIsSavingTimesheet(true);
     try {
       if (editingTimesheet) {
-        await updateTimesheet(editingTimesheet.id, payload);
+        await updateTimesheet(editingTimesheet.id, payload as any);
+        toast.success('Timesheet entry updated successfully');
       } else {
-        await createTimesheet(payload);
+        await createTimesheet(payload as any);
+        toast.success('Timesheet entry created successfully');
       }
       setDialogOpen(false);
+      // Invalidate and refetch queries to refresh the page view immediately
+      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      await queryClient.invalidateQueries({ queryKey: ['timesheet_stats'] });
+      await Promise.all([
+        timesheetsQuery.refetch(),
+        statsQuery.refetch(),
+      ]);
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || 'Failed to save timesheet');
+    } finally {
+      setIsSavingTimesheet(false);
     }
   };
 
@@ -284,8 +334,15 @@ export default function TimesheetsDashboard() {
     if (!confirm('Delete this timesheet entry?')) return;
     try {
       await deleteTimesheet(id);
+      toast.success('Timesheet entry deleted successfully');
+      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      await queryClient.invalidateQueries({ queryKey: ['timesheet_stats'] });
+      await Promise.all([
+        timesheetsQuery.refetch(),
+        statsQuery.refetch(),
+      ]);
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || 'Failed to delete timesheet');
     }
   };
 
@@ -303,20 +360,37 @@ export default function TimesheetsDashboard() {
   };
 
   const handleSaveProject = async () => {
+    if (!projectForm.name.trim()) {
+      toast.error('Project name is required');
+      return;
+    }
+
+    setIsSavingProject(true);
     try {
       if (editingProject) {
         await updateProject(editingProject.id, {
-          name: projectForm.name,
-          description: projectForm.description,
+          name: projectForm.name.trim(),
+          description: projectForm.description?.trim() || '',
           status: projectForm.status,
-          email: projectForm.email
+          email: projectForm.email?.trim() || '',
         });
+        toast.success('Project updated successfully');
       } else {
-        await createProject(activeCompanyId!, projectForm.name, projectForm.description, projectForm.email);
+        await createProject(
+          activeCompanyId!,
+          projectForm.name.trim(),
+          projectForm.description?.trim() || '',
+          projectForm.email?.trim() || ''
+        );
+        toast.success('Project created successfully');
       }
       setProjectDialogOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      await projectsQuery.refetch();
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || 'Failed to save project');
+    } finally {
+      setIsSavingProject(false);
     }
   };
 
@@ -324,8 +398,11 @@ export default function TimesheetsDashboard() {
     if (!confirm('Delete this project? Cannot delete if timesheets reference it.')) return;
     try {
       await deleteProject(id);
+      toast.success('Project deleted successfully');
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      await projectsQuery.refetch();
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || 'Failed to delete project');
     }
   };
 
@@ -365,7 +442,23 @@ export default function TimesheetsDashboard() {
           <p className="text-muted-foreground text-sm">Manage projects, public links, and view timesheet entries</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => window.open('/dashboard/timesheets/reports', '_blank')} className="gap-2">
+          <Button
+            variant="outline"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.open('/dashboard/timesheets/reports', '_blank');
+              }
+            }}
+            className="gap-2"
+          >
             <FileSpreadsheet className="w-4 h-4" /> View Reports
           </Button>
         </div>
@@ -871,7 +964,7 @@ export default function TimesheetsDashboard() {
                       </div>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-sm font-mono truncate">
-                          {window.location.origin}/timesheet/{link.token}
+                          {origin ? `${origin}/timesheet/${link.token}` : `/timesheet/${link.token}`}
                         </span>
                         <Button size="icon" variant="ghost" onClick={handleCopyLink}>
                           <Copy className="w-4 h-4" />
@@ -1063,9 +1156,12 @@ export default function TimesheetsDashboard() {
                           newForm.overtime_hours = 0;
                         } else if (dt === 'holiday_overtime') {
                           newForm.hours_worked = 0;
-                          newForm.overtime_hours = 1;
+                          newForm.overtime_hours = form.overtime_hours >= 1 && form.overtime_hours <= 8 ? form.overtime_hours : 1;
+                        } else if (dt === 'working_holiday') {
+                          newForm.hours_worked = 0;
+                          newForm.overtime_hours = 8;
                         } else {
-                          // working_day or working_holiday
+                          // working_day
                           newForm.hours_worked = 8;
                           newForm.overtime_hours = 0;
                         }
@@ -1082,8 +1178,8 @@ export default function TimesheetsDashboard() {
             {/* Hours & Project (if not absent) */}
             {form.day_type !== 'absent' && (
               <>
-                {/* Regular Hours — hidden for holiday_overtime */}
-                {form.day_type !== 'holiday_overtime' && (
+                {/* Regular Hours — hidden for holiday_overtime and working_holiday */}
+                {form.day_type !== 'holiday_overtime' && form.day_type !== 'working_holiday' && (
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Regular Hours *</Label>
                     <div className="flex flex-wrap gap-4">
@@ -1163,8 +1259,8 @@ export default function TimesheetsDashboard() {
                   </div>
                 )}
 
-                {/* Overtime Hours — shown for working_day and working_holiday */}
-                {form.day_type !== 'holiday_overtime' && (
+                {/* Overtime Hours — shown for working_day */}
+                {form.day_type === 'working_day' && (
                   <div className="space-y-1.5 pt-3 border-t">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Overtime Hours <span className="text-muted-foreground text-xs">(optional)</span>
@@ -1181,6 +1277,13 @@ export default function TimesheetsDashboard() {
                     <p className="text-xs text-muted-foreground">
                       Hours worked beyond regular shift. Reason is required if overtime is recorded.
                     </p>
+                  </div>
+                )}
+
+                {/* Working Holiday info */}
+                {form.day_type === 'working_holiday' && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800">
+                    Working Holiday includes 8 holiday overtime hours automatically. Reason is required.
                   </div>
                 )}
 
@@ -1223,9 +1326,10 @@ export default function TimesheetsDashboard() {
           </div>
 
           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveTimesheet}>
-              {editingTimesheet ? 'Update' : 'Create'}
+            <Button variant="outline" disabled={isSavingTimesheet} onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveTimesheet} disabled={isSavingTimesheet} className="gap-2">
+              {isSavingTimesheet && <RefreshCw className="w-4 h-4 animate-spin" />}
+              {isSavingTimesheet ? 'Saving...' : (editingTimesheet ? 'Update' : 'Create')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1277,8 +1381,11 @@ export default function TimesheetsDashboard() {
           </div>
 
           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setProjectDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveProject}>{editingProject ? 'Update' : 'Create'}</Button>
+            <Button variant="outline" disabled={isSavingProject} onClick={() => setProjectDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveProject} disabled={isSavingProject} className="gap-2">
+              {isSavingProject && <RefreshCw className="w-4 h-4 animate-spin" />}
+              {isSavingProject ? 'Saving...' : (editingProject ? 'Update' : 'Create')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

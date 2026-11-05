@@ -145,14 +145,16 @@ export const DayTypeLabels: Record<DayType, string> = {
 };
 
 // Base schema — all fields with their base validations
-const timesheetBaseSchema = z.object({
+export const timesheetBaseSchema = z.object({
   employee_id: z.string().uuid('Please select a valid employee'),
-  project_id: z.string().uuid('Project is required'),
+  project_id: z.string().uuid('Project is required').nullable().optional().or(z.literal('')),
   date: z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)')
     .refine((val) => {
-      const d = new Date(val);
-      return !isNaN(d.getTime()) && d <= new Date();
+      const d = new Date(val + 'T23:59:59');
+      const now = new Date();
+      now.setHours(23, 59, 59, 999);
+      return !isNaN(d.getTime()) && d <= now;
     }, { message: 'Date cannot be in the future' }),
   day_type: z.enum(['working_day', 'working_holiday', 'holiday_overtime', 'absent']),
   hours_worked: z.coerce.number()
@@ -192,14 +194,62 @@ export const timesheetSchema = timesheetBaseSchema.refine(
     message: 'Invalid hours configuration for selected day type',
     path: ['hours_worked'],
   }
+).refine(
+  (data) => {
+    // Project is required unless day_type is absent
+    if (data.day_type !== 'absent') {
+      return !!data.project_id && z.string().uuid().safeParse(data.project_id).success;
+    }
+    return true;
+  },
+  {
+    message: 'Project is required for working days and holidays',
+    path: ['project_id'],
+  }
 );
 
 // Patch schema — all fields optional (for PATCH endpoint)
 export const timesheetPatchSchema = timesheetBaseSchema.partial();
 
-export const timesheetSubmitSchema = timesheetSchema.extend({
+export const timesheetSubmitSchema = timesheetBaseSchema.extend({
   token: z.string().min(1, 'Invalid submission link'),
 }).refine(
+  (data) => {
+    // working_day: regular hours must be at least 0.5, overtime optional
+    if (data.day_type === 'working_day') {
+      return data.hours_worked >= 0.5;
+    }
+    // working_holiday (legacy): no regular hours, must have exactly 8 OT hours
+    if (data.day_type === 'working_holiday') {
+      return data.hours_worked === 0 && data.overtime_hours === 8;
+    }
+    // holiday_overtime: no regular hours, must have 1-8 OT hours
+    if (data.day_type === 'holiday_overtime') {
+      return data.hours_worked === 0 && data.overtime_hours >= 1 && data.overtime_hours <= 8;
+    }
+    // absent: no hours, no OT
+    if (data.day_type === 'absent') {
+      return data.hours_worked === 0 && data.overtime_hours === 0;
+    }
+    return true;
+  },
+  {
+    message: 'Invalid hours configuration for selected day type',
+    path: ['hours_worked'],
+  }
+).refine(
+  (data) => {
+    // Project is required unless day_type is absent
+    if (data.day_type !== 'absent') {
+      return !!data.project_id && z.string().uuid().safeParse(data.project_id).success;
+    }
+    return true;
+  },
+  {
+    message: 'Project is required for working days and holidays',
+    path: ['project_id'],
+  }
+).refine(
   (data) => {
     // Reason required for absent OR when overtime is recorded
     if (data.day_type === 'absent' || data.overtime_hours > 0) {
