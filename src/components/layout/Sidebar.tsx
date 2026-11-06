@@ -25,7 +25,8 @@ import {
   Bug,
   Clock,
   FileSpreadsheet,
-  FileText
+  FileText,
+  UserCheck
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -41,11 +42,12 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const isViewer = profile?.role === 'viewer';
 
   const navItems = useMemo(() => {
-    // For viewer role: ONLY show Timesheets in Attendance & Timesheets module!
+    // For viewer role: ONLY show Timesheets in Attendance & Timesheets module + Employee Portal!
     if (isViewer) {
       return [
         { type: 'separator' as const, label: 'Attendance & Timesheets' },
         { label: 'Timesheets', href: '/dashboard/timesheets', icon: Clock },
+        { label: 'Employee Portal', href: '/portal', icon: UserCheck },
       ];
     }
 
@@ -75,6 +77,12 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           { label: 'Employees', href: '/dashboard/employees', icon: UserCircle, moduleId: 'employees' },
           { label: 'Onboarding', href: '/dashboard/onboarding', icon: UserPlus, moduleId: 'employees' },
           { label: 'Contract Renewals', href: '/dashboard/contract-renewal', icon: ClipboardCheck, moduleId: 'employees' },
+        ],
+      },
+      {
+        label: 'Self Service',
+        items: [
+          { label: 'Employee Portal', href: '/portal', icon: UserCheck },
         ],
       },
       {

@@ -46,6 +46,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/renew-contract') ||
     pathname.startsWith('/timesheet') ||
     pathname.startsWith('/leave-request') ||
+    pathname.startsWith('/portal') ||
+    pathname.startsWith('/api/portal') ||
     isPublicContractRenewalAPI ||
     isPublicTimesheetAPI ||
     isDebugDB ||
