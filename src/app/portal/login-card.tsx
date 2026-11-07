@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UserCheck, ShieldCheck, ArrowRight, Loader2, Building2, CalendarDays, Clock, FileText } from 'lucide-react';
+import { UserCheck, ShieldCheck, ArrowRight, Loader2, Building2, CalendarDays, Clock, FileText, Lock, Eye, EyeOff } from 'lucide-react';
 import { portalLogin } from './actions';
 import { toast } from 'sonner';
 
@@ -21,6 +21,8 @@ export function LoginCard({ companies, initialCompanyId, onLoginSuccess }: Login
     initialCompanyId || (companies.length > 0 ? companies[0].id : '')
   );
   const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,9 +40,14 @@ export function LoginCard({ companies, initialCompanyId, onLoginSuccess }: Login
       return;
     }
 
+    if (!password.trim()) {
+      setError('Please enter your password. Default password is your Civil ID number.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await portalLogin(companyId, identifier.trim());
+      const res = await portalLogin(companyId, identifier.trim(), password.trim());
       if (res.error) {
         setError(res.error);
         toast.error(res.error);
@@ -134,6 +141,41 @@ export function LoginCard({ companies, initialCompanyId, onLoginSuccess }: Login
                 />
                 <p className="text-[11px] text-slate-400">
                   Tip: You can use your assigned Employee Code (e.g. 101) or Civil ID card number.
+                </p>
+              </div>
+
+              {/* Password Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-indigo-600" />
+                    Portal Password
+                  </Label>
+                  <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                    Default: Civil ID
+                  </span>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter password (default is your Civil ID)"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-12 rounded-xl bg-slate-50 border-slate-200 font-medium text-slate-900 placeholder:text-slate-400 pr-11"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Default password is your <strong>Civil ID</strong> number.
                 </p>
               </div>
 

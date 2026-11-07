@@ -42,9 +42,10 @@ import {
   TrendingUp,
   Filter,
   Check,
-  Search
+  Search,
+  KeyRound
 } from 'lucide-react';
-import { portalLogout, submitPortalLeaveRequest, getEmployeePortalData } from './actions';
+import { portalLogout, submitPortalLeaveRequest, getEmployeePortalData, changePortalPassword } from './actions';
 import { format, differenceInCalendarDays, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -83,6 +84,13 @@ export function PortalView({
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
   const [attachmentName, setAttachmentName] = useState<string | null>(null);
   const [submittingLeave, setSubmittingLeave] = useState<boolean>(false);
+
+  // Change Password Modal State
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [submittingPassword, setSubmittingPassword] = useState(false);
 
   const employee = data.employee;
   const annualBalance = data.annualBalance;
@@ -167,6 +175,45 @@ export function PortalView({
     await portalLogout();
     toast.success('Signed out of Employee Portal');
     window.location.href = '/portal';
+  };
+
+  // Handle Password Change
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword.trim()) {
+      toast.error('Please enter your current password (default is Civil ID)');
+      return;
+    }
+    if (!newPassword.trim()) {
+      toast.error('Please enter your new password');
+      return;
+    }
+    if (newPassword.trim().length < 4) {
+      toast.error('New password must be at least 4 characters long');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New password and confirmation do not match');
+      return;
+    }
+
+    setSubmittingPassword(true);
+    try {
+      const res = await changePortalPassword(companyId, employeeId, currentPassword, newPassword);
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success(res.message || 'Password changed successfully!');
+        setIsChangePasswordOpen(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update password');
+    } finally {
+      setSubmittingPassword(false);
+    }
   };
 
   // Handle Leave Submission
@@ -295,6 +342,17 @@ export function PortalView({
 
           {/* Controls: Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Change Password Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsChangePasswordOpen(true)}
+              className="h-9 rounded-xl border-slate-200 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 font-bold text-xs gap-1.5"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Change Password</span>
+            </Button>
+
             {/* Sign Out Button */}
             <Button
               variant="ghost"
@@ -1430,6 +1488,87 @@ export function PortalView({
                 Close
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Change Password Dialog */}
+        <Dialog open={isChangePasswordOpen} onOpenChange={setIsChangePasswordOpen}>
+          <DialogContent className="max-w-md rounded-3xl p-6 bg-white">
+            <DialogHeader>
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2 font-bold">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <DialogTitle className="text-lg font-black text-slate-900">
+                Change Portal Password
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Your default password is your Civil ID number. You can customize your portal password below.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-4 pt-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">Current Password *</Label>
+                <Input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password (or Civil ID)"
+                  className="h-10 rounded-xl text-xs"
+                  required
+                />
+                <p className="text-[11px] text-slate-400">If you haven't changed it yet, enter your Civil ID.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">New Password *</Label>
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password (min. 4 characters)"
+                  className="h-10 rounded-xl text-xs"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700">Confirm New Password *</Label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="h-10 rounded-xl text-xs"
+                  required
+                />
+              </div>
+
+              <DialogFooter className="pt-4 flex gap-2 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsChangePasswordOpen(false)}
+                  className="h-10 rounded-xl font-bold text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={submittingPassword}
+                  className="h-10 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  {submittingPassword ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Password'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </main>

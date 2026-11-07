@@ -7,9 +7,54 @@ import { revalidatePath } from 'next/cache';
 import { calculateAnnualLeaveEntitlement } from '@/lib/calculations/leave';
 import { getDatesInMonth, isFriday } from '@/lib/attendance-calculations';
 import { format } from 'date-fns';
+import crypto from 'crypto';
 
 const COOKIE_COMPANY_ID = 'portal_company_id';
 const COOKIE_EMPLOYEE_ID = 'portal_employee_id';
+
+// Helper: Hash password
+function hashPassword(password: string): string {
+  return crypto.createHash('sha256').update(password.trim()).digest('hex');
+}
+
+// Helper: Get custom portal password for an employee
+async function getCustomPortalPassword(employeeId: string): Promise<string | null> {
+  const admin = getAdmin();
+  const { data } = await admin
+    .from('system_settings')
+    .select('role_permissions')
+    .eq('id', 'portal_credentials')
+    .maybeSingle();
+
+  if (!data?.role_permissions?.passwords) return null;
+  const entry = data.role_permissions.passwords[employeeId];
+  return entry?.password || null;
+}
+
+// Helper: Save custom portal password for an employee
+async function saveCustomPortalPassword(employeeId: string, passwordHash: string): Promise<void> {
+  const admin = getAdmin();
+  const { data } = await admin
+    .from('system_settings')
+    .select('role_permissions')
+    .eq('id', 'portal_credentials')
+    .maybeSingle();
+
+  const currentPasswords = data?.role_permissions?.passwords || {};
+  const updated = {
+    ...currentPasswords,
+    [employeeId]: {
+      password: passwordHash,
+      updated_at: new Date().toISOString(),
+    },
+  };
+
+  await admin.from('system_settings').upsert({
+    id: 'portal_credentials',
+    software_name: 'portal_credentials',
+    role_permissions: { passwords: updated },
+  });
+}
 
 // Helper: Get Supabase Admin Client
 function getAdmin() {
@@ -59,14 +104,20 @@ export async function getPortalEmployees(companyId: string) {
 /**
  * 3. Employee Portal Direct Login
  * Matches by Employee Code, Civil ID, Passport Number, or Email
+ * Default password is the employee's Civil ID.
  */
-export async function portalLogin(companyId: string, identifier: string) {
+export async function portalLogin(companyId: string, identifier: string, password?: string) {
   if (!companyId || !identifier) {
     return { error: 'Company and Employee Code or Civil ID are required.' };
   }
 
+  if (!password || !password.trim()) {
+    return { error: 'Password is required. Default password is your Civil ID number.' };
+  }
+
   const admin = getAdmin();
   const trimmed = identifier.trim().toLowerCase();
+  const trimmedPassword = password.trim();
 
   // Search employee by emp_code, civil_id, passport_no, or email
   const { data: employees, error } = await admin
@@ -93,6 +144,32 @@ export async function portalLogin(companyId: string, identifier: string) {
     return { error: 'Employee not found. Please verify your Employee Code or Civil ID.' };
   }
 
+  // Password Verification:
+  // 1. Check if employee has set a custom password
+  const customPassword = await getCustomPortalPassword(matched.id);
+  const passwordHash = hashPassword(trimmedPassword);
+
+  let isPasswordValid = false;
+
+  if (customPassword) {
+    // Custom password matches either sha256 hash or plain string
+    isPasswordValid = customPassword === passwordHash || customPassword === trimmedPassword;
+  } else {
+    // Default password is their Civil ID
+    const defaultCivilId = matched.civil_id ? matched.civil_id.trim() : '';
+    if (defaultCivilId) {
+      isPasswordValid = trimmedPassword === defaultCivilId || trimmedPassword.toLowerCase() === defaultCivilId.toLowerCase();
+    } else {
+      // Fallback for edge cases without Civil ID
+      const fallback = (matched.passport_no || matched.emp_code || '').trim();
+      isPasswordValid = trimmedPassword === fallback || trimmedPassword.toLowerCase() === fallback.toLowerCase();
+    }
+  }
+
+  if (!isPasswordValid) {
+    return { error: 'Incorrect password. Default password is your Civil ID number.' };
+  }
+
   // Set secure portal cookies
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_COMPANY_ID, matched.company_id, {
@@ -112,6 +189,64 @@ export async function portalLogin(companyId: string, identifier: string) {
   });
 
   return { success: true, employee: matched };
+}
+
+/**
+ * 4. Change Employee Portal Password
+ */
+export async function changePortalPassword(
+  companyId: string,
+  employeeId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    if (!companyId || !employeeId) {
+      return { success: false, error: 'Session expired. Please log in again.' };
+    }
+    if (!currentPassword || !currentPassword.trim()) {
+      return { success: false, error: 'Current password is required.' };
+    }
+    if (!newPassword || newPassword.trim().length < 4) {
+      return { success: false, error: 'New password must be at least 4 characters.' };
+    }
+
+    const admin = getAdmin();
+    const { data: employee, error: empError } = await admin
+      .from('employees')
+      .select('id, civil_id, emp_code, passport_no')
+      .eq('id', employeeId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (empError || !employee) {
+      return { success: false, error: 'Employee record not found.' };
+    }
+
+    const customPassword = await getCustomPortalPassword(employeeId);
+    const currHash = hashPassword(currentPassword.trim());
+
+    let isCurrentValid = false;
+    if (customPassword) {
+      isCurrentValid = customPassword === currHash || customPassword === currentPassword.trim();
+    } else {
+      const defaultPassword = employee.civil_id ? employee.civil_id.trim() : (employee.passport_no || employee.emp_code || '').trim();
+      isCurrentValid = currentPassword.trim() === defaultPassword || currentPassword.trim().toLowerCase() === defaultPassword.toLowerCase();
+    }
+
+    if (!isCurrentValid) {
+      return { success: false, error: 'Current password is incorrect. (Default is your Civil ID).' };
+    }
+
+    // Save new password hash
+    const newHash = hashPassword(newPassword.trim());
+    await saveCustomPortalPassword(employeeId, newHash);
+
+    return { success: true, message: 'Password changed successfully!' };
+  } catch (err: any) {
+    console.error('[changePortalPassword] Error:', err);
+    return { success: false, error: err.message || 'Failed to update password.' };
+  }
 }
 
 /**
