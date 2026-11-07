@@ -26,7 +26,8 @@ import {
   Clock,
   FileSpreadsheet,
   FileText,
-  UserCheck
+  UserCheck,
+  PartyPopper
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -90,6 +91,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         items: [
           { label: 'Leave Management', href: '/dashboard/leaves', icon: CalendarDays, moduleId: 'leaves' },
           { label: 'Leave Requests', href: '/dashboard/leave-requests', icon: ClipboardCheck, moduleId: 'leaves' },
+          { label: 'Holidays', href: '/dashboard/holidays', icon: PartyPopper, moduleId: 'attendance' },
           { label: 'Loan Management', href: '/dashboard/loans', icon: Wallet, moduleId: 'loans' },
           { label: 'Air Tickets', href: '/dashboard/air-tickets', icon: Plane, moduleId: 'leaves' },
           { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck, moduleId: 'attendance' },

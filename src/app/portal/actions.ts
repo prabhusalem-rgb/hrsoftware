@@ -308,15 +308,32 @@ export async function getEmployeePortalData(
     .gte('date', monthStartStr)
     .lte('date', monthEndStr);
 
+  // Fetch Declared Company Holidays
+  const { data: companyHolidays } = await admin
+    .from('company_holidays')
+    .select('id, date, name, holiday_type, is_paid')
+    .eq('company_id', companyId)
+    .gte('date', monthStartStr)
+    .lte('date', monthEndStr);
+
   const attendanceMap = new Map((attendanceRecords || []).map(a => [a.date, a]));
   const timesheetMap = new Map((timesheetRecords || []).map((t: any) => [t.date, t]));
+  const holidayMap = new Map((companyHolidays || []).map((h: any) => [h.date, h]));
 
   // Leaves overlapping this month
   const approvedOrPendingLeaves = leaveRecords.filter(l => l.status === 'approved' || l.status === 'pending');
 
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const todayStr = format(now, 'yyyy-MM-dd');
+  const isCurrentMonth = targetYear === currentYear && targetMonth === currentMonth;
+  const isFutureMonth = targetYear > currentYear || (targetYear === currentYear && targetMonth > currentMonth);
+
   let presentCount = 0;
   let absentCount = 0;
   let leaveCount = 0;
+  let holidayCount = 0;
   let weekendCount = 0;
   let totalOtHours = 0;
 
@@ -325,9 +342,11 @@ export async function getEmployeePortalData(
     const dayOfWeek = format(dateObj, 'EEE');
     const dayNum = dateObj.getDate();
     const isWknd = isFriday(dateObj);
+    const isFutureDay = isFutureMonth || (isCurrentMonth && dateStr > todayStr);
 
     const att = attendanceMap.get(dateStr);
     const ts = timesheetMap.get(dateStr);
+    const holiday = holidayMap.get(dateStr);
 
     // Check if on leave
     const coveringLeave = approvedOrPendingLeaves.find(l => {
@@ -336,36 +355,60 @@ export async function getEmployeePortalData(
       return dateObj >= s && dateObj <= e;
     });
 
-    let status: 'present' | 'absent' | 'leave' | 'weekend' | 'holiday' = 'present';
+    let status: 'present' | 'absent' | 'leave' | 'weekend' | 'holiday' | 'future' = 'present';
     let label = 'Present';
     let overtimeHours = Number(att?.overtime_hours || ts?.overtime_hours || 0);
     let overtimeType = att?.overtime_type || 'none';
     let notes = att?.notes || ts?.reason || '';
-    let hoursWorked = Number(ts?.hours_worked || (status === 'present' ? 8 : 0));
+    let hoursWorked = 0;
 
-    if (coveringLeave) {
-      status = 'leave';
-      label = coveringLeave.leave_type_name;
-      leaveCount++;
-    } else if (att?.status === 'absent' || ts?.day_type === 'absent') {
-      status = 'absent';
-      label = 'Absent';
-      absentCount++;
-    } else if (isWknd) {
-      status = 'weekend';
-      label = 'Weekly Holiday (Friday)';
-      weekendCount++;
-      if (overtimeHours > 0) {
-        label = `Holiday OT (+${overtimeHours}h)`;
+    if (isFutureDay) {
+      if (coveringLeave) {
+        status = 'leave';
+        label = coveringLeave.leave_type_name;
+      } else if (holiday) {
+        status = 'holiday';
+        label = `Holiday: ${holiday.name}`;
+      } else {
+        status = 'future';
+        label = 'Upcoming';
       }
     } else {
-      status = 'present';
-      label = 'Present';
-      presentCount++;
-    }
+      hoursWorked = Number(ts?.hours_worked || 8);
 
-    if (overtimeHours > 0) {
-      totalOtHours += overtimeHours;
+      if (coveringLeave) {
+        status = 'leave';
+        label = coveringLeave.leave_type_name;
+        leaveCount++;
+      } else if (holiday) {
+        status = 'holiday';
+        label = `Holiday: ${holiday.name}`;
+        holidayCount++;
+        if (overtimeHours > 0) {
+          label = `${holiday.name} OT (+${overtimeHours}h)`;
+        }
+      } else if (att?.status === 'absent' || ts?.day_type === 'absent') {
+        status = 'absent';
+        label = 'Absent';
+        absentCount++;
+        hoursWorked = 0;
+      } else if (isWknd) {
+        status = 'weekend';
+        label = 'Weekly Holiday (Friday)';
+        weekendCount++;
+        hoursWorked = 0;
+        if (overtimeHours > 0) {
+          label = `Holiday OT (+${overtimeHours}h)`;
+        }
+      } else {
+        status = 'present';
+        label = 'Present';
+        presentCount++;
+      }
+
+      if (overtimeHours > 0) {
+        totalOtHours += overtimeHours;
+      }
     }
 
     return {
@@ -375,6 +418,7 @@ export async function getEmployeePortalData(
       status,
       label,
       isFriday: isWknd,
+      isFuture: isFutureDay,
       overtimeHours,
       overtimeType,
       hoursWorked,
@@ -384,9 +428,20 @@ export async function getEmployeePortalData(
         leave_type_name: coveringLeave.leave_type_name,
         status: coveringLeave.status,
       } : null,
+      holiday: holiday ? {
+        id: holiday.id,
+        name: holiday.name,
+        holiday_type: holiday.holiday_type,
+        is_paid: holiday.is_paid,
+      } : null,
       projectName: (ts as any)?.project?.name || null,
     };
   });
+
+  // Calculate total days evaluated for attendance statistics
+  const totalDays = isCurrentMonth
+    ? Math.min(now.getDate(), datesInMonth.length)
+    : (isFutureMonth ? 0 : datesInMonth.length);
 
   return {
     employee,
@@ -398,12 +453,16 @@ export async function getEmployeePortalData(
     attendance: {
       year: targetYear,
       month: targetMonth,
-      totalDays: datesInMonth.length,
+      totalDays,
       presentCount,
       absentCount,
       leaveCount,
+      holidayCount,
       weekendCount,
       totalOtHours: Math.round(totalOtHours * 10) / 10,
+      isCurrentMonth,
+      isFutureMonth,
+      todayStr,
       days: dailyAttendance,
     },
   };

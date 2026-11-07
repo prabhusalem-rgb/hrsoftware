@@ -69,7 +69,7 @@ export function PortalView({
 
   // Attendance Day Detail Modal
   const [selectedDayDetail, setSelectedDayDetail] = useState<any | null>(null);
-  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'present' | 'absent' | 'leave' | 'weekend' | 'overtime'>('all');
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'present' | 'absent' | 'holiday' | 'leave' | 'weekend' | 'overtime'>('all');
 
   // Leave Application Form State
   const [applyLeaveTypeId, setApplyLeaveTypeId] = useState<string>(
@@ -229,15 +229,20 @@ export function PortalView({
 
   // Filter attendance days
   const filteredAttendanceDays = useMemo(() => {
-    const days = attendance.days || [];
+    let days = attendance.days || [];
+    // If viewing current month, show attendance up to today only
+    if (attendance.isCurrentMonth) {
+      days = days.filter((d: any) => !d.isFuture);
+    }
     if (attendanceFilter === 'all') return days;
     if (attendanceFilter === 'present') return days.filter((d: any) => d.status === 'present');
     if (attendanceFilter === 'absent') return days.filter((d: any) => d.status === 'absent');
+    if (attendanceFilter === 'holiday') return days.filter((d: any) => d.status === 'holiday');
     if (attendanceFilter === 'leave') return days.filter((d: any) => d.status === 'leave');
     if (attendanceFilter === 'weekend') return days.filter((d: any) => d.status === 'weekend');
     if (attendanceFilter === 'overtime') return days.filter((d: any) => d.overtimeHours > 0);
     return days;
-  }, [attendance.days, attendanceFilter]);
+  }, [attendance.days, attendanceFilter, attendance.isCurrentMonth]);
 
   // Service length string
   const serviceDuration = useMemo(() => {
@@ -463,13 +468,21 @@ export function PortalView({
                   {attendance.presentCount} <span className="text-sm font-bold text-slate-500">/ {attendance.totalDays} Days</span>
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium mt-1">
-                  {format(new Date(selectedYear, selectedMonth - 1, 1), 'MMMM yyyy')} attendance rate
+                  {attendance.isCurrentMonth
+                    ? `Month-to-date attendance (Days 1 – ${new Date().getDate()})`
+                    : `${format(new Date(selectedYear, selectedMonth - 1, 1), 'MMMM yyyy')} attendance rate`}
                 </p>
               </div>
-              <div className="flex items-center gap-3 text-xs pt-1 font-bold">
+              <div className="flex items-center gap-2.5 text-xs pt-1 font-bold flex-wrap">
                 <span className="text-rose-500">{attendance.absentCount} Absent</span>
                 <span className="text-slate-300">•</span>
                 <span className="text-blue-600">{attendance.leaveCount} On Leave</span>
+                {attendance.holidayCount > 0 && (
+                  <>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-amber-600">{attendance.holidayCount} Holiday</span>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -643,6 +656,7 @@ export function PortalView({
 
                 {/* Actual day cells */}
                 {attendance.days.map((day: any) => {
+                  const isToday = day.date === attendance.todayStr;
                   let bgClass = 'bg-slate-50 border-slate-200/80 hover:border-slate-300 text-slate-900';
                   let statusBadge = (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
@@ -650,7 +664,37 @@ export function PortalView({
                     </span>
                   );
 
-                  if (day.status === 'absent') {
+                  if (day.isFuture) {
+                    if (day.status === 'leave') {
+                      bgClass = 'bg-blue-50/70 border-blue-200 hover:border-blue-300 text-blue-950';
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded-md truncate max-w-full">
+                          {day.label}
+                        </span>
+                      );
+                    } else if (day.status === 'holiday') {
+                      bgClass = 'bg-amber-50/80 border-amber-200 hover:border-amber-300 text-amber-950';
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-md truncate max-w-full">
+                          {day.label}
+                        </span>
+                      );
+                    } else {
+                      bgClass = 'bg-slate-50/40 border-dashed border-slate-200 text-slate-400 hover:border-slate-300';
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400">
+                          —
+                        </span>
+                      );
+                    }
+                  } else if (day.status === 'holiday') {
+                    bgClass = 'bg-amber-50/80 border-amber-200 hover:border-amber-300 text-amber-950';
+                    statusBadge = (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-md truncate max-w-full">
+                        {day.label}
+                      </span>
+                    );
+                  } else if (day.status === 'absent') {
                     bgClass = 'bg-rose-50/60 border-rose-200 hover:border-rose-300 text-rose-950';
                     statusBadge = (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-100/70 px-2 py-0.5 rounded-md">
@@ -673,14 +717,25 @@ export function PortalView({
                     );
                   }
 
+                  const isClickable = !day.isFuture || day.status !== 'future';
+
                   return (
                     <div
                       key={day.date}
-                      onClick={() => setSelectedDayDetail(day)}
-                      className={`min-h-[75px] sm:min-h-[90px] p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between hover:shadow-md ${bgClass}`}
+                      onClick={() => { if (isClickable) setSelectedDayDetail(day); }}
+                      className={`min-h-[75px] sm:min-h-[90px] p-2 sm:p-2.5 rounded-2xl border transition-all ${
+                        isClickable ? 'cursor-pointer hover:shadow-md' : 'cursor-default'
+                      } flex flex-col justify-between ${isToday ? 'ring-2 ring-indigo-500 shadow-sm' : ''} ${bgClass}`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-sm sm:text-base font-black">{day.dayNum}</span>
+                        <span className={`text-sm sm:text-base font-black ${isToday ? 'text-indigo-600' : ''}`}>
+                          {day.dayNum}
+                          {isToday && (
+                            <span className="ml-1 text-[9px] font-extrabold uppercase bg-indigo-600 text-white px-1.5 py-0.5 rounded-md">
+                              Today
+                            </span>
+                          )}
+                        </span>
                         {day.overtimeHours > 0 && (
                           <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-700 border border-purple-200">
                             +{day.overtimeHours}h OT
@@ -706,7 +761,9 @@ export function PortalView({
                       Day-by-Day Attendance Log
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500">
-                      Detailed records for {format(new Date(selectedYear, selectedMonth - 1, 1), 'MMMM yyyy')}
+                      {attendance.isCurrentMonth
+                        ? `Attendance records up to today (${format(new Date(), 'dd MMMM yyyy')})`
+                        : `Detailed records for ${format(new Date(selectedYear, selectedMonth - 1, 1), 'MMMM yyyy')}`}
                     </CardDescription>
                   </div>
 
@@ -716,6 +773,7 @@ export function PortalView({
                       { id: 'all', label: 'All Days' },
                       { id: 'present', label: 'Present' },
                       { id: 'absent', label: 'Absent' },
+                      { id: 'holiday', label: 'Holidays' },
                       { id: 'leave', label: 'Leaves' },
                       { id: 'weekend', label: 'Fridays' },
                       { id: 'overtime', label: 'Overtime' },
@@ -767,6 +825,11 @@ export function PortalView({
                                   Present
                                 </Badge>
                               )}
+                              {d.status === 'holiday' && (
+                                <Badge className="bg-amber-100 text-amber-800 border-0 font-bold text-xs">
+                                  {d.label}
+                                </Badge>
+                              )}
                               {d.status === 'absent' && (
                                 <Badge className="bg-rose-100 text-rose-800 border-0 font-bold text-xs">
                                   Absent
@@ -784,7 +847,7 @@ export function PortalView({
                               )}
                             </TableCell>
                             <TableCell className="text-xs font-mono font-medium text-slate-700">
-                              {d.status === 'present' ? '8.0 hrs' : d.status === 'weekend' ? '0.0 hrs' : '-'}
+                              {d.status === 'present' ? '8.0 hrs' : (d.status === 'holiday' || d.status === 'weekend') ? '0.0 hrs' : '-'}
                             </TableCell>
                             <TableCell>
                               {d.overtimeHours > 0 ? (
