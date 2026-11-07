@@ -413,7 +413,7 @@ export default function HolidaysManagementPage() {
             className="h-10 rounded-xl font-bold text-xs gap-1.5 border-amber-200 text-amber-800 bg-amber-50 hover:bg-amber-100 hover:text-amber-900 transition-colors"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>Pre-populate Public Holidays</span>
+            <span>Pre-populate Oman Public Holidays</span>
           </Button>
 
           <Button
@@ -602,7 +602,7 @@ export default function HolidaysManagementPage() {
           </div>
           <h3 className="text-lg font-black text-slate-900">No Holidays Declared for {selectedYear}</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-6">
-            There are currently no holidays declared for this company in {selectedYear}. You can manually declare custom holidays or quickly pre-populate standard public holidays.
+            There are currently no holidays declared for this company in {selectedYear}. You can manually declare custom holidays or quickly pre-populate official Oman public holidays.
           </p>
           <div className="flex items-center justify-center gap-3">
             <Button
@@ -611,7 +611,7 @@ export default function HolidaysManagementPage() {
               className="rounded-xl font-bold text-xs gap-1.5 border-amber-300 text-amber-800 bg-amber-50"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Pre-populate Public Holidays
+              Pre-populate Oman Public Holidays
             </Button>
             <Button
               onClick={handleOpenDeclare}
@@ -1041,7 +1041,7 @@ export default function HolidaysManagementPage() {
       </Dialog>
 
       {/* ========================================================================= */}
-      {/* MODAL 3: PRE-POPULATE / IMPORT STANDARD PUBLIC HOLIDAYS                  */}
+      {/* MODAL 3: PRE-POPULATE / IMPORT OMAN OFFICIAL PUBLIC HOLIDAYS              */}
       {/* ========================================================================= */}
       <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
         <DialogContent className="max-w-xl rounded-3xl p-6 bg-white">
@@ -1050,10 +1050,10 @@ export default function HolidaysManagementPage() {
               <Sparkles className="w-5 h-5" />
             </div>
             <DialogTitle className="text-lg font-black text-slate-900">
-              Pre-populate Public Holidays ({selectedYear})
+              Pre-populate Oman Official Public Holidays ({selectedYear})
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Select standard national gazetted and Islamic holidays to automatically declare for {selectedYear}. Already declared dates will be skipped.
+              Official public holidays for the Sultanate of Oman (pursuant to Royal Decree No. 88/2022 &amp; Ministry of Labour). Already declared dates will be skipped automatically.
             </DialogDescription>
           </DialogHeader>
 
@@ -1111,6 +1111,9 @@ export default function HolidaysManagementPage() {
                         <h4 className="text-xs font-bold text-slate-900">{item.name}</h4>
                         <p className="text-[11px] text-slate-500">
                           {format(parseISO(item.date), 'EEEE, dd MMMM yyyy')}
+                          {item.description && (
+                            <span className="text-slate-400 font-normal"> • {item.description}</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -1122,7 +1125,7 @@ export default function HolidaysManagementPage() {
                         </Badge>
                       ) : (
                         <Badge className="bg-amber-100 text-amber-800 border-0 text-[10px] font-bold">
-                          Public
+                          Oman Public
                         </Badge>
                       )}
                     </div>
@@ -1152,7 +1155,7 @@ export default function HolidaysManagementPage() {
                     Importing...
                   </>
                 ) : (
-                  `Import ${selectedStandardHolidays.length} Holidays`
+                  `Import ${selectedStandardHolidays.length} Oman Holidays`
                 )}
               </Button>
             </DialogFooter>
