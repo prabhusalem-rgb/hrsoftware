@@ -10,7 +10,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileUpload } from '@/components/ui/file-upload';
@@ -41,7 +40,6 @@ import {
   Loader2,
   ArrowRight,
   TrendingUp,
-  LayoutDashboard,
   Filter,
   Check,
   Search
@@ -49,33 +47,21 @@ import {
 import { portalLogout, submitPortalLeaveRequest, getEmployeePortalData } from './actions';
 import { format, differenceInCalendarDays, parseISO } from 'date-fns';
 import { toast } from 'sonner';
-import Link from 'next/link';
 
 interface PortalViewProps {
   initialData: any;
   companyId: string;
   employeeId: string;
-  isStaff: boolean;
-  staffRole?: string | null;
-  staffName?: string | null;
-  allCompanyEmployees?: Array<{ id: string; name_en: string; emp_code: string; designation?: string }>;
 }
 
 export function PortalView({
   initialData,
   companyId,
-  employeeId: currentEmployeeId,
-  isStaff,
-  staffRole,
-  staffName,
-  allCompanyEmployees = [],
+  employeeId,
 }: PortalViewProps) {
   const [data, setData] = useState(initialData);
   const [activeTab, setActiveTab] = useState<'attendance' | 'leaves' | 'apply'>('attendance');
   const [isPending, startTransition] = useTransition();
-
-  // Selected Employee (for admin switching)
-  const [selectedEmpId, setSelectedEmpId] = useState(currentEmployeeId);
 
   // Month navigation for Attendance
   const [selectedYear, setSelectedYear] = useState<number>(initialData.attendance.year);
@@ -126,11 +112,11 @@ export function PortalView({
   const annualMaxAllowed = (annualBalance?.balance || 0) + (annualBalance?.overdraftAllowed || 3.0);
   const isOverAnnualLimit = isApplyingAnnual && calculatedDays > annualMaxAllowed;
 
-  // Refresh data for selected month/year or employee
-  const refreshData = (empId = selectedEmpId, yr = selectedYear, mo = selectedMonth) => {
+  // Refresh data for selected month/year
+  const refreshData = (yr = selectedYear, mo = selectedMonth) => {
     startTransition(async () => {
       try {
-        const res = await getEmployeePortalData(companyId, empId, yr, mo);
+        const res = await getEmployeePortalData(companyId, employeeId, yr, mo);
         if ('error' in res) {
           toast.error(res.error);
         } else {
@@ -152,7 +138,7 @@ export function PortalView({
     }
     setSelectedMonth(newMonth);
     setSelectedYear(newYear);
-    refreshData(selectedEmpId, newYear, newMonth);
+    refreshData(newYear, newMonth);
   };
 
   const handleNextMonth = () => {
@@ -164,7 +150,7 @@ export function PortalView({
     }
     setSelectedMonth(newMonth);
     setSelectedYear(newYear);
-    refreshData(selectedEmpId, newYear, newMonth);
+    refreshData(newYear, newMonth);
   };
 
   const handleCurrentMonth = () => {
@@ -173,20 +159,14 @@ export function PortalView({
     const mo = now.getMonth() + 1;
     setSelectedYear(yr);
     setSelectedMonth(mo);
-    refreshData(selectedEmpId, yr, mo);
-  };
-
-  // Switch employee (for staff preview)
-  const handleEmployeeSwitch = (newEmpId: string) => {
-    setSelectedEmpId(newEmpId);
-    refreshData(newEmpId, selectedYear, selectedMonth);
+    refreshData(yr, mo);
   };
 
   // Handle Logout
   const handleLogout = async () => {
     await portalLogout();
     toast.success('Signed out of Employee Portal');
-    window.location.href = isStaff ? '/dashboard' : '/portal';
+    window.location.href = '/portal';
   };
 
   // Handle Leave Submission
@@ -214,7 +194,7 @@ export function PortalView({
     try {
       const res = await submitPortalLeaveRequest({
         companyId,
-        employeeId: selectedEmpId,
+        employeeId,
         leaveTypeId: applyLeaveTypeId,
         startDate: applyStartDate,
         endDate: applyEndDate,
@@ -308,40 +288,8 @@ export function PortalView({
             </div>
           </div>
 
-          {/* Controls: Admin Preview Switcher & Actions */}
+          {/* Controls: Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* If Staff: Employee Selector for preview */}
-            {isStaff && allCompanyEmployees.length > 0 && (
-              <div className="flex items-center gap-2 bg-slate-100/80 rounded-xl p-1 px-2.5 border border-slate-200 text-xs">
-                <span className="text-slate-500 font-bold hidden md:inline">Viewing As:</span>
-                <Select value={selectedEmpId} onValueChange={(val) => { if (val) handleEmployeeSwitch(val); }}>
-                  <SelectTrigger className="h-7 border-0 bg-transparent shadow-none font-bold text-slate-800 text-xs p-0 gap-1.5 focus:ring-0">
-                    <SelectValue placeholder="Switch Employee...">
-                      {allCompanyEmployees.find(e => e.id === selectedEmpId)?.name_en || 'Switch Employee...'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    {allCompanyEmployees.map(emp => (
-                      <SelectItem key={emp.id} value={emp.id} className="text-xs py-2">
-                        {emp.name_en} ({emp.emp_code}) {emp.designation ? `• ${emp.designation}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Back to Dashboard if staff user */}
-            {isStaff && (
-              <Link
-                href="/dashboard"
-                className="h-9 px-3 rounded-xl border border-slate-200 font-bold text-xs gap-1.5 inline-flex items-center text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <LayoutDashboard className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Admin Dashboard</span>
-              </Link>
-            )}
-
             {/* Sign Out Button */}
             <Button
               variant="ghost"

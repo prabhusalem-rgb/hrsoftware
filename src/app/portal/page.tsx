@@ -3,7 +3,6 @@ import {
   getCurrentPortalSession,
   getPortalCompanies,
   getEmployeePortalData,
-  getPortalEmployees,
 } from './actions';
 import { LoginCard } from './login-card';
 import { PortalView } from './portal-view';
@@ -22,21 +21,11 @@ export default async function EmployeePortalPage() {
     const portalData = await getEmployeePortalData(session.companyId, session.employeeId);
 
     if (!('error' in portalData)) {
-      // If staff user, fetch company employees for switcher
-      let allCompanyEmployees: any[] = [];
-      if (session.isStaff) {
-        allCompanyEmployees = await getPortalEmployees(session.companyId);
-      }
-
       return (
         <PortalView
           initialData={portalData}
           companyId={session.companyId}
           employeeId={session.employeeId}
-          isStaff={session.isStaff}
-          staffRole={session.staffRole}
-          staffName={session.staffName}
-          allCompanyEmployees={allCompanyEmployees}
         />
       );
     }
