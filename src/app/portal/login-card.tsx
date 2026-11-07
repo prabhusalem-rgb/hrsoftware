@@ -91,7 +91,7 @@ export function LoginCard({ companies, initialCompanyId, onLoginSuccess }: Login
 
         <Card className="border-0 shadow-2xl shadow-indigo-100/70 rounded-[2rem] bg-white/95 backdrop-blur overflow-hidden">
           <div className="h-2 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-500" />
-          
+
           <CardHeader className="pb-4 pt-8 px-8">
             <CardTitle className="text-xl font-bold text-slate-900">Sign In to Your Portal</CardTitle>
             <CardDescription className="text-slate-500 text-sm">

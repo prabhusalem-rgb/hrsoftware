@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Calendar, User, Briefcase, Building, CreditCard, ArrowUpRight, Plane, Ticket } from 'lucide-react';
+import { Calendar, User, Briefcase, Building, CreditCard, ArrowUpRight, Plane, Ticket, KeyRound } from 'lucide-react';
 import { Employee, EmployeeStatus } from '@/types';
 import { differenceInMonths, format } from 'date-fns';
 import { AirTicketDashboard } from '@/components/payroll/AirTicketDashboard';
@@ -25,6 +25,7 @@ interface EmployeeProfileCardProps {
   onHistory: () => void;
   onJoiningReport: () => void;
   onRejoin?: () => void;
+  onResetPassword?: () => void;
   currentLeaveBalance?: number;
 }
 
@@ -61,6 +62,7 @@ function EmployeeProfileCardImpl({
   onHistory,
   onJoiningReport,
   onRejoin,
+  onResetPassword,
   currentLeaveBalance,
 }: EmployeeProfileCardProps) {
   const [showAirTickets, setShowAirTickets] = useState(false);
@@ -158,7 +160,14 @@ function EmployeeProfileCardImpl({
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-black uppercase tracking-wider text-slate-400">Identification</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-400">Identification</p>
+                {employee.civil_id && (
+                  <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100 flex items-center gap-0.5">
+                    <KeyRound className="w-2.5 h-2.5" /> Portal Pwd
+                  </span>
+                )}
+              </div>
               <p className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">
                 {employee.id_type === 'civil_id' ? employee.civil_id : employee.passport_no || 'Not set'}
               </p>
@@ -283,6 +292,16 @@ function EmployeeProfileCardImpl({
                 <User className="w-3.5 h-3.5 shrink-0" /> <span className="hidden sm:inline">Edit Rejoin</span>
               </Button>
             ) : null}
+            {onResetPassword && (
+              <Button
+                variant="outline"
+                onClick={onResetPassword}
+                className="gap-1 rounded-2xl px-1.5 font-black h-9 border-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 w-full text-[9px] justify-center"
+                title="Reset portal password to default Civil ID"
+              >
+                <KeyRound className="w-3.5 h-3.5 shrink-0 text-indigo-600" /> <span className="hidden sm:inline">Reset Pwd</span>
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>

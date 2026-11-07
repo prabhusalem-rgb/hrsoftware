@@ -250,6 +250,65 @@ export async function changePortalPassword(
 }
 
 /**
+ * 5. Admin / HR: Reset Employee Portal Password back to default (Civil ID)
+ */
+export async function resetPortalPassword(employeeId: string): Promise<{ success: boolean; message?: string; civilId?: string; error?: string }> {
+  try {
+    if (!employeeId) {
+      return { success: false, error: 'Employee ID is required.' };
+    }
+
+    const admin = getAdmin();
+
+    // 1. Fetch employee to verify and get their Civil ID
+    const { data: employee, error: empError } = await admin
+      .from('employees')
+      .select('id, name_en, civil_id, emp_code')
+      .eq('id', employeeId)
+      .single();
+
+    if (empError || !employee) {
+      return { success: false, error: 'Employee record not found.' };
+    }
+
+    // 2. Remove any custom password from system_settings (portal_credentials)
+    const { data: settings } = await admin
+      .from('system_settings')
+      .select('role_permissions')
+      .eq('id', 'portal_credentials')
+      .maybeSingle();
+
+    if (settings?.role_permissions?.passwords && settings.role_permissions.passwords[employeeId]) {
+      const updatedPasswords = { ...settings.role_permissions.passwords };
+      delete updatedPasswords[employeeId];
+
+      await admin.from('system_settings').update({
+        role_permissions: { passwords: updatedPasswords },
+        updated_at: new Date().toISOString(),
+      }).eq('id', 'portal_credentials');
+    }
+
+    const civilId = employee.civil_id ? employee.civil_id.trim() : null;
+
+    if (!civilId) {
+      return {
+        success: true,
+        message: `Portal password reset for ${employee.name_en}. Note: No Civil ID registered; fallback password is Employee Code (${employee.emp_code}).`,
+      };
+    }
+
+    return {
+      success: true,
+      civilId,
+      message: `Portal password for ${employee.name_en} has been reset to default Civil ID: ${civilId}`,
+    };
+  } catch (err: any) {
+    console.error('[resetPortalPassword] Error:', err);
+    return { success: false, error: err.message || 'Failed to reset employee portal password.' };
+  }
+}
+
+/**
  * 4. Employee Portal Sign Out
  */
 export async function portalLogout() {

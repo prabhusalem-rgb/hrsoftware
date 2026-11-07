@@ -15,7 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Employee, EmployeeStatus, EmployeeCategory, IdType, Nationality, EmployeeFormData } from '@/types';
 import { employeeSchema } from '@/lib/validations/schemas';
-import { Sparkles, X as XIcon, Upload, Calendar } from 'lucide-react';
+import { Sparkles, X as XIcon, Upload, Calendar, KeyRound, Loader2 } from 'lucide-react';
+import { resetPortalPassword } from '@/app/portal/actions';
 
 const employeeFormSchema = employeeSchema;
 type EmployeeFormValues = z.infer<typeof employeeFormSchema>;
@@ -152,6 +153,25 @@ export function EmployeeEditSheet({
     mode: 'onChange',
     reValidateMode: 'onChange',
   });
+
+  const [resettingPortalPassword, setResettingPortalPassword] = useState(false);
+
+  const handleResetPortalPassword = async () => {
+    if (!employee?.id) return;
+    setResettingPortalPassword(true);
+    try {
+      const res = await resetPortalPassword(employee.id);
+      if (!res.success) {
+        toast.error(res.error || 'Failed to reset portal password');
+      } else {
+        toast.success(res.message || 'Portal password reset to Civil ID successfully!');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'An error occurred resetting portal password');
+    } finally {
+      setResettingPortalPassword(false);
+    }
+  };
 
   // Watch form values for gross calculation
   const formValues = watch();
@@ -633,6 +653,35 @@ export function EmployeeEditSheet({
                   />
                   {errors.civil_id && (
                     <p className="text-xs text-red-600">{errors.civil_id.message}</p>
+                  )}
+
+                  {employee?.id && (
+                    <div className="mt-2.5 flex items-center justify-between p-3 bg-indigo-50/70 rounded-xl border border-indigo-100">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Employee Portal Password</p>
+                          <p className="text-[10px] text-slate-500">Default login password is this employee&apos;s Civil ID</p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={resettingPortalPassword}
+                        onClick={handleResetPortalPassword}
+                        className="h-8 text-xs font-bold text-indigo-700 border-indigo-200 bg-white hover:bg-indigo-50 rounded-lg shadow-sm shrink-0"
+                      >
+                        {resettingPortalPassword ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            Resetting...
+                          </>
+                        ) : (
+                          'Reset to Civil ID'
+                        )}
+                      </Button>
+                    </div>
                   )}
                 </div>
 

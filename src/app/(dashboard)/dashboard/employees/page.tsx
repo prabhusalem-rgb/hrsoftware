@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Search, Download, Loader2, History, FileText, Upload, UserCheck, Printer, TrendingUp, FileDown, FileCheck, Lock, Unlock, AlertCircle } from 'lucide-react';
+import { Pencil, Search, Download, Loader2, History, FileText, Upload, UserCheck, Printer, TrendingUp, FileDown, FileCheck, Lock, Unlock, AlertCircle, KeyRound } from 'lucide-react';
 import { differenceInCalendarDays, format, differenceInMonths } from 'date-fns';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -19,7 +19,18 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { resetPortalPassword } from '@/app/portal/actions';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
 import { useEmployeeMutations } from '@/hooks/queries/useEmployeeMutations';
@@ -75,6 +86,7 @@ interface EmployeeTableRowProps {
   onOpenRejoiningReport: (emp: Employee) => void;
   onHoldSalary: (emp: Employee) => void;
   onReleaseHold: (emp: Employee) => void;
+  onResetPassword: (emp: Employee) => void;
   currentLeaveBalance?: number | undefined;
   balancesData?: LeaveBalance[] | undefined;
 }
@@ -91,6 +103,7 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
   onOpenRejoiningReport,
   onHoldSalary,
   onReleaseHold,
+  onResetPassword,
   currentLeaveBalance,
   balancesData
 }: EmployeeTableRowProps) {
@@ -234,6 +247,18 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
             <Button
               variant="ghost"
               size="icon"
+              className="h-8 w-8 text-indigo-600 hover:bg-indigo-50 rounded-xl"
+              onClick={(e) => {
+                e.stopPropagation();
+                onResetPassword(emp);
+              }}
+              title="Reset Portal Password to Civil ID"
+            >
+              <KeyRound className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-8 w-8 hover:bg-slate-100 rounded-xl"
               onClick={(e) => {
                 e.stopPropagation();
@@ -256,6 +281,7 @@ const EmployeeTableRow = memo(function EmployeeTableRow({
                 onHistory={() => onOpenHistory(emp)}
                 onJoiningReport={() => onOpenJoiningReport(emp)}
                 onRejoin={onOpenRejoin ? () => onOpenRejoin(emp) : undefined}
+                onResetPassword={() => onResetPassword(emp)}
                 currentLeaveBalance={currentLeaveBalance}
               />
             </div>
@@ -301,6 +327,28 @@ export default function EmployeesPage() {
   const [holdEmployee, setHoldEmployee] = useState<Employee | null>(null);
   const [holdReason, setHoldReason] = useState('');
   const [isHolding, setIsHolding] = useState(false);
+
+  // Reset Portal Password State
+  const [resetPasswordEmp, setResetPasswordEmp] = useState<Employee | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+
+  const handleConfirmResetPassword = async () => {
+    if (!resetPasswordEmp) return;
+    setResettingPassword(true);
+    try {
+      const res = await resetPortalPassword(resetPasswordEmp.id);
+      if (!res.success) {
+        toast.error(res.error || 'Failed to reset password');
+      } else {
+        toast.success(res.message || 'Password reset to default Civil ID successfully!');
+        setResetPasswordEmp(null);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'An error occurred resetting password');
+    } finally {
+      setResettingPassword(false);
+    }
+  };
 
   const employees: Employee[] = (employeesData ?? []) as Employee[];
 
@@ -566,6 +614,7 @@ export default function EmployeesPage() {
                   onOpenRejoiningReport={handleOpenRejoiningReport}
                   onHoldSalary={handleHoldSalary}
                   onReleaseHold={handleReleaseHold}
+                  onResetPassword={(targetEmp) => setResetPasswordEmp(targetEmp)}
                   currentLeaveBalance={balanceLookup[emp.id]}
                 />
               ))}
@@ -873,6 +922,53 @@ export default function EmployeesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Reset Portal Password Confirmation Dialog */}
+      <AlertDialog open={!!resetPasswordEmp} onOpenChange={(open) => !open && setResetPasswordEmp(null)}>
+        <AlertDialogContent className="rounded-3xl p-6 bg-white max-w-md border-0 shadow-2xl">
+          <AlertDialogHeader>
+            <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-1">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-black text-slate-900">
+              Reset Portal Password to Civil ID?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-600 pt-1 space-y-2.5">
+              <span>
+                This will reset <strong>{resetPasswordEmp?.name_en}</strong>&rsquo;s employee portal password back to their default Civil ID number:
+              </span>
+              <span className="block p-3 rounded-2xl bg-slate-100 font-mono font-bold text-slate-900 text-sm text-center border border-slate-200">
+                {resetPasswordEmp?.civil_id || 'Civil ID Not Set'}
+              </span>
+              <span className="block text-[11px] text-slate-400">
+                Any custom password they previously set will be removed. They will sign into the Employee Portal using their Civil ID.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="pt-3 gap-2">
+            <AlertDialogCancel
+              disabled={resettingPassword}
+              className="h-10 rounded-xl font-bold text-xs"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmResetPassword}
+              disabled={resettingPassword}
+              className="h-10 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
+            >
+              {resettingPassword ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                  Resetting...
+                </>
+              ) : (
+                'Reset to Civil ID'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
