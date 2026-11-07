@@ -316,7 +316,9 @@ export function PortalView({
                 <span className="text-slate-500 font-bold hidden md:inline">Viewing As:</span>
                 <Select value={selectedEmpId} onValueChange={(val) => { if (val) handleEmployeeSwitch(val); }}>
                   <SelectTrigger className="h-7 border-0 bg-transparent shadow-none font-bold text-slate-800 text-xs p-0 gap-1.5 focus:ring-0">
-                    <SelectValue placeholder="Switch Employee..." />
+                    <SelectValue placeholder="Switch Employee...">
+                      {allCompanyEmployees.find(e => e.id === selectedEmpId)?.name_en || 'Switch Employee...'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="max-h-72">
                     {allCompanyEmployees.map(emp => (

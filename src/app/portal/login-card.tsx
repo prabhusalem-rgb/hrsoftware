@@ -102,7 +102,9 @@ export function LoginCard({ companies, initialCompanyId, onLoginSuccess }: Login
                 </Label>
                 <Select value={companyId} onValueChange={(val) => setCompanyId(val || '')}>
                   <SelectTrigger id="company" className="h-12 rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-medium">
-                    <SelectValue placeholder="Select your company..." />
+                    <SelectValue placeholder="Select your company...">
+                      {companies.find(c => c.id === companyId)?.name_en || 'Select your company...'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
                     {companies.map(c => (
