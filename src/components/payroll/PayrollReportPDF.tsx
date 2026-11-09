@@ -1,7 +1,7 @@
 'use client';
 
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { PayrollReportData, getLeaveDaysInMonth } from '@/lib/payroll-reports';
+import { PayrollReportData, getLeaveDaysInMonth, sortPayrollReportItems } from '@/lib/payroll-reports';
 
 // Standard PDF fonts like Helvetica, Courier, and Times-Roman are built-in 
 // and do not require external registration.
@@ -206,11 +206,18 @@ export function PayrollReportPDF({
     colNetNumeric: { width: '8.8%', textAlign: 'right' },
   });
 
-  // Sort items alphabetically by employee name
-  const sortedItems = [...items].map(item => {
-    const emp = employees.find(e => e.id === item.employee_id);
-    return { ...item, _empName: emp?.name_en || 'Unknown' };
-  }).sort((a, b) => a._empName.localeCompare(b._empName));
+  // Sort items (priority employees first for Bright Flowers, then alphabetical)
+  const sortedItems = sortPayrollReportItems(
+    [...items].map(item => {
+      const emp = employees.find(e => e.id === item.employee_id);
+      return {
+        ...item,
+        _empName: emp?.name_en || 'Unknown',
+        _empCode: emp?.emp_code
+      };
+    }),
+    company?.name_en
+  );
 
   const daysInMonth = new Date(payrollRun.year, payrollRun.month, 0).getDate();
 

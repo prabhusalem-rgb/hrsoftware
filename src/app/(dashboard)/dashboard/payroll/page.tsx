@@ -53,7 +53,7 @@ import { UserCheck } from 'lucide-react';
 
 const RejoinDialog = dynamic(() => import('@/components/employees/RejoinDialog').then(mod => mod.RejoinDialog), { ssr: false });
 const ManualAdjustmentModal = dynamic(() => import('@/components/payroll/ManualAdjustmentModal').then(mod => mod.ManualAdjustmentModal), { ssr: false });
-import { generatePayrollExcel, type PayrollReportData } from '@/lib/payroll-reports';
+import { generatePayrollExcel, type PayrollReportData, sortPayrollReportItems } from '@/lib/payroll-reports';
 import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 
@@ -229,16 +229,17 @@ export default function PayrollPage() {
 
   const selectedItems = useMemo(() => {
     const itemsWithNames = items.map(item => {
-      const name = getEmpName(item.employee_id) || '';
-      return { ...item, _empName: name };
+      const emp = employees.find(e => (e.id || '').trim().toLowerCase() === (item.employee_id || '').trim().toLowerCase()) || employeeCache[item.employee_id];
+      const name = emp?.name_en || getEmpName(item.employee_id) || '';
+      return { ...item, _empName: name, _empCode: emp?.emp_code };
     });
 
     const filtered = empSearchQuery
       ? itemsWithNames.filter(item => item._empName.toLowerCase().includes(empSearchQuery.toLowerCase()))
       : itemsWithNames;
 
-    return filtered.sort((a, b) => a._empName.localeCompare(b._empName));
-  }, [items, empSearchQuery, employees, employeeCache]);
+    return sortPayrollReportItems(filtered, activeCompany?.name_en);
+  }, [items, empSearchQuery, employees, employeeCache, activeCompany]);
 
   const selectedRun = runs.find(r => r.id === selectedRunId);
 

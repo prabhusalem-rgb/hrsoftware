@@ -14,6 +14,56 @@ export interface PayrollReportData {
   leaves?: Leave[];
 }
 
+export interface SortablePayrollItem {
+  _empName?: string;
+  _empCode?: string | number | null;
+  employee_id?: string;
+  [key: string]: any;
+}
+
+export function isBrightFlowersCompany(companyName?: string | null): boolean {
+  if (!companyName) return false;
+  const normalized = companyName.toUpperCase();
+  return normalized.includes('BRIGHT FLOWERS') || normalized.includes('BRIGHT FLOWER');
+}
+
+export function getBrightFlowersPriorityRank(empName?: string | null, empCode?: string | number | null): number {
+  const normCode = empCode !== undefined && empCode !== null ? String(empCode).trim() : '';
+  const normName = (empName || '').toLowerCase().trim();
+  const cleanName = normName.replace(/[^a-z0-9]/g, '');
+
+  // 1. Salim Mohammed Hamdan Al Naabi
+  if (normCode === '42' || (cleanName.includes('salim') && cleanName.includes('hamdan') && cleanName.includes('naabi'))) return 0;
+  // 2. MOHAMMED AL ABRI
+  if (normCode === '62' || cleanName === 'mohammedalabri' || normName === 'mohammed al abri') return 1;
+  // 3. SAKTHI SUNDAR BALAKRISHNAN
+  if (normCode === '118' || (cleanName.includes('sakthi') && cleanName.includes('sundar'))) return 2;
+  // 4. Ibrahim Mohammed Hamdan Al Naabi
+  if (normCode === '20' || (cleanName.includes('ibrahim') && cleanName.includes('hamdan') && cleanName.includes('naabi'))) return 3;
+  // 5. Prabu Kumaresan
+  if (normCode === '13' || ((cleanName.includes('prabu') || cleanName.includes('prabhu')) && cleanName.includes('kumaresan'))) return 4;
+
+  return 9999;
+}
+
+export function sortPayrollReportItems<T extends SortablePayrollItem>(
+  items: T[],
+  companyName?: string | null
+): T[] {
+  const isBright = isBrightFlowersCompany(companyName);
+
+  return [...items].sort((a, b) => {
+    if (isBright) {
+      const rankA = getBrightFlowersPriorityRank(a._empName, a._empCode);
+      const rankB = getBrightFlowersPriorityRank(b._empName, b._empCode);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+    }
+    return (a._empName || '').localeCompare(b._empName || '');
+  });
+}
+
 export function getLeaveDaysInMonth(employeeId: string, leaveRecords: Leave[], month: number, year: number, effectiveStartDay: number = 1): number {
   let leaveDays = 0;
   const startOfMonth = new Date(year, month - 1, effectiveStartDay);
@@ -138,11 +188,18 @@ function setupRegisterSheet(
   const { company, items, period, payrollRun, leaves = [] } = data;
   const { headerStyle, cellStyle, numericStyle, totalStyle, colors } = styles;
 
-  // Sort items alphabetically by employee name
-  const sortedItems = [...items].map(item => {
-    const emp = data.employees.find(e => e.id === item.employee_id);
-    return { ...item, _empName: emp?.name_en || 'Unknown' };
-  }).sort((a, b) => a._empName.localeCompare(b._empName));
+  // Sort items (priority employees first for Bright Flowers, then alphabetical)
+  const sortedItems = sortPayrollReportItems(
+    [...items].map(item => {
+      const emp = data.employees.find(e => e.id === item.employee_id);
+      return {
+        ...item,
+        _empName: emp?.name_en || 'Unknown',
+        _empCode: emp?.emp_code
+      };
+    }),
+    company?.name_en
+  );
 
   // Set column widths (18 columns now)
   sheet.columns = [
