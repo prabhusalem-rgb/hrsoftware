@@ -89,6 +89,8 @@ export default function LoansPage() {
   const [selectedInstallments, setSelectedInstallments] = useState<number[]>([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [holdReason, setHoldReason] = useState('Hold requested');
+  const [holdMonths, setHoldMonths] = useState('1');
 
   // Form state
   const [form, setForm] = useState({
@@ -216,22 +218,22 @@ export default function LoansPage() {
   };
 
   const handleHold = async () => {
-    if (selectedInstallments.length === 0) {
+    if (selectedInstallments.length === 0 || !selectedLoan) {
       toast.error('Select at least one installment');
       return;
     }
     try {
+      const months = parseInt(holdMonths || '0', 10);
       await holdInstallments.mutateAsync({
-        loanId: selectedLoan!.id,
+        loanId: selectedLoan.id,
         installmentNumbers: selectedInstallments,
-        reason: (document.getElementById('hold-reason') as HTMLInputElement)?.value || 'Hold requested',
-        holdMonths: parseInt((document.getElementById('hold-months') as HTMLInputElement)?.value || '0') || undefined
+        reason: holdReason || 'Hold requested',
+        holdMonths: months > 0 ? months : undefined
       });
       setHoldDialogOpen(false);
       setSelectedInstallments([]);
-      toast.success('Installments held');
     } catch (err: any) {
-      toast.error(err.message);
+      // Toast displayed by mutation onError
     }
   };
 
@@ -784,7 +786,7 @@ export default function LoansPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-7 text-xs text-green-600"
+                                  className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
                                   onClick={() => handleUnhold(inst.id)}
                                 >
                                   Unhold
@@ -793,9 +795,11 @@ export default function LoansPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-7 text-xs text-amber-600"
+                                  className="h-7 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                                   onClick={() => {
                                     setSelectedInstallments([inst.installment_no]);
+                                    setHoldReason('Hold requested');
+                                    setHoldMonths('1');
                                     setHoldDialogOpen(true);
                                   }}
                                 >
@@ -871,31 +875,42 @@ export default function LoansPage() {
           <DialogHeader>
             <DialogTitle>Hold Installments</DialogTitle>
             <DialogDescription>
-              Holding: {selectedInstallments.join(', ')}
+              Holding installment #{selectedInstallments.join(', ')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1.5">
-              <Label>Reason for hold *</Label>
-              <Input id="hold-reason" placeholder="e.g., Employee on leave without pay" />
+              <Label htmlFor="hold-reason">Reason for hold *</Label>
+              <Input
+                id="hold-reason"
+                value={holdReason}
+                onChange={(e) => setHoldReason(e.target.value)}
+                placeholder="e.g., Employee on leave without pay"
+              />
             </div>
             <div className="space-y-1.5">
-              <Label>Hold duration (months, optional)</Label>
+              <Label htmlFor="hold-months">Hold duration (months, optional)</Label>
               <Input
                 id="hold-months"
                 type="number"
-                placeholder="Leave empty for indefinite hold"
+                value={holdMonths}
+                onChange={(e) => setHoldMonths(e.target.value)}
+                placeholder="1"
                 min="1"
               />
               <p className="text-xs text-muted-foreground">
-                Leave empty to hold until manually unheld.
+                Number of months to pause deduction. Leave empty for indefinite hold.
               </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setHoldDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleHold} disabled={holdInstallments.isPending}>
-              {holdInstallments.isPending ? 'Holding...' : 'Hold Installments'}
+            <Button
+              onClick={handleHold}
+              disabled={holdInstallments.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {holdInstallments.isPending ? 'Holding...' : 'Hold Installment'}
             </Button>
           </DialogFooter>
         </DialogContent>

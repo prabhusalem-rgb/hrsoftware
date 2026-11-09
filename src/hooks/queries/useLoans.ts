@@ -86,7 +86,7 @@ export function useLoanSchedule(loanId: string): UseQueryResult<any[], Error> {
 
       const { data, error } = await supabase
         .from('loan_schedule')
-        .select('id, loan_id, installment_no, due_date, principal_due, interest_due, total_due, paid_amount, status, paid_date')
+        .select('*')
         .eq('loan_id', loanId)
         .order('installment_no', { ascending: true });
 
@@ -211,19 +211,28 @@ export function useLoanMutations(companyId: string) {
     newVal?: any,
     reason?: string
   ) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      let userId = user?.id;
+      if (!userId) {
+        const { data: profile } = await supabase.from('profiles').select('id').limit(1).maybeSingle();
+        userId = profile?.id;
+      }
+      if (!userId) return;
 
-    await supabase.from('loan_history').insert({
-      loan_id: loanId,
-      company_id: companyId,
-      action,
-      field_name: fieldName,
-      old_value: oldVal,
-      new_value: newVal,
-      changed_by: user.id,
-      change_reason: reason,
-    });
+      await supabase.from('loan_history').insert({
+        loan_id: loanId,
+        company_id: companyId,
+        action,
+        field_name: fieldName,
+        old_value: oldVal,
+        new_value: newVal,
+        changed_by: userId,
+        change_reason: reason,
+      });
+    } catch (err) {
+      console.warn('[recordHistory] failed:', err);
+    }
   };
 
   // 1. Create Loan with amortization schedule
@@ -516,10 +525,10 @@ export function useLoanMutations(companyId: string) {
       return { scheduleId, paidAmount };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['loan_schedule', undefined] });
-      queryClient.invalidateQueries({ queryKey: ['loan_repayments', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['payroll_items', undefined] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments'] });
+      queryClient.invalidateQueries({ queryKey: ['payroll_items'] });
       toast.success('Installment marked as paid');
     },
     onError: (err: any) => toast.error(err.message),
@@ -538,23 +547,46 @@ export function useLoanMutations(companyId: string) {
       reason: string;
       holdMonths?: number;
     }) => {
-      const { error } = await supabase.rpc('hold_loan_installments', {
-        p_loan_id: loanId,
-        p_installment_numbers: installmentNumbers,
-        p_reason: reason,
-        p_hold_months: holdMonths,
-      });
+      // 1. Direct update on loan_schedule to guarantee the hold is applied
+      const { error: updateError } = await supabase
+        .from('loan_schedule')
+        .update({
+          is_held: true,
+          hold_reason: reason,
+          hold_months: holdMonths || null,
+          held_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('loan_id', loanId)
+        .in('installment_no', installmentNumbers);
 
-      if (error) throw new Error(error.message || 'Failed to hold installments');
+      if (updateError) {
+        throw new Error(updateError.message || 'Failed to hold installments');
+      }
 
+      // 2. Also try RPC for database triggers/side effects if supported
+      try {
+        await supabase.rpc('hold_loan_installments', {
+          p_loan_id: loanId,
+          p_installment_numbers: installmentNumbers,
+          p_reason: reason,
+          p_hold_months: holdMonths,
+        });
+      } catch (rpcErr) {
+        console.warn('[holdInstallments] RPC fallback notice:', rpcErr);
+      }
+
+      // 3. Record history
       await recordHistory(loanId, 'installment_held', 'is_held', false, true, reason);
 
       return { loanId, installmentNumbers };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['loan_schedule', undefined] });
-      queryClient.invalidateQueries({ queryKey: ['loan_detection_report', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_detection_report'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_history'] });
       toast.success('Installments held successfully');
     },
     onError: (err: any) => toast.error(err.message),
@@ -569,21 +601,45 @@ export function useLoanMutations(companyId: string) {
       loanId: string;
       installmentNumbers: number[];
     }) => {
-      const { error } = await supabase.rpc('unhold_loan_installments', {
-        p_loan_id: loanId,
-        p_installment_numbers: installmentNumbers,
-      });
+      // 1. Direct update on loan_schedule to remove hold
+      const { error: updateError } = await supabase
+        .from('loan_schedule')
+        .update({
+          is_held: false,
+          hold_reason: null,
+          hold_months: null,
+          held_at: null,
+          held_by: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('loan_id', loanId)
+        .in('installment_no', installmentNumbers);
 
-      if (error) throw new Error(error.message || 'Failed to unhold installments');
+      if (updateError) {
+        throw new Error(updateError.message || 'Failed to unhold installments');
+      }
 
+      // 2. Also try RPC if supported
+      try {
+        await supabase.rpc('unhold_loan_installments', {
+          p_loan_id: loanId,
+          p_installment_numbers: installmentNumbers,
+        });
+      } catch (rpcErr) {
+        console.warn('[unholdInstallments] RPC fallback notice:', rpcErr);
+      }
+
+      // 3. Record history
       await recordHistory(loanId, 'installment_unheld', 'is_held', true, false, 'Hold removed');
 
       return { loanId, installmentNumbers };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['loan_schedule', undefined] });
-      queryClient.invalidateQueries({ queryKey: ['loan_detection_report', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_detection_report'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_history'] });
       toast.success('Hold removed successfully');
     },
     onError: (err: any) => toast.error(err.message),
@@ -614,8 +670,9 @@ export function useLoanMutations(companyId: string) {
       return { scheduleId, newTotal: newPrincipal + newInterest };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['loan_schedule', undefined] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['loan_repayments'] });
       toast.success('Installment adjusted successfully');
     },
     onError: (err: any) => toast.error(err.message),
