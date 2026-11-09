@@ -258,9 +258,22 @@ export function useLeaveMutations(companyId: string) {
       if (status === 'approved' && data.previousStatus !== 'approved' && Number(data.days || 0) >= 1) {
         if (!isSickLeave) {
           // Do not overwrite leave_settled or final_settled if the leave was already settled before approval
-          const { data: currentEmp } = await supabase.from('employees').select('status').eq('id', data.employeeId).single();
+          const { data: currentEmp } = await supabase.from('employees').select('status, is_salary_held').eq('id', data.employeeId).single();
           if (currentEmp && currentEmp.status !== 'leave_settled' && currentEmp.status !== 'final_settled') {
-            await supabase.from('employees').update({ status: 'on_leave' }).eq('id', data.employeeId);
+            const empUpdates: any = { status: 'on_leave' };
+
+            // If this approved leave is unpaid vacation/leave, place salary hold until rejoining
+            if (data.leave_type_id) {
+              const { data: lt } = await supabase.from('leave_types').select('name, is_paid').eq('id', data.leave_type_id).single();
+              const isUnpaid = lt?.is_paid === false || (lt?.name && lt.name.toLowerCase().includes('unpaid'));
+              if (isUnpaid && !currentEmp.is_salary_held) {
+                empUpdates.is_salary_held = true;
+                empUpdates.salary_hold_reason = 'On unpaid leave - salary held until rejoining';
+                empUpdates.salary_hold_at = new Date().toISOString();
+              }
+            }
+
+            await supabase.from('employees').update(empUpdates).eq('id', data.employeeId);
           }
         }
       } else if (data.previousStatus === 'approved' && status !== 'approved') {

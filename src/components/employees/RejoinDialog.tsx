@@ -222,13 +222,22 @@ export function RejoinDialog({ isOpen, onClose, employee, leave, onSuccess }: Re
       const latestRejoinDate = allDates.length > 0 ? allDates[0] : rejoinDate;
 
       // 3. Update employee record
+      const updates: any = {
+        status: anyStillOpen ? 'on_leave' : 'active',
+        rejoin_date: latestRejoinDate,
+        leave_settlement_date: null,
+      };
+
+      // If employee had a salary hold placed due to unpaid leave/vacation, release it upon rejoining
+      if (employee.is_salary_held && (!employee.salary_hold_reason || employee.salary_hold_reason.toLowerCase().includes('unpaid') || employee.salary_hold_reason.toLowerCase().includes('leave') || employee.salary_hold_reason.toLowerCase().includes('vacation'))) {
+        updates.is_salary_held = false;
+        updates.salary_hold_reason = null;
+        updates.salary_hold_at = null;
+      }
+
       await updateEmployee.mutateAsync({
         id: employee.id,
-        updates: {
-          status: anyStillOpen ? 'on_leave' : 'active',
-          rejoin_date: latestRejoinDate,
-          leave_settlement_date: null,
-        }
+        updates
       });
 
       // 4. Align vacation advance loan schedule if any
@@ -253,6 +262,43 @@ export function RejoinDialog({ isOpen, onClose, employee, leave, onSuccess }: Re
         }
       } catch (loanSyncErr) {
         console.error('Failed to sync vacation loan schedule:', loanSyncErr);
+      }
+
+      // 5. Automatically release salary payout holds placed due to unpaid leave/vacation upon rejoining
+      try {
+        const { data: heldItems } = await supabase
+          .from('payroll_items')
+          .select('id, hold_reason')
+          .eq('employee_id', employee.id)
+          .eq('payout_status', 'held');
+
+        if (heldItems && heldItems.length > 0) {
+          const unpaidHeld = heldItems.filter((item: any) =>
+            !item.hold_reason ||
+            item.hold_reason.toLowerCase().includes('unpaid') ||
+            item.hold_reason.toLowerCase().includes('leave') ||
+            item.hold_reason.toLowerCase().includes('vacation')
+          );
+
+          if (unpaidHeld.length > 0) {
+            const { data: { user } } = await supabase.auth.getUser();
+            const now = new Date().toISOString();
+            await supabase
+              .from('payroll_items')
+              .update({
+                payout_status: 'pending',
+                hold_released_by: user?.id || null,
+                hold_released_at: now,
+              })
+              .in('id', unpaidHeld.map((i: any) => i.id));
+
+            queryClient.invalidateQueries({ queryKey: ['payroll_items'] });
+            queryClient.invalidateQueries({ queryKey: ['payroll_runs'] });
+            toast.success(`Rejoining confirmed. Released ${unpaidHeld.length} held salary payout(s) for payout.`);
+          }
+        }
+      } catch (holdReleaseErr) {
+        console.error('Failed to release held salary on rejoin:', holdReleaseErr);
       }
 
       // Invalidate queries

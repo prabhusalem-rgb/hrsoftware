@@ -675,6 +675,34 @@ export default function PayrollPage() {
             manualOtherDeduction: adj.deduction
           });
 
+          // Check if employee has an active unpaid vacation/leave in this payroll month
+          // and has not yet rejoined in or before this month
+          const empLeaves = (leavesData || []).filter(l => l.employee_id === emp.id && l.status === 'approved');
+          const activeUnpaidLeave = empLeaves.find((l: any) => {
+            const lt = (leaveTypesData || []).find((t: any) => t.id === l.leave_type_id);
+            const isUnpaid = lt?.is_paid === false || (lt?.name && lt.name.toLowerCase().includes('unpaid')) || l.settlement_status === 'salary_hold';
+            if (!isUnpaid) return false;
+
+            const lStart = new Date(l.start_date);
+            const lEnd = new Date(l.end_date);
+            const monthStart = new Date(processYear, processMonth - 1, 1);
+            const monthEnd = new Date(processYear, processMonth, 0, 23, 59, 59, 999);
+            const overlapsMonth = lStart <= monthEnd && lEnd >= monthStart;
+            if (!overlapsMonth) return false;
+
+            // If employee has already rejoined in or before this payroll month, do not hold
+            if (emp.rejoin_date && !isAfterEndOfMonth(emp.rejoin_date)) {
+              return false;
+            }
+            return true;
+          });
+
+          const isSalaryHeld = Boolean(emp.is_salary_held || activeUnpaidLeave);
+          const holdReason = emp.is_salary_held
+            ? emp.salary_hold_reason
+            : `On unpaid leave (${activeUnpaidLeave?.start_date} to ${activeUnpaidLeave?.end_date}) - salary held until rejoining`;
+          const holdPlacedAt = (emp.is_salary_held && emp.salary_hold_at) || new Date().toISOString();
+
           return {
             employee_id: emp.id,
             basic_salary: result.basicSalary,
@@ -700,9 +728,9 @@ export default function PayrollPage() {
             leave_encashment: 0,
             air_ticket_balance: 0,
             final_total: 0,
-            payout_status: emp.is_salary_held ? 'held' : 'pending',
-            hold_reason: emp.is_salary_held ? emp.salary_hold_reason : null,
-            hold_placed_at: emp.is_salary_held ? emp.salary_hold_at || new Date().toISOString() : null,
+            payout_status: isSalaryHeld ? 'held' : 'pending',
+            hold_reason: isSalaryHeld ? holdReason : null,
+            hold_placed_at: isSalaryHeld ? holdPlacedAt : null,
             allowance_note: adj.allowanceNote || null,
             deduction_note: adj.deductionNote || null,
             created_at: new Date().toISOString(),
