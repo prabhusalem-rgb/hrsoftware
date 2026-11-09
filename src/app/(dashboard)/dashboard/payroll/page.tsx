@@ -382,11 +382,28 @@ export default function PayrollPage() {
         }
         return false;
       }
-      if (emp.status === 'active' || emp.status === 'probation' || emp.status === 'on_leave') {
-        if (isAfterEndOfMonth(emp.rejoin_date)) {
-          return false;
-        }
+      if (emp.status === 'active' || emp.status === 'probation') {
         return true;
+      }
+      if (emp.status === 'on_leave') {
+        // If employee worked before leave in the current month, or has unsettled leave in this month, include them
+        const hasWorkedThisMonth = empApprovedLeaves.some((l: any) => {
+          const lStart = new Date(l.start_date);
+          return lStart > monthStart && lStart <= monthEnd;
+        });
+        const hasUnsettledLeaveInMonth = empApprovedLeaves.some((l: any) => {
+          if (l.settlement_status === 'settled') return false;
+          const lStart = new Date(l.start_date);
+          const lEnd = new Date(l.end_date);
+          return lStart <= monthEnd && lEnd >= monthStart;
+        });
+        if (hasWorkedThisMonth || hasUnsettledLeaveInMonth) {
+          return true;
+        }
+        if (emp.rejoin_date && !isAfterEndOfMonth(emp.rejoin_date)) {
+          return true;
+        }
+        return false;
       }
       if (emp.status === 'final_settled' || emp.status === 'terminated') {
         // If termination / settlement date is after the end of this month, employee was still employed in this month
