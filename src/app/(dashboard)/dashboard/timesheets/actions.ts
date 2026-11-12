@@ -12,26 +12,25 @@ import {
 } from '@/lib/validations/schemas';
 import { logAudit } from '@/lib/audit/audit-logger.server';
 import { validateRequest } from '@/lib/auth/validate-request';
+import { requireModulePermission } from '@/lib/auth/server-permissions';
+import type { PermissionAction } from '@/lib/auth/permissions';
 
 // ============================================
 // HELPERS
 // ============================================
 
-async function getAuthorizedCompany() {
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+async function getAuthorizedCompany(
+  action: PermissionAction = 'create',
+  targetCompanyId?: string | null
+) {
+  const { profile } = await requireModulePermission('attendance', action, targetCompanyId);
 
-  // Allow: super_admin, company_admin, hr, foreman
-  if (!['super_admin', 'company_admin', 'hr', 'foreman'].includes(request.profile.role)) {
-    throw new Error('Insufficient permissions');
+  // super_admin and global users (company_id = null) can access all companies
+  if (profile.role === 'super_admin' || !profile.company_id) {
+    return null;
   }
 
-  // super_admin can have null company_id (access to all)
-  if (request.profile.role === 'super_admin') {
-    return null; // null means all companies
-  }
-
-  return request.profile.company_id!;
+  return profile.company_id;
 }
 
 const DAY_TYPE_LABELS: Record<string, string> = {
@@ -57,10 +56,7 @@ export async function getTimesheets(companyId: string, params: {
   dateFrom?: string;
   dateTo?: string;
 } = {}) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
 
   const { page = 1, limit = 50, ...filters } = params;
   const offset = (page - 1) * limit;
@@ -111,8 +107,7 @@ export async function getTimesheets(companyId: string, params: {
  * Fetch a single timesheet by ID.
  */
 export async function getTimesheet(id: string, companyId: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
   const { data, error } = await supabase
     .from('timesheets')
     .select(`
@@ -134,29 +129,25 @@ export async function getTimesheet(id: string, companyId: string) {
  * Foremen can only create for employees at their assigned site.
  */
 export async function createTimesheet(formData: z.infer<typeof timesheetAdminSchema>) {
-  const supabase = getAdminClient() || await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
-
-  const companyId = await getAuthorizedCompany();
+  const { request, profile, supabase } = await requireModulePermission('attendance', 'create');
+  const companyId = profile.role === 'super_admin' || !profile.company_id ? null : profile.company_id;
 
   // Validate input
   const validated = timesheetAdminSchema.parse(formData);
 
-  // If companyId is null (e.g. super_admin), resolve company_id from employee
-  let targetCompanyId = companyId;
-  if (!targetCompanyId) {
-    const { data: emp } = await supabase
-      .from('employees')
-      .select('company_id')
-      .eq('id', validated.employee_id)
-      .single();
-    targetCompanyId = emp?.company_id || null;
-  }
+  // Resolve company_id from employee and verify caller access
+  const { data: emp } = await supabase
+    .from('employees')
+    .select('company_id')
+    .eq('id', validated.employee_id)
+    .single();
+  const targetCompanyId = emp?.company_id || companyId;
 
   if (!targetCompanyId) {
     throw new Error('Target company could not be resolved for employee');
+  }
+  if (companyId && targetCompanyId !== companyId) {
+    throw new Error('You do not have permission to create timesheets for this company');
   }
 
   // Check for duplicate
@@ -207,7 +198,7 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
       entity_id: data.id,
       action: 'create',
       new_values: data,
-      details: { source: request.profile.role === 'foreman' ? 'foreman_submission' : 'admin_api' },
+      details: { source: profile.role === 'foreman' ? 'foreman_submission' : 'admin_api' },
     });
   } catch (auditErr) {
     console.error('[createTimesheet] Audit failed:', auditErr);
@@ -225,14 +216,10 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
  * Update an existing timesheet entry.
  */
 export async function updateTimesheet(id: string, formData: z.infer<typeof timesheetAdminSchema>) {
-  const supabase = getAdminClient() || await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { request, profile, supabase } = await requireModulePermission('attendance', 'update');
+  const companyId = profile.role === 'super_admin' || !profile.company_id ? null : profile.company_id;
 
-  const companyId = await getAuthorizedCompany();
-
-  // Fetch existing for audit
+  // Fetch existing for audit & company verification
   const { data: oldData, error: fetchError } = await supabase
     .from('timesheets')
     .select('*')
@@ -241,6 +228,9 @@ export async function updateTimesheet(id: string, formData: z.infer<typeof times
 
   if (fetchError || !oldData) {
     throw new Error('Timesheet not found');
+  }
+  if (companyId && oldData.company_id !== companyId) {
+    throw new Error('You do not have permission to update timesheets for this company');
   }
 
   // Validate
@@ -293,7 +283,7 @@ export async function updateTimesheet(id: string, formData: z.infer<typeof times
       action: 'update',
       old_values: oldData,
       new_values: data,
-      details: { source: request.profile.role === 'foreman' ? 'foreman_submission' : 'admin_api' },
+      details: { source: profile.role === 'foreman' ? 'foreman_submission' : 'admin_api' },
     });
   } catch (auditErr) {
     console.error('[updateTimesheet] Audit failed:', auditErr);
@@ -313,14 +303,10 @@ export async function updateTimesheet(id: string, formData: z.infer<typeof times
  * Foremen can only delete timesheets for employees at their assigned site.
  */
 export async function deleteTimesheet(id: string) {
-  const supabase = getAdminClient() || await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { request, profile, supabase } = await requireModulePermission('attendance', 'delete');
+  const companyId = profile.role === 'super_admin' || !profile.company_id ? null : profile.company_id;
 
-  const companyId = await getAuthorizedCompany();
-
-  // Fetch before delete for audit
+  // Fetch before delete for audit & company verification
   const { data: oldData, error: fetchError } = await supabase
     .from('timesheets')
     .select('*')
@@ -329,6 +315,9 @@ export async function deleteTimesheet(id: string) {
 
   if (fetchError || !oldData) {
     throw new Error('Timesheet not found');
+  }
+  if (companyId && oldData.company_id !== companyId) {
+    throw new Error('You do not have permission to delete timesheets for this company');
   }
 
   const { error } = await supabase.from('timesheets').delete().eq('id', id);
@@ -343,7 +332,7 @@ export async function deleteTimesheet(id: string) {
       entity_id: id,
       action: 'delete',
       old_values: oldData,
-      details: { source: request.profile.role === 'foreman' ? 'foreman_submission' : 'admin_api' },
+      details: { source: profile.role === 'foreman' ? 'foreman_submission' : 'admin_api' },
     });
   } catch (auditErr) {
     console.error('[deleteTimesheet] Audit failed:', auditErr);
@@ -366,8 +355,7 @@ export async function deleteTimesheet(id: string) {
  * Fetch all active projects for a company.
  */
 export async function getProjects(companyId: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
   const { data, error } = await supabase
     .from('projects')
     .select('*')
@@ -382,10 +370,7 @@ export async function getProjects(companyId: string) {
  * Create a new project.
  */
 export async function createProject(companyId: string, name: string, description?: string, email?: string) {
-  const supabase = getAdminClient() || await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { request, supabase } = await requireModulePermission('attendance', 'create', companyId);
 
   const { data, error } = await supabase
     .from('projects')
@@ -432,19 +417,19 @@ export async function createProject(companyId: string, name: string, description
  * Update a project.
  */
 export async function updateProject(id: string, updates: { name?: string; description?: string; status?: string; email?: string }) {
-  const supabase = getAdminClient() || await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { request, profile, supabase } = await requireModulePermission('attendance', 'update');
 
-  // Fetch old record for audit
+  // Fetch old record for audit & company verification
   const { data: oldData, error: oldErr } = await supabase
     .from('projects')
     .select('*')
     .eq('id', id)
     .single();
 
-  if (oldErr) throw new Error('Project not found');
+  if (oldErr || !oldData) throw new Error('Project not found');
+  if (profile.role !== 'super_admin' && profile.company_id && oldData.company_id !== profile.company_id) {
+    throw new Error('You do not have permission to update projects for this company');
+  }
 
   const cleanUpdates: any = {};
   if (updates.name !== undefined) cleanUpdates.name = updates.name.trim();
@@ -464,7 +449,7 @@ export async function updateProject(id: string, updates: { name?: string; descri
   // Audit log
   try {
     await logAudit({
-      company_id: request.profile.company_id || oldData.company_id,
+      company_id: profile.company_id || oldData.company_id,
       user_id: request.userId,
       entity_type: 'project',
       entity_id: id,
@@ -488,12 +473,9 @@ export async function updateProject(id: string, updates: { name?: string; descri
  * Delete a project (only if no timesheets reference it).
  */
 export async function deleteProject(id: string) {
-  const supabase = getAdminClient() || await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { request, profile, supabase } = await requireModulePermission('attendance', 'delete');
 
-  // Fetch old record for audit
+  // Fetch old record for audit & company verification
   const { data: oldData, error: oldErr } = await supabase
     .from('projects')
     .select('*')
@@ -501,6 +483,9 @@ export async function deleteProject(id: string) {
     .single();
 
   if (oldErr || !oldData) throw new Error('Project not found');
+  if (profile.role !== 'super_admin' && profile.company_id && oldData.company_id !== profile.company_id) {
+    throw new Error('You do not have permission to delete projects for this company');
+  }
 
   // Check if project has timesheets
   const { count } = await supabase
@@ -518,7 +503,7 @@ export async function deleteProject(id: string) {
   // Audit log
   try {
     await logAudit({
-      company_id: request.profile.company_id || oldData.company_id,
+      company_id: profile.company_id || oldData.company_id,
       user_id: request.userId,
       entity_type: 'project',
       entity_id: id,
@@ -541,12 +526,9 @@ export async function deleteProject(id: string) {
  * Archive a project (set status = 'completed' or 'on_hold').
  */
 export async function archiveProject(id: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { request, profile, supabase } = await requireModulePermission('attendance', 'update');
 
-  // Fetch old record for audit
+  // Fetch old record for audit & company verification
   const { data: oldData, error: oldErr } = await supabase
     .from('projects')
     .select('*')
@@ -554,6 +536,9 @@ export async function archiveProject(id: string) {
     .single();
 
   if (oldErr || !oldData) throw new Error('Project not found');
+  if (profile.role !== 'super_admin' && profile.company_id && oldData.company_id !== profile.company_id) {
+    throw new Error('You do not have permission to archive projects for this company');
+  }
 
   const { data, error } = await supabase
     .from('projects')
@@ -567,7 +552,7 @@ export async function archiveProject(id: string) {
   // Audit log
   try {
     await logAudit({
-      company_id: request.profile.company_id,
+      company_id: profile.company_id || oldData.company_id,
       user_id: request.userId,
       entity_type: 'project',
       entity_id: id,
@@ -587,13 +572,9 @@ export async function archiveProject(id: string) {
  * Get all foremen for a company.
  */
 export async function getForemen(companyId: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { profile, supabase } = await requireModulePermission('attendance', 'read', companyId);
 
-  // Only HR/Admins can view foremen list for assignment
-  if (!['super_admin', 'company_admin', 'hr'].includes(request.profile.role)) {
+  if (!['super_admin', 'company_admin', 'hr', 'operations'].includes(profile.role)) {
     throw new Error('Insufficient permissions');
   }
 
@@ -623,10 +604,7 @@ export async function getForemen(companyId: string) {
  * Used for dropdowns and assignment forms.
  */
 export async function getEmployees(companyId: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { profile, supabase } = await requireModulePermission('attendance', 'read', companyId);
 
   let query = supabase
     .from('employees')
@@ -636,7 +614,7 @@ export async function getEmployees(companyId: string) {
     .order('name_en');
 
   // Foremen can only see direct employees
-  if (request.profile.role === 'foreman') {
+  if (profile.role === 'foreman') {
     query = query.in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF']);
   }
 
@@ -653,8 +631,7 @@ export async function getEmployees(companyId: string) {
  * Get the active timesheet link for a company.
  */
 export async function getActiveTimesheetLink(companyId: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
   const { data, error } = await supabase
     .from('timesheet_links')
     .select('*')
@@ -671,26 +648,17 @@ export async function getActiveTimesheetLink(companyId: string) {
 /**
  * Generate a new timesheet link for the company.
  * Multiple active links can coexist — old links remain valid.
- * Only HR and admins can generate timesheet links.
+ * Only HR, admins, and operations (with attendance create permission) can generate timesheet links.
  * Any authenticated user with the link can submit timesheets (public form).
  */
 export async function generateTimesheetLink(companyId: string) {
-  const supabase = getAdminClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { request, profile, supabase } = await requireModulePermission('attendance', 'create', companyId);
 
-  // Only HR and admins can generate timesheet links
-  if (!['super_admin', 'company_admin', 'hr'].includes(request.profile.role)) {
-    throw new Error('Insufficient permissions: only HR and admins can generate timesheet links');
+  if (!['super_admin', 'company_admin', 'hr', 'operations'].includes(profile.role)) {
+    throw new Error('Insufficient permissions: only HR, operations, and admins can generate timesheet links');
   }
 
-  // Verify company access: super_admin can access any company, others must match their company_id
-  if (request.profile.role !== 'super_admin' && request.profile.company_id !== companyId) {
-    throw new Error('You do not have permission to generate links for this company');
-  }
-
-  console.log('[generateTimesheetLink] User:', request.userId, 'Role:', request.profile.role, 'Company:', request.profile.company_id, 'Target companyId:', companyId);
+  console.log('[generateTimesheetLink] User:', request.userId, 'Role:', profile.role, 'Company:', profile.company_id, 'Target companyId:', companyId);
 
   const token = crypto.randomUUID();
 
@@ -713,8 +681,8 @@ export async function generateTimesheetLink(companyId: string) {
       details: error.details,
       hint: error.hint,
       companyId,
-      userCompanyId: request.profile.company_id,
-      userRole: request.profile.role,
+      userCompanyId: profile.company_id,
+      userRole: profile.role,
     });
     throw new Error(`Failed to create timesheet link: ${error.message} [${error.code}]`);
   }
@@ -728,14 +696,10 @@ export async function generateTimesheetLink(companyId: string) {
  * Revoke (deactivate) the active timesheet link.
  */
 export async function revokeTimesheetLink(companyId: string) {
-  const supabase = getAdminClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
+  const { profile, supabase } = await requireModulePermission('attendance', 'update', companyId);
 
-  // Verify company access: super_admin can access any company, others must match their company_id
-  if (request.profile.role !== 'super_admin' && request.profile.company_id !== companyId) {
-    throw new Error('You do not have permission to revoke links for this company');
+  if (!['super_admin', 'company_admin', 'hr', 'operations'].includes(profile.role)) {
+    throw new Error('Insufficient permissions: only HR, operations, and admins can revoke timesheet links');
   }
 
   const { error } = await supabase
@@ -758,8 +722,7 @@ export async function revokeTimesheetLink(companyId: string) {
  * Uses RPC functions for performance on larger datasets.
  */
 export async function getTimesheetReport(companyId: string, month: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
 
   // Parse month (YYYY-MM) to get start and end dates
   const startDate = `${month}-01`;
@@ -964,8 +927,7 @@ export async function exportTimesheetsCSV(companyId: string, params: {
   dateFrom?: string;
   dateTo?: string;
 }) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
 
   let query = supabase
     .from('timesheets')
@@ -1019,8 +981,7 @@ export async function exportTimesheetsCSV(companyId: string, params: {
  * Get summary statistics for the timesheet dashboard.
  */
 export async function getTimesheetStats(companyId: string, month?: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
 
   let query = supabase
     .from('timesheets')
@@ -1073,16 +1034,7 @@ export async function deleteTimesheetsByRange(
   projectId?: string,
   employeeId?: string
 ) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
-  const { request } = await validateRequest();
-  if (!request?.profile) throw new Error('Unauthorized');
-
-  // Verify permissions - HR and Admins can delete
-  const allowedRoles = ['super_admin', 'company_admin', 'hr'];
-  if (!allowedRoles.includes(request.profile.role)) {
-    throw new Error('Insufficient permissions');
-  }
+  const { request, supabase } = await requireModulePermission('attendance', 'delete', companyId);
 
   let query = supabase
     .from('timesheets')

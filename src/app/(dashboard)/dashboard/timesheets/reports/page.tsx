@@ -67,7 +67,7 @@ interface ReportsData {
 }
 
 export default function TimesheetReportsPage() {
-  const { activeCompanyId, profile } = useCompany();
+  const { activeCompanyId, profile, hasPermission } = useCompany();
   const currentYear = new Date().getFullYear();
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
@@ -179,7 +179,7 @@ export default function TimesheetReportsPage() {
       return;
     }
 
-    const canDelete = profile && ['super_admin', 'company_admin', 'hr'].includes(profile.role);
+    const canDelete = profile?.role === 'super_admin' || hasPermission('attendance', 'delete');
     if (!canDelete) {
       toast.error('Insufficient permissions to delete timesheets.');
       return;
@@ -869,7 +869,7 @@ export default function TimesheetReportsPage() {
                     </div>
                     {detailedEntries.length > 0 && (
                       <div className="flex gap-2">
-                        {profile && ['super_admin', 'company_admin', 'hr'].includes(profile.role) && (
+                        {(profile?.role === 'super_admin' || hasPermission('attendance', 'delete')) && (
                           <Button variant="destructive" size="sm" onClick={handleDeleteRange} disabled={detailedLoading} className="gap-2">
                             <Trash2 className="mr-1 h-4 w-4" />
                             Delete Entries

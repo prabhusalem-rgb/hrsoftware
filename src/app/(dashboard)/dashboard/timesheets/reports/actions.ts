@@ -1,7 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
-import { getAdminClient } from '@/lib/supabase/admin';
+import { requireModulePermission } from '@/lib/auth/server-permissions';
 
 /**
  * Get timesheet report data for a specific month.
@@ -18,11 +17,7 @@ export async function getTimesheetReports(companyId: string, month: string) {
       return null;
     }
 
-    const supabase = (await createClient()) || getAdminClient();
-    if (!supabase) {
-      console.error('[getTimesheetReports] Database client not available');
-      return null;
-    }
+    const { supabase } = await requireModulePermission('attendance', 'read', companyId);
 
     const startDate = `${month}-01`;
     const [year, monthNum] = month.split('-').map(Number);
@@ -233,9 +228,8 @@ export async function getDetailedTimesheetEntries(
   projectId?: string,
   employeeId?: string
 ) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error('Database client not available');
   if (!companyId || !startDate || !endDate) return [];
+  const { supabase } = await requireModulePermission('attendance', 'read', companyId);
 
   const BATCH_SIZE = 1000;
   

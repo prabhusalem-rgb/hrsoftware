@@ -878,9 +878,11 @@ export default function TimesheetsDashboard() {
                   <CardTitle>Projects</CardTitle>
                   <CardDescription>Manage projects for timesheet assignments</CardDescription>
                 </div>
-                <Button onClick={openNewProject} className="gap-2">
-                  <Plus className="w-4 h-4" /> Add Project
-                </Button>
+                {canCreate && (
+                  <Button onClick={openNewProject} className="gap-2">
+                    <Plus className="w-4 h-4" /> Add Project
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -889,9 +891,11 @@ export default function TimesheetsDashboard() {
               ) : projects.length === 0 ? (
                 <div className="p-12 text-center text-muted-foreground">
                   <p>No projects yet</p>
-                  <Button onClick={openNewProject} variant="outline" className="mt-4">
-                    Create your first project
-                  </Button>
+                  {canCreate && (
+                    <Button onClick={openNewProject} variant="outline" className="mt-4">
+                      Create your first project
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <Table>
@@ -917,17 +921,21 @@ export default function TimesheetsDashboard() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditProject(proj)}>
-                              <Edit className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDeleteProject(proj.id)}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                            {canUpdate && (
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditProject(proj)}>
+                                <Edit className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleDeleteProject(proj.id)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -943,8 +951,8 @@ export default function TimesheetsDashboard() {
       {/* ===== PUBLIC LINK TAB ===== */}
       {activeTab === 'reports-link' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Public Link Card - HR/Admin only */}
-          {['super_admin', 'company_admin', 'hr'].includes(profile?.role || '') ? (
+          {/* Public Link Card - HR/Operations/Admin */}
+          {['super_admin', 'company_admin', 'hr', 'operations'].includes(profile?.role || '') && (canCreate || canUpdate) ? (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -975,12 +983,16 @@ export default function TimesheetsDashboard() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" className="flex-1 gap-2" onClick={handleGenerateLink}>
-                        <RefreshCw className="w-4 h-4" /> Regenerate Token
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={handleRevokeLink} title="Revoke access">
-                        Revoke
-                      </Button>
+                      {canCreate && (
+                        <Button variant="outline" className="flex-1 gap-2" onClick={handleGenerateLink}>
+                          <RefreshCw className="w-4 h-4" /> Regenerate Token
+                        </Button>
+                      )}
+                      {canUpdate && (
+                        <Button variant="destructive" size="icon" onClick={handleRevokeLink} title="Revoke access">
+                          Revoke
+                        </Button>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       A new link will be generated. Previous links remain active.
@@ -992,9 +1004,11 @@ export default function TimesheetsDashboard() {
                       Generate a new public submission link for this company. Any user with the link can submit timesheets.
                     </p>
 
-                    <Button onClick={handleGenerateLink} className="gap-2 w-full">
-                      <Plus className="w-4 h-4" /> Generate Public Link
-                    </Button>
+                    {canCreate && (
+                      <Button onClick={handleGenerateLink} className="gap-2 w-full">
+                        <Plus className="w-4 h-4" /> Generate Public Link
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -1008,7 +1022,7 @@ export default function TimesheetsDashboard() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  Only HR and administrators can generate public submission links.
+                  Only HR, operations, and administrators with create/update attendance permissions can generate public submission links.
                 </p>
               </CardContent>
             </Card>

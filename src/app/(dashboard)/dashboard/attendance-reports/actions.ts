@@ -8,6 +8,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { requireModulePermission } from '@/lib/auth/server-permissions';
 import {
   AttendanceReportFilters,
   ProjectAttendanceReport,
@@ -104,27 +105,7 @@ export async function generateMonthlyAttendanceReport(
   filters: AttendanceReportFilters
 ): Promise<{ success: boolean; data?: ProjectAttendanceReport; error?: string }> {
   try {
-    const supabase = await createClient();
-    if (!supabase) {
-      return { success: false, error: 'Database connection failed' };
-    }
-
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { success: false, error: 'Authentication required' };
-    }
-
-    // Get user profile
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, role, company_id, full_name')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile) {
-      return { success: false, error: 'Profile not found' };
-    }
+    const { profile, supabase } = await requireModulePermission('attendance', 'read');
 
     // Validate filters
     const validation = validateFilters(filters);
@@ -139,16 +120,10 @@ export async function generateMonthlyAttendanceReport(
       // For now, require company selection or use first company
       return { success: false, error: 'Super admin must specify company_id in request' };
     } else {
-      companyId = profile.company_id;
+      companyId = profile.company_id || '';
       if (!companyId) {
         return { success: false, error: 'No company assigned to profile' };
       }
-    }
-
-    // Check permissions - HR and Admins can generate
-    const allowedRoles = ['super_admin', 'company_admin', 'hr'];
-    if (!allowedRoles.includes(profile.role as string)) {
-      return { success: false, error: 'Insufficient permissions to generate reports' };
     }
 
     // ----------------------------------------------------------------

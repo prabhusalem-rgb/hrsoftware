@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Company, SystemSettings } from '@/types';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { evaluateModulePermission, type PermissionAction } from '@/lib/auth/permissions';
 
 interface CompanyContextType {
   activeCompanyId: string;
@@ -378,38 +379,14 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     [availableCompanies, activeCompanyIdState]
   );
 
-  const hasPermission = useCallback((moduleId: string, action: 'read' | 'create' | 'update' | 'delete' = 'read'): boolean => {
+  const hasPermission = useCallback((moduleId: string, action: PermissionAction = 'read'): boolean => {
     if (!profile) return false;
-    if (profile.role === 'super_admin') return true;
-
-    // Check system_settings role_permissions if available
-    const rolePerms = (systemSettings?.role_permissions as any)?.[profile.role];
-    if (rolePerms && rolePerms[moduleId]) {
-      const actions = rolePerms[moduleId];
-      return Array.isArray(actions) && actions.includes(action);
-    }
-
-    // Role-specific defaults
-    if (profile.role === 'viewer') {
-      return moduleId === 'attendance' && action === 'read';
-    }
-    if (profile.role === 'foreman') {
-      return moduleId === 'attendance';
-    }
-    if (profile.role === 'company_admin') {
-      return moduleId !== 'users' || action === 'read';
-    }
-    if (profile.role === 'hr') {
-      return ['employees', 'attendance', 'leaves', 'reports'].includes(moduleId);
-    }
-    if (profile.role === 'finance') {
-      return ['payroll', 'loans', 'reports', 'attendance'].includes(moduleId);
-    }
-    if (profile.role === 'operations') {
-      return ['attendance', 'leaves', 'reports'].includes(moduleId);
-    }
-
-    return false;
+    return evaluateModulePermission(
+      profile.role,
+      moduleId,
+      action,
+      systemSettings?.role_permissions as Record<string, Record<string, string[]>> | null | undefined
+    );
   }, [profile, systemSettings]);
 
   const value = useMemo(() => ({

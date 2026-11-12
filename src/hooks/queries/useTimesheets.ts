@@ -133,20 +133,20 @@ export function useTimesheetStats(companyId: string, month?: string) {
     queryFn: async () => {
       if (!companyId || !supabase) return null;
 
-      let dateFilter: any = {};
+      let query = supabase
+        .from('timesheets')
+        .select('day_type, hours_worked, overtime_hours')
+        .eq('company_id', companyId);
+
       if (month) {
         const startDate = `${month}-01`;
         const [year, monthNum] = month.split('-').map(Number);
         const lastDay = new Date(year, monthNum, 0).getDate();
         const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
-        dateFilter = { gte: startDate, lte: endDate };
+        query = query.gte('date', startDate).lte('date', endDate);
       }
 
-      const { data, error } = await supabase
-        .from('timesheets')
-        .select('day_type, hours_worked, overtime_hours')
-        .eq('company_id', companyId)
-        .apply(dateFilter);
+      const { data, error } = await query;
 
       if (error) throw new Error(error.message);
 
