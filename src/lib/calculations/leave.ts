@@ -150,10 +150,10 @@ export function calculateLeaveDays(startDate: string, endDate: string): number {
   return diff >= 1 ? diff : 0;
 }
 /**
- * Calculate the monetary value of unused leave days (Encashment).
+ * Calculate the monetary value of unused leave days (Encashment / Vacation Pay).
  * Rule:
- * - Staff and Nationals (Omani): Gross Salary / 30 * Days
- * - Direct Workers: Basic Salary / 30 * Days
+ * - Omani nationals, Indirect Staff, or Direct Staff with basic > 250: Gross Salary / 30 * Days
+ * - Direct Staff (Basic <= 250 OMR): (Basic pay + all allowances except food allowance) / 30 * Days
  */
 export function calculateLeaveEncashmentValue(
   employee: any,
@@ -163,11 +163,30 @@ export function calculateLeaveEncashmentValue(
 
   const nationality = (employee.nationality || '').toUpperCase();
   const isOmani = nationality === 'OMAN' || nationality === 'OMN' || nationality === 'OMANI';
+  const basicSalary = Number(employee.basic_salary || 0);
+  const grossSalary = Number(employee.gross_salary || 0);
+  const foodAllowance = Number(employee.food_allowance || 0);
 
   const isGrossSalaryBasis = isOmani || 
                              employee.category === 'INDIRECT_STAFF' || 
-                             Number(employee.basic_salary || 0) > 250;
-  const salaryBasis = isGrossSalaryBasis ? Number(employee.gross_salary || 0) : Number(employee.basic_salary || 0);
+                             basicSalary > 250;
+
+  let salaryBasis: number;
+  if (isGrossSalaryBasis) {
+    salaryBasis = grossSalary > 0 ? grossSalary : basicSalary;
+  } else {
+    // Direct Staff with basic <= 250 OMR: Basic pay + all allowances except food allowance
+    if (grossSalary > 0) {
+      salaryBasis = Math.max(basicSalary, grossSalary - foodAllowance);
+    } else {
+      const otherAllowances = Number(employee.housing_allowance || 0) +
+                              Number(employee.transport_allowance || 0) +
+                              Number(employee.special_allowance || 0) +
+                              Number(employee.site_allowance || 0) +
+                              Number(employee.other_allowance || 0);
+      salaryBasis = basicSalary + otherAllowances;
+    }
+  }
 
   if (isNaN(salaryBasis) || salaryBasis <= 0) return 0;
 

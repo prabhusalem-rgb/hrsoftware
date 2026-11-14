@@ -143,10 +143,17 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
     if (workingDays < 0) workingDays = 0;
   }
 
+  const foodAllowance = Number(employee?.food_allowance || 0);
   const isGrossSalaryBasis = employee?.nationality === 'OMANI' || 
                              employee?.category === 'INDIRECT_STAFF' || 
                              basicSalary > 250;
-  const leaveSalaryBasis = isGrossSalaryBasis ? grossSalary : basicSalary;
+  
+  // For Direct Staff with basic <= 250 OMR: Basic pay + all allowances except food allowance
+  const leaveSalaryBasis = isGrossSalaryBasis 
+    ? grossSalary 
+    : (grossSalary > 0 
+        ? Math.max(basicSalary, grossSalary - foodAllowance)
+        : basicSalary + Number(employee?.housing_allowance || 0) + Number(employee?.transport_allowance || 0) + Number(employee?.special_allowance || 0) + Number(employee?.site_allowance || 0) + Number(employee?.other_allowance || 0));
 
   // Calculate amounts
   const workingSalary = (grossSalary / 30) * workingDays;
@@ -586,7 +593,7 @@ export function LeaveSettlementWizard({ isOpen, onClose, employees, onProcess, p
                           <span className="text-slate-500 text-xs">days</span>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          @ {isGrossSalaryBasis ? 'Gross' : 'Basic'} salary basis
+                          @ {isGrossSalaryBasis ? 'Gross' : 'Basic + Allowances (excl. food)'} salary basis
                         </p>
                       </CardContent>
                     </Card>
