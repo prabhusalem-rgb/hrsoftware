@@ -35,6 +35,7 @@ const categoryLabels: Record<EmployeeCategory, string> = {
   OMANI_INDIRECT_STAFF: 'Omani In-Direct Staff',
   DIRECT_STAFF: 'Direct Staff',
   INDIRECT_STAFF: 'In-Direct Staff',
+  SUPPLY_LABOUR: 'Supply Labour',
 };
 
 const genderLabels: Record<string, string> = {
@@ -87,6 +88,8 @@ const emptyForm: EmployeeFormValues = {
   religion: 'muslim',
   family_status: '',
   category: 'INDIRECT_STAFF',
+  supplier_name: '',
+  contact_phone: '',
   department: '',
   designation: '',
   join_date: '',
@@ -211,7 +214,7 @@ export function EmployeeEditSheet({
 
         const mapCategory = (cat: string | null): EmployeeCategory => {
           if (!cat) return 'INDIRECT_STAFF';
-          const valid: EmployeeCategory[] = ['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF'];
+          const valid: EmployeeCategory[] = ['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF', 'SUPPLY_LABOUR'];
           if (valid.includes(cat as EmployeeCategory)) return cat as EmployeeCategory;
 
           // Legacy mapping
@@ -263,6 +266,8 @@ export function EmployeeEditSheet({
           religion: mapReligion(employee.religion || null),
           family_status: (employee.family_status || '') as 'single' | 'family' | '',
           category: mapCategory(employee.category),
+          supplier_name: employee.supplier_name ?? '',
+          contact_phone: employee.contact_phone ?? '',
           department: employee.department ?? '',
           designation: employee.designation ?? '',
           join_date: ensureString(employee.join_date, new Date().toISOString().split('T')[0]),
@@ -400,6 +405,8 @@ export function EmployeeEditSheet({
         religion: data.religion,
         family_status: data.family_status === '' ? undefined : (data.family_status as 'single' | 'family' | undefined),
         category: data.category,
+        supplier_name: data.supplier_name || '',
+        contact_phone: data.contact_phone || '',
         department: data.department,
         designation: data.designation,
         join_date: data.join_date,

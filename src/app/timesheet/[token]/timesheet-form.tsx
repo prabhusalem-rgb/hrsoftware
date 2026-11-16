@@ -49,7 +49,7 @@ interface FormDataWithToken {
 
 interface TimesheetFormProps {
   token: string;
-  employees: Array<{ id: string; name_en: string; emp_code: string }>;
+  employees: Array<{ id: string; name_en: string; emp_code: string; category?: string; supplier_name?: string }>;
   projects: Array<{ id: string; name: string }>;
   defaultDate?: string;
 }
@@ -280,8 +280,18 @@ export function TimesheetForm({ token, employees, projects, defaultDate }: Times
                       {emp.name_en?.charAt(0) || '?'}
                     </div>
                     <div className="flex flex-col">
-                      <span className="font-medium">{emp.name_en}</span>
-                      <span className="text-xs text-gray-500">{emp.emp_code}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium">{emp.name_en}</span>
+                        {emp.category === 'SUPPLY_LABOUR' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
+                            Supply
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 flex items-center gap-1">
+                        <span>{emp.emp_code}</span>
+                        {emp.supplier_name && <span className="text-gray-400">· {emp.supplier_name}</span>}
+                      </div>
                     </div>
                   </ComboboxItem>
                 ))}

@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -29,6 +30,8 @@ interface ProjectCostRecord {
   project_name: string;
   employee_name: string;
   emp_code: string;
+  category?: string;
+  supplier_name?: string;
   days_worked: number;
   ot_hours: number;
   holiday_ot_hours: number;
@@ -727,7 +730,20 @@ export default function TimesheetReportsPage() {
                             {recs.map((r, idx) => (
                               <TableRow key={`${proj}-${r.employee_name}-${idx}`}>
                                 <TableCell className="font-medium">{idx === 0 ? proj : ''}</TableCell>
-                                <TableCell><div>{r.employee_name}</div><div className="text-xs text-muted-foreground">{r.emp_code}</div></TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1.5 font-medium">
+                                    {r.employee_name}
+                                    {r.category === 'SUPPLY_LABOUR' && (
+                                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-purple-50 text-purple-700 border-purple-200">
+                                        Supply
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <span>{r.emp_code}</span>
+                                    {r.supplier_name && <span className="text-[10px] text-blue-600 font-normal">({r.supplier_name})</span>}
+                                  </div>
+                                </TableCell>
                                 <TableCell className="text-right">{r.days_worked}</TableCell>
                                 <TableCell className="text-right">{r.ot_hours.toFixed(1)}</TableCell>
                                 <TableCell className="text-right">{r.holiday_ot_hours.toFixed(1)}</TableCell>

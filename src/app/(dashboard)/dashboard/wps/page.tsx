@@ -117,6 +117,8 @@ export default function WPSPage() {
 
     const includedEmployeeIds = new Set(itemsToExport.map(i => i.employee_id));
     const runEmployees = freshEmployees.filter(employee => {
+      // Exclude supply labour from WPS salary runs
+      if (employee.category === 'SUPPLY_LABOUR') return false;
       if (mode === 'salary_only') {
         return includedEmployeeIds.has(employee.id);
       } else {

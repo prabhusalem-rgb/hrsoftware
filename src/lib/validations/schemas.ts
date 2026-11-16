@@ -48,7 +48,9 @@ export const employeeSchema = z.object({
   gender: z.enum(['male', 'female', 'other']).optional().default('female'),
   religion: z.enum(['muslim', 'non-muslim', 'other']).optional().default('muslim'),
   family_status: z.enum(['single', 'family', '']).optional().default(''),
-  category: z.enum(['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF']),
+  category: z.enum(['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF', 'SUPPLY_LABOUR']),
+  supplier_name: z.string().optional().default(''),
+  contact_phone: z.string().optional().default(''),
   department: z.string().optional().default(''),
   designation: z.string().optional().default(''),
   join_date: z.string().min(1, 'Join date is required'),
@@ -427,3 +429,22 @@ export type TimesheetFormData = z.infer<typeof timesheetSchema>;
 export type TimesheetSubmitData = z.infer<typeof timesheetSubmitSchema>;
 export type TimesheetAdminData = z.infer<typeof timesheetAdminSchema>;
 export type ProjectFormData = z.infer<typeof projectSchema>;
+
+// Supply Labour validation schema
+export const supplyLabourSchema = z.object({
+  company_id: z.string().uuid('Invalid company ID'),
+  emp_code: z.string().optional(),
+  name_en: z.string().min(2, 'Full name must be at least 2 characters'),
+  civil_id: z.string().min(1, 'Civil ID is required').regex(/^[0-9A-Za-z\-]+$/, 'Civil ID format is invalid'),
+  contact_phone: z.string().min(1, 'Mobile phone number is required'),
+  gross_salary: z.coerce.number().min(0.001, 'Fixed gross salary is required and must be greater than 0'),
+  supplier_name: z.string().optional().default(''),
+  bank_name: z.string().optional().default(''),
+  bank_iban: z.string().optional().default(''),
+  status: z.enum(['active', 'terminated']).optional().default('active'),
+  designation: z.string().optional().default('Supply Labour'),
+  department: z.string().optional().default('Operations'),
+});
+
+export type SupplyLabourInput = z.input<typeof supplyLabourSchema>;
+export type SupplyLabourFormData = z.infer<typeof supplyLabourSchema>;

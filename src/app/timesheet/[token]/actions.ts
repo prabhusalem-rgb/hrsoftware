@@ -85,10 +85,10 @@ export async function getTimesheetFormData(token: string) {
 
   const { data: employees, error: empError } = await supabase
     .from('employees')
-    .select('id, name_en, emp_code')
+    .select('id, name_en, emp_code, category, supplier_name')
     .eq('company_id', companyId)
     .eq('status', 'active')
-    .in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF'])
+    .in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR'])
     .order('name_en');
 
   if (empError) {

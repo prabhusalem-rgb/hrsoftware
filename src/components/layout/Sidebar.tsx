@@ -27,7 +27,8 @@ import {
   FileSpreadsheet,
   FileText,
   UserCheck,
-  PartyPopper
+  PartyPopper,
+  HardHat
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -96,6 +97,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           { label: 'Air Tickets', href: '/dashboard/air-tickets', icon: Plane, moduleId: 'leaves' },
           { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck, moduleId: 'attendance' },
           { label: 'Timesheets', href: '/dashboard/timesheets', icon: Clock, moduleId: 'attendance' },
+          { label: 'Supply Labour', href: '/dashboard/supply-labour', icon: HardHat, moduleId: 'attendance' },
         ],
       },
       {

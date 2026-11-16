@@ -57,7 +57,7 @@ export interface SystemSettings {
 
 // --- Employee ---
 export type EmployeeStatus = 'active' | 'on_leave' | 'leave_settled' | 'terminated' | 'final_settled' | 'probation' | 'offer_sent';
-export type EmployeeCategory = 'OMANI_DIRECT_STAFF' | 'OMANI_INDIRECT_STAFF' | 'DIRECT_STAFF' | 'INDIRECT_STAFF';
+export type EmployeeCategory = 'OMANI_DIRECT_STAFF' | 'OMANI_INDIRECT_STAFF' | 'DIRECT_STAFF' | 'INDIRECT_STAFF' | 'SUPPLY_LABOUR';
 export type IdType = 'civil_id' | 'passport';
 export type Nationality = 'OMANI' | 'INDIAN' | 'BANGALADESHI' | 'PAKISTANI' | 'SUDAN' | 'JODAN' | 'SYRIA' | 'YEMANI' | 'EGYPT' | 'PHLIPPHINES' | 'NEPALI';
 
@@ -74,6 +74,8 @@ export interface Employee {
   gender?: 'male' | 'female' | 'other';
   religion?: 'muslim' | 'non-muslim' | 'other';
   category: EmployeeCategory;
+  supplier_name?: string | null;  // Manpower supplier/agency for SUPPLY_LABOUR
+  contact_phone?: string;         // Mobile phone number
   department: string;
   designation: string;
   join_date: string;

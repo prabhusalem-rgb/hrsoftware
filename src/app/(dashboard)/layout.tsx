@@ -82,6 +82,19 @@ export default function DashboardLayout({
     }
 
     if (
+      pathname.startsWith('/dashboard/supply-labour') &&
+      !hasPermission('attendance', 'read') &&
+      !hasPermission('employees', 'read')
+    ) {
+      return {
+        title: 'Access Restricted',
+        message: 'You do not have permission to view the Supply Labour module.',
+        redirectHref: '/dashboard',
+        redirectLabel: 'Go to Dashboard',
+      };
+    }
+
+    if (
       (pathname.startsWith('/dashboard/payroll') || pathname.startsWith('/dashboard/settlement')) &&
       !hasPermission('payroll', 'read')
     ) {

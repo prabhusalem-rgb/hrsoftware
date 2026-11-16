@@ -72,6 +72,7 @@ const categoryLabels: Record<EmployeeCategory, string> = {
   OMANI_INDIRECT_STAFF: 'Omani In-Direct Staff',
   DIRECT_STAFF: 'Direct Staff',
   INDIRECT_STAFF: 'In-Direct Staff',
+  SUPPLY_LABOUR: 'Supply Labour',
 };
 
 interface EmployeeTableRowProps {

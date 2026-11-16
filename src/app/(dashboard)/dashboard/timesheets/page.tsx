@@ -959,7 +959,7 @@ export default function TimesheetsDashboard() {
                   <LinkIcon className="w-5 h-5 text-blue-500" /> Public Submission Link
                 </CardTitle>
                 <CardDescription>
-                  Generate a single public link for the company. Any user with the link can submit timesheets for any direct employee.
+                  Generate a single public link for the company. Any user with the link can submit timesheets for any direct employee or supply labour worker.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1040,7 +1040,7 @@ export default function TimesheetsDashboard() {
               </div>
               <div className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">2</div>
-                <p>Any user with the link can submit timesheets for any direct employee at the company.</p>
+                <p>Any user with the link can submit timesheets for any direct employee or supply labour worker at the company.</p>
               </div>
               <div className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">3</div>

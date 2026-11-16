@@ -46,7 +46,7 @@ export async function getTimesheetReports(companyId: string, month: string) {
           hours_worked,
           overtime_hours,
           projects(name),
-          employees(name_en, emp_code, basic_salary, gross_salary)
+          employees(name_en, emp_code, basic_salary, gross_salary, category, supplier_name)
         `)
         .eq('company_id', companyId)
         .gte('date', startDate)
@@ -64,6 +64,8 @@ export async function getTimesheetReports(companyId: string, month: string) {
             project_name: projName,
             employee_name: emp?.name_en || 'Unknown',
             emp_code: emp?.emp_code || '',
+            category: emp?.category || '',
+            supplier_name: emp?.supplier_name || '',
             days_worked: 0,
             ot_hours: 0,
             holiday_ot_hours: 0,
@@ -75,8 +77,10 @@ export async function getTimesheetReports(companyId: string, month: string) {
         rec.days_worked += 1;
         const basic = Number(emp?.basic_salary || 0);
         const gross = Number(emp?.gross_salary || 0);
+        const isSupplyLabour = emp?.category === 'SUPPLY_LABOUR';
         const regRate = gross / 208;
-        const otRate = (basic / 240) * 1.25;
+        // Condition 6: Supply Labour OT rate = gross / 240 (no 1.25 multiplier)
+        const otRate = isSupplyLabour ? (gross / 240) : ((basic / 240) * 1.25);
         const otHours = Number(t.overtime_hours || 0);
 
         if (t.day_type === 'working_day') {

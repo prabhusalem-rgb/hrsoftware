@@ -338,6 +338,11 @@ export function generateWPSSIF(
         console.warn(`Employee not found for item ${item.id}, skipping`);
         continue;
       }
+      // Condition 4: Strictly exclude Supply Labour from WPS salary files
+      if (employee.category === 'SUPPLY_LABOUR') {
+        console.log(`[WPS] Skipping supply labour employee: ${employee.name_en}`);
+        continue;
+      }
       if (!isValidEmployee(employee)) {
         console.warn(`Employee ${employee.name_en} missing required WPS fields, skipping`);
         continue;
@@ -409,6 +414,9 @@ export function generateWPSSIF(
       // Skip if employee rejoins in the export month (salary resumes)
       if (isSameMonth(employee.rejoin_date, year, month)) {
         console.log(`[WPS]   -> SKIP: rejoin_date in same month (${employee.rejoin_date})`);
+        continue;
+      }
+      if (employee.category === 'SUPPLY_LABOUR') {
         continue;
       }
       if (!isValidEmployee(employee)) {

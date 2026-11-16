@@ -608,14 +608,14 @@ export async function getEmployees(companyId: string) {
 
   let query = supabase
     .from('employees')
-    .select('id, name_en, emp_code, status')
+    .select('id, name_en, emp_code, status, category, supplier_name')
     .eq('company_id', companyId)
     .eq('status', 'active')
     .order('name_en');
 
-  // Foremen can only see direct employees
+  // Foremen can only see direct employees and supply labour
   if (profile.role === 'foreman') {
-    query = query.in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF']);
+    query = query.in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR']);
   }
 
   const { data, error } = await query;
