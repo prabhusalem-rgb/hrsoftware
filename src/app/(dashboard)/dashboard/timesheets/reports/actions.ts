@@ -39,7 +39,7 @@ export async function getTimesheetReports(companyId: string, month: string) {
     } else {
       console.warn('[getTimesheetReports] RPC get_project_cost_report fallback triggered:', projErr?.message);
       // Direct query fallback: 26 days * 8 hours = 208 hours for regular, basic/240 * 1.25 for OT
-      const { data: tsRows } = await supabase
+      let { data: tsRows, error: tsErr } = await supabase
         .from('timesheets')
         .select(`
           day_type,
@@ -53,6 +53,24 @@ export async function getTimesheetReports(companyId: string, month: string) {
         .lte('date', endDate)
         .not('project_id', 'is', null)
         .in('day_type', ['working_day', 'working_holiday', 'holiday_overtime']);
+
+      if (tsErr && (tsErr.message?.includes('supplier_name') || (tsErr as any).code === '42703')) {
+        const res = await supabase
+          .from('timesheets')
+          .select(`
+            day_type,
+            hours_worked,
+            overtime_hours,
+            projects(name),
+            employees(name_en, emp_code, basic_salary, gross_salary, category)
+          `)
+          .eq('company_id', companyId)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .not('project_id', 'is', null)
+          .in('day_type', ['working_day', 'working_holiday', 'holiday_overtime']);
+        tsRows = (res.data as any) || [];
+      }
 
       const map = new Map<string, any>();
       (tsRows || []).forEach((t: any) => {

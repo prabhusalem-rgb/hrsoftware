@@ -25,7 +25,7 @@ export default function DashboardLayout({
 
   // Check if viewer or current role has permission to access the current pathname
   const accessDeniedInfo = useMemo(() => {
-    if (loading || !profile) return null;
+    if (loading || !profile || !pathname) return null;
     if (isSuperAdmin) return null;
 
     if (isViewer) {

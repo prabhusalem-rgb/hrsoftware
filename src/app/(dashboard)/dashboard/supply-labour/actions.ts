@@ -50,6 +50,35 @@ export async function getSupplyLabourWorkers(targetCompanyId?: string, supplierF
 
   const { data, error } = await query;
   if (error) {
+    if (error.message?.includes('supplier_name') || (error as any).code === '42703') {
+      const fb = await supabase
+        .from('employees')
+        .select(`
+          id,
+          company_id,
+          emp_code,
+          name_en,
+          civil_id,
+          id_type,
+          contact_phone,
+          emergency_contact_phone,
+          category,
+          basic_salary,
+          gross_salary,
+          bank_name,
+          bank_iban,
+          status,
+          department,
+          designation,
+          join_date,
+          created_at,
+          updated_at
+        `)
+        .eq('company_id', companyId)
+        .eq('category', 'SUPPLY_LABOUR')
+        .order('name_en');
+      return ((fb.data || []).map((e: any) => ({ ...e, supplier_name: '' }))) as unknown as Employee[];
+    }
     console.error('[getSupplyLabourWorkers] Database error:', error);
     throw new Error(error.message);
   }

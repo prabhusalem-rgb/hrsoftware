@@ -619,7 +619,24 @@ export async function getEmployees(companyId: string) {
   }
 
   const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.message?.includes('supplier_name') || (error as any).code === '42703') {
+      let fallbackQuery = supabase
+        .from('employees')
+        .select('id, name_en, emp_code, status, category')
+        .eq('company_id', companyId)
+        .eq('status', 'active')
+        .order('name_en');
+
+      if (profile.role === 'foreman') {
+        fallbackQuery = fallbackQuery.in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR']);
+      }
+      const { data: fbData, error: fbError } = await fallbackQuery;
+      if (fbError) throw new Error(fbError.message);
+      return (fbData || []).map((e: any) => ({ ...e, supplier_name: '' }));
+    }
+    throw new Error(error.message);
+  }
   return data || [];
 }
 

@@ -83,13 +83,25 @@ export async function getTimesheetFormData(token: string) {
     return { error: 'ERR_COMPANY: Failed to fetch company details.' };
   }
 
-  const { data: employees, error: empError } = await supabase
+  let { data: employees, error: empError } = await supabase
     .from('employees')
     .select('id, name_en, emp_code, category, supplier_name')
     .eq('company_id', companyId)
     .eq('status', 'active')
     .in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR'])
     .order('name_en');
+
+  if (empError && (empError.message?.includes('supplier_name') || (empError as any).code === '42703')) {
+    const res = await supabase
+      .from('employees')
+      .select('id, name_en, emp_code, category')
+      .eq('company_id', companyId)
+      .eq('status', 'active')
+      .in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR'])
+      .order('name_en');
+    employees = (res.data || []).map((e: any) => ({ ...e, supplier_name: '' }));
+    empError = res.error;
+  }
 
   if (empError) {
     console.error('[getTimesheetFormData] Error fetching employees:', empError);
