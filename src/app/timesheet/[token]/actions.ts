@@ -26,108 +26,108 @@ export interface SubmitTimesheetSuccess {
 export type SubmitTimesheetResponse = SubmitTimesheetResult | SubmitTimesheetSuccess;
 
 export async function getTimesheetFormData(token: string) {
-  const supabase = getAdminClient();
-  if (!supabase) {
-    return { error: 'ERR_CONFIG: Server configuration error: Admin client not available' };
-  }
+  try {
+    const supabase = getAdminClient();
+    if (!supabase) {
+      return { error: 'ERR_CONFIG: Server configuration error: Admin client not available' };
+    }
 
-  console.log('[DEBUG] getTimesheetFormData called');
-  console.log('[DEBUG] received token:', JSON.stringify(token));
-  console.log('[DEBUG] token length:', token.length);
-  console.log('[DEBUG] token chars:', token.split('').map(c => c.charCodeAt(0)));
+    console.log('[DEBUG] getTimesheetFormData called');
+    console.log('[DEBUG] received token:', JSON.stringify(token));
+    console.log('[DEBUG] token length:', token?.length);
 
-  // First: simple existence check
-  const { data: simple, error: simpleErr } = await supabase
-    .from('timesheet_links')
-    .select('id, token, is_active')
-    .eq('token', token)
-    .maybeSingle();
+    // First: simple existence check
+    const { data: simple, error: simpleErr } = await supabase
+      .from('timesheet_links')
+      .select('id, token, is_active')
+      .eq('token', token)
+      .maybeSingle();
 
-  console.log('[DEBUG] simple query result:', JSON.stringify({ found: !!simple, error: simpleErr?.message, data: simple }));
+    console.log('[DEBUG] simple query result:', JSON.stringify({ found: !!simple, error: simpleErr?.message, data: simple }));
 
-  if (simpleErr || !simple) {
-    console.log('[DEBUG] Returning ERR_SIMPLE - simpleErr:', simpleErr, 'hasSimple:', !!simple);
-    return { error: 'ERR_SIMPLE: Invalid or inactive timesheet link.' };
-  }
+    if (simpleErr || !simple) {
+      console.log('[DEBUG] Returning ERR_SIMPLE - simpleErr:', simpleErr, 'hasSimple:', !!simple);
+      return { error: 'ERR_SIMPLE: Invalid or inactive timesheet link.' };
+    }
 
-  // Full query with join
-  const { data: linkData, error: linkError } = await supabase
-    .from('timesheet_links')
-    .select(`
-      company_id,
-      is_active,
-      companies(name_en, name_ar)
-    `)
-    .eq('token', token)
-    .maybeSingle();
+    // Full query with join
+    const { data: linkData, error: linkError } = await supabase
+      .from('timesheet_links')
+      .select(`
+        company_id,
+        is_active,
+        companies(name_en, name_ar)
+      `)
+      .eq('token', token)
+      .maybeSingle();
 
-  console.log('[DEBUG] linkData:', JSON.stringify(linkData, null, 2));
-  console.log('[DEBUG] linkError:', JSON.stringify(linkError, null, 2));
+    if (linkError || !linkData || !linkData.is_active) {
+      return { error: `ERR_LINK: Invalid or inactive timesheet link.` };
+    }
 
-  if (linkError || !linkData || !linkData.is_active) {
-    console.log('[DEBUG] Returning ERR_LINK - linkError:', linkError, 'hasLinkData:', !!linkData, 'isActive:', linkData?.is_active);
-    return { error: `ERR_LINK: Invalid or inactive timesheet link. linkError=${!!linkError} hasData=${!!linkData} isActive=${linkData?.is_active}` };
-  }
+    const companyId = linkData.company_id;
 
-  const companyId = linkData.company_id;
+    // Fetch company info for PDF
+    const { data: companyData, error: companyErr } = await supabase
+      .from('companies')
+      .select('id, name_en, name_ar, cr_number, address, contact_email, contact_phone, bank_name, bank_account, iban, wps_mol_id, logo_url, created_at, updated_at')
+      .eq('id', companyId)
+      .single();
 
-  // Fetch company info for PDF
-  const { data: companyData, error: companyErr } = await supabase
-    .from('companies')
-    .select('id, name_en, name_ar, cr_number, address, contact_email, contact_phone, bank_name, bank_account, iban, wps_mol_id, logo_url, created_at, updated_at')
-    .eq('id', companyId)
-    .single();
+    if (companyErr) {
+      console.error('[getTimesheetFormData] Company fetch error:', companyErr);
+      return { error: 'ERR_COMPANY: Failed to fetch company details.' };
+    }
 
-  if (companyErr) {
-    console.error('[getTimesheetFormData] Company fetch error:', companyErr);
-    return { error: 'ERR_COMPANY: Failed to fetch company details.' };
-  }
-
-  let { data: employees, error: empError } = await supabase
-    .from('employees')
-    .select('id, name_en, emp_code, category, supplier_name')
-    .eq('company_id', companyId)
-    .eq('status', 'active')
-    .in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR'])
-    .order('name_en');
-
-  if (empError && (empError.message?.includes('supplier_name') || (empError as any).code === '42703')) {
-    const res = await supabase
+    let { data: employees, error: empError } = await supabase
       .from('employees')
-      .select('id, name_en, emp_code, category')
+      .select('id, name_en, emp_code, category, supplier_name')
       .eq('company_id', companyId)
       .eq('status', 'active')
       .in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR'])
       .order('name_en');
-    employees = (res.data || []).map((e: any) => ({ ...e, supplier_name: '' }));
-    empError = res.error;
+
+    if (empError && (empError.message?.includes('supplier_name') || (empError as any).code === '42703')) {
+      const res = await supabase
+        .from('employees')
+        .select('id, name_en, emp_code, category')
+        .eq('company_id', companyId)
+        .eq('status', 'active')
+        .in('category', ['DIRECT_STAFF', 'OMANI_DIRECT_STAFF', 'SUPPLY_LABOUR'])
+        .order('name_en');
+      employees = (res.data || []).map((e: any) => ({ ...e, supplier_name: '' }));
+      empError = res.error;
+    }
+
+    if (empError) {
+      console.error('[getTimesheetFormData] Error fetching employees:', empError);
+      return { error: `ERR_EMPLOYEES: Failed to fetch employees: ${empError.message}` };
+    }
+
+    const { data: projects, error: projError } = await supabase
+      .from('projects')
+      .select('id, name')
+      .eq('company_id', companyId)
+      .eq('status', 'active')
+      .order('name');
+
+    if (projError) {
+      console.error('[getTimesheetFormData] Error fetching projects:', projError);
+      return { error: `ERR_PROJECTS: Failed to fetch projects: ${projError.message}` };
+    }
+
+    return {
+      companyName: Array.isArray(linkData.companies)
+        ? linkData.companies[0]?.name_en
+        : (linkData.companies as any)?.name_en || 'Company',
+      companyId,
+      employees: employees || [],
+      projects: projects || [],
+    };
+  } catch (error: any) {
+    console.error('[getTimesheetFormData] Unexpected error:', error);
+    return { error: error?.message || 'Failed to load timesheet link.' };
   }
-
-  if (empError) {
-    console.error('[getTimesheetFormData] Error fetching employees:', empError);
-    return { error: `ERR_EMPLOYEES: Failed to fetch employees: ${empError.message}` };
-  }
-
-  const { data: projects, error: projError } = await supabase
-    .from('projects')
-    .select('id, name')
-    .eq('company_id', companyId)
-    .eq('status', 'active')
-    .order('name');
-
-  if (projError) {
-    console.error('[getTimesheetFormData] Error fetching projects:', projError);
-    return { error: `ERR_PROJECTS: Failed to fetch projects: ${projError.message}` };
-  }
-
-  return {
-    companyName: Array.isArray(linkData.companies)
-      ? linkData.companies[0]?.name_en
-      : (linkData.companies as any)?.name_en || 'Company',
-    companyId,
-    employees: employees || [],
-    projects: projects || [],
-  };
 }
 
 export async function submitTimesheet(formData: FormData): Promise<SubmitTimesheetResponse> {

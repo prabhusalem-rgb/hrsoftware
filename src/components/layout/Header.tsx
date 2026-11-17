@@ -19,7 +19,8 @@ import { useCompany } from '@/components/providers/CompanyProvider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useState, useEffect } from 'react';
 
-function getBreadcrumb(pathname: string): string {
+function getBreadcrumb(pathname: string | null): string {
+  if (!pathname) return 'Dashboard';
   const segments = pathname.split('/').filter(Boolean);
   if (segments.length <= 1) return 'Dashboard';
   const last = segments[segments.length - 1];
@@ -75,7 +76,7 @@ export function Header() {
 
       {/* Company Switcher */}
       <div className="hidden sm:block">
-        <Select value={activeCompanyId} onValueChange={(v) => v && setActiveCompanyId(v)}>
+        <Select value={activeCompanyId || undefined} onValueChange={(v) => v && setActiveCompanyId(v)}>
           <SelectTrigger className="w-[200px] h-9 bg-muted/50 border-0 focus:ring-primary/20">
             <SelectValue placeholder="Select company">
               {availableCompanies.find(c => c.id.trim() === activeCompanyId?.trim())?.name_en || activeCompanyId || 'Select company'}

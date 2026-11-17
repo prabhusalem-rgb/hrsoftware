@@ -220,8 +220,10 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
 
               if (!('href' in item)) return null;
               const Icon = item.icon;
-              const isActive = pathname === item.href ||
-                (item.href !== '/dashboard' && pathname.startsWith(item.href));
+              const isActive = !!pathname && (
+                pathname === item.href ||
+                (item.href !== '/dashboard' && pathname.startsWith(item.href))
+              );
 
               return (
                 <Link

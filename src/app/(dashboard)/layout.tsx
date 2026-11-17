@@ -156,7 +156,7 @@ export default function DashboardLayout({
 
   // If a viewer visits root /dashboard or /dashboard/attendance, smoothly redirect to /dashboard/timesheets
   useEffect(() => {
-    if (!loading && isViewer && (pathname === '/dashboard' || pathname.startsWith('/dashboard/attendance'))) {
+    if (!loading && isViewer && pathname && (pathname === '/dashboard' || pathname.startsWith('/dashboard/attendance'))) {
       router.replace('/dashboard/timesheets');
     }
   }, [loading, isViewer, pathname, router]);
