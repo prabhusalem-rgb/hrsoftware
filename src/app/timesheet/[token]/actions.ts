@@ -379,7 +379,7 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
 
   const { data: targetEmployee, error: targetEmpErr } = await supabase
     .from('employees')
-    .select('company_id')
+    .select('id, name_en, emp_code, basic_salary, gross_salary, company_id')
     .eq('id', employeeId)
     .single();
 
@@ -389,6 +389,18 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
 
   if (targetEmployee.company_id !== companyId) {
     return { success: false, error: 'ERR_EMP_WRONG_COMPANY: Employee does not belong to this company.' };
+  }
+
+  let projectData: { name: string } | null = null;
+  if (projectId) {
+    const { data: proj } = await supabase
+      .from('projects')
+      .select('name')
+      .eq('id', projectId)
+      .maybeSingle();
+    if (proj?.name) {
+      projectData = { name: proj.name };
+    }
   }
 
   const { data: duplicate, error: dupError } = await supabase
@@ -418,14 +430,11 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     submitted_by_name: submitterNameFormatted,
   };
 
+  // We select '*' directly on timesheets to avoid PostgREST relationship ambiguity with employees
   let { data: newTimesheet, error: insertError } = await supabase
     .from('timesheets')
     .insert(insertPayload)
-    .select(`
-      *,
-      employees(name_en, emp_code, basic_salary, gross_salary),
-      projects(name)
-    `)
+    .select('*')
     .single();
 
   // Backward-compatibility: If submitted_by columns are not yet applied via migration 130
@@ -435,13 +444,9 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     const retry = await supabase
       .from('timesheets')
       .insert(insertPayload)
-      .select(`
-        *,
-        employees(name_en, emp_code, basic_salary, gross_salary),
-        projects(name)
-      `)
+      .select('*')
       .single();
-    newTimesheet = retry.data ? { ...retry.data, submitted_by_id: submitter.id, submitted_by_name: submitterNameFormatted } : null;
+    newTimesheet = retry.data;
     insertError = retry.error;
   }
 
@@ -450,6 +455,19 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     return { success: false, error: `ERR_INSERT: ${insertError.message || 'Failed to submit timesheet.'}` };
   }
 
+  const completeTimesheet = {
+    ...newTimesheet,
+    submitted_by_id: newTimesheet.submitted_by_id || submitter.id,
+    submitted_by_name: newTimesheet.submitted_by_name || submitterNameFormatted,
+    employees: {
+      name_en: targetEmployee.name_en || '',
+      emp_code: targetEmployee.emp_code || '',
+      basic_salary: Number(targetEmployee.basic_salary || 0),
+      gross_salary: Number(targetEmployee.gross_salary || 0),
+    },
+    projects: projectData,
+  };
+
   try {
     await logAudit({
       company_id: companyId,
@@ -457,7 +475,7 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
       entity_type: 'timesheet',
       entity_id: newTimesheet.id,
       action: 'create',
-      new_values: newTimesheet,
+      new_values: completeTimesheet,
       details: {
         submission_method: 'public_link',
         token: token.slice(0, 8) + '...',
@@ -470,5 +488,5 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     console.error('[submitTimesheet] Audit log failed:', auditErr);
   }
 
-  return { success: true, timesheet: newTimesheet, company: companyData, submitter };
+  return { success: true, timesheet: completeTimesheet, company: companyData, submitter };
 }

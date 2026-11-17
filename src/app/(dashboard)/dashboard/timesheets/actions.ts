@@ -202,6 +202,23 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
     error = retry.error;
   }
 
+  // Defensive fallback if PostgREST detects relationship ambiguity between timesheets and employees
+  if (error && (error.message?.includes('more than one relationship') || (error as any).code === 'PGRST200')) {
+    const retry = await supabase
+      .from('timesheets')
+      .insert(insertPayload)
+      .select('*')
+      .single();
+    if (retry.data) {
+      data = {
+        ...retry.data,
+        employees: emp ? { name_en: (emp as any).name_en || '', emp_code: (emp as any).emp_code || '' } : null,
+        projects: null,
+      };
+      error = null;
+    }
+  }
+
   if (error) {
     if (error.code === '23505') {
       throw new Error('A timesheet already exists for this employee on this date');
