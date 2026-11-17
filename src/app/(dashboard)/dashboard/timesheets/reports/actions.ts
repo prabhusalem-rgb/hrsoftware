@@ -46,7 +46,7 @@ export async function getTimesheetReports(companyId: string, month: string) {
           hours_worked,
           overtime_hours,
           projects(name),
-          employees(name_en, emp_code, basic_salary, gross_salary, category, supplier_name)
+          employees!employee_id(name_en, emp_code, basic_salary, gross_salary, category, supplier_name)
         `)
         .eq('company_id', companyId)
         .gte('date', startDate)
@@ -62,7 +62,7 @@ export async function getTimesheetReports(companyId: string, month: string) {
             hours_worked,
             overtime_hours,
             projects(name),
-            employees(name_en, emp_code, basic_salary, gross_salary, category)
+            employees!employee_id(name_en, emp_code, basic_salary, gross_salary, category)
           `)
           .eq('company_id', companyId)
           .gte('date', startDate)
@@ -170,7 +170,7 @@ export async function getTimesheetReports(companyId: string, month: string) {
           date,
           reason,
           projects(name),
-          employees(name_en, emp_code)
+          employees!employee_id(name_en, emp_code)
         `)
         .eq('company_id', companyId)
         .gte('date', startDate)
@@ -287,7 +287,7 @@ export async function getDetailedTimesheetEntries(
         hours_worked,
         overtime_hours,
         reason,
-        employees(name_en, emp_code, designation),
+        employees!employee_id(name_en, emp_code, designation),
         projects(name)
       `)
       .eq('company_id', companyId)

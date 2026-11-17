@@ -6,6 +6,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,10 +16,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Search, ClipboardCheck, Clock, Pencil, Trash2, User, X } from 'lucide-react';
+import { Plus, Search, ClipboardCheck, Clock, Pencil, Trash2, User, X, ArrowRight, ExternalLink } from 'lucide-react';
 import { useCompany } from '@/components/providers/CompanyProvider';
 import { useEmployees } from '@/hooks/queries/useEmployees';
 import { useAttendance } from '@/hooks/queries/useAttendance';
+import { useTimesheets } from '@/hooks/queries/useTimesheets';
 import { useAttendanceMutations } from '@/hooks/queries/useAttendanceMutations';
 import { Attendance, AttendanceStatus, OvertimeType } from '@/types';
 import { toast } from 'sonner';
@@ -32,6 +34,20 @@ import {
   ComboboxItem,
   ComboboxTrigger,
 } from '@/components/ui/combobox';
+
+const dayTypeColors: Record<string, string> = {
+  working_day: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  working_holiday: 'bg-amber-100 text-amber-700 border-amber-200',
+  holiday_overtime: 'bg-orange-100 text-orange-700 border-orange-200',
+  absent: 'bg-red-100 text-red-700 border-red-200',
+};
+
+const dayTypeLabels: Record<string, string> = {
+  working_day: 'Working Day',
+  working_holiday: 'Working Holiday',
+  holiday_overtime: 'Holiday Overtime',
+  absent: 'Absent',
+};
 
 export default function AttendancePage() {
   const { activeCompanyId, profile, hasPermission } = useCompany();
@@ -48,6 +64,7 @@ export default function AttendancePage() {
 
   const [search, setSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+  const [activeTab, setActiveTab] = useState<'timesheets' | 'adjustments'>('timesheets');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [mode, setMode] = useState<'daily' | 'monthly'>('daily');
   const [editingRecord, setEditingRecord] = useState<Attendance | null>(null);
@@ -56,6 +73,14 @@ export default function AttendancePage() {
   const [formEmployeeId, setFormEmployeeId] = useState('');
   const [formEmployeeSearchQuery, setFormEmployeeSearchQuery] = useState('');
 
+  // Timesheets Query for selected month
+  const timesheetsQuery = useTimesheets({
+    companyId: activeCompanyId || '',
+    month: selectedMonth,
+  });
+  const timesheetList = (timesheetsQuery.data ?? []) as any[];
+  const timesheetsLoading = timesheetsQuery.isLoading;
+
   const records = attendanceData;
 
   const filtered = records.filter(r => {
@@ -63,6 +88,19 @@ export default function AttendancePage() {
     const matchSearch = emp?.name_en.toLowerCase().includes(search.toLowerCase()) ?? false;
     const matchMonth = r.date.startsWith(selectedMonth);
     return matchSearch && matchMonth;
+  });
+
+  const filteredTimesheets = timesheetList.filter((ts) => {
+    const emp = employees.find((e) => (e.id || '').trim() === (ts.employee_id || '').trim());
+    const empName = ts.employees?.name_en || emp?.name_en || '';
+    const empCode = ts.employees?.emp_code || emp?.emp_code || '';
+    const projName = ts.projects?.name || '';
+    const query = search.toLowerCase();
+    return (
+      empName.toLowerCase().includes(query) ||
+      empCode.toLowerCase().includes(query) ||
+      projName.toLowerCase().includes(query)
+    );
   });
 
   // Reset overtime_type to 'normal' when switching to monthly mode (so OT actually counts)
@@ -132,64 +170,216 @@ export default function AttendancePage() {
 
   // Summary counts
   const absentCount = filtered.filter(r => r.status === 'absent').length;
-  // Sum both daily and monthly OT
+  const timesheetAbsentCount = filteredTimesheets.filter(t => t.day_type === 'absent').length;
+  const totalAbsentCount = absentCount + timesheetAbsentCount;
+
   const otHours = filtered.reduce((sum, r) => sum + Number(r.overtime_hours), 0);
+  const timesheetOtHours = filteredTimesheets.reduce((sum, t) => sum + Number(t.overtime_hours || 0), 0);
+  const totalOtHours = otHours + timesheetOtHours;
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
-          <p className="text-muted-foreground text-sm">Mark absent (daily) or record total monthly overtime hours.</p>
+          <p className="text-muted-foreground text-sm">
+            View daily project timesheets or record manual absent/overtime adjustments.
+          </p>
         </div>
-        {canCreate && (
-          <Button onClick={() => {
-            setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '', additions: 0, deductions: 0, addition_reason: '', deduction_reason: '' });
-            setFormEmployeeId('');
-            setFormEmployeeSearchQuery('');
-            setEditingRecord(null);
-            setMode('daily');
-            setDialogOpen(true);
-          }} className="gap-2 shadow-sm">
-            <Plus className="w-4 h-4" /> Record Absent, OT & Adjustments
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/timesheets">
+            <Button variant="outline" className="gap-2 shadow-sm">
+              <Clock className="w-4 h-4" /> Go to Timesheets
+            </Button>
+          </Link>
+          {canCreate && (
+            <Button onClick={() => {
+              setForm({ employee_id: '', date: '', status: 'absent', overtime_hours: 0, overtime_type: 'none', notes: '', additions: 0, deductions: 0, addition_reason: '', deduction_reason: '' });
+              setFormEmployeeId('');
+              setFormEmployeeSearchQuery('');
+              setEditingRecord(null);
+              setMode('daily');
+              setDialogOpen(true);
+            }} className="gap-2 shadow-sm">
+              <Plus className="w-4 h-4" /> Record Absent, OT & Adjustments
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Card className="border-0 shadow-sm bg-emerald-50/50 dark:bg-emerald-950/10">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"><ClipboardCheck className="w-5 h-5" /></div>
-            <div><p className="text-xs text-muted-foreground font-medium">Present (Default)</p><p className="text-xl font-bold">{employees.filter(e => e.status === 'active').length}</p></div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Active Staff</p>
+              <p className="text-xl font-bold">{employees.filter(e => e.status === 'active').length}</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-sm bg-red-50/50 dark:bg-red-950/10">
+        <Card className="border-0 shadow-sm bg-indigo-50/50 dark:bg-indigo-950/10">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"><ClipboardCheck className="w-5 h-5" /></div>
-            <div><p className="text-xs text-muted-foreground font-medium">Absent (This Period)</p><p className="text-xl font-bold">{absentCount}</p></div>
+            <div className="p-2.5 rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400"><Clock className="w-5 h-5" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Timesheets Logged</p>
+              <p className="text-xl font-bold">{timesheetList.length}</p>
+            </div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-blue-50/50 dark:bg-blue-950/10">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"><Clock className="w-5 h-5" /></div>
-            <div><p className="text-xs text-muted-foreground font-medium">Total OT Hours</p><p className="text-xl font-bold">{otHours.toFixed(1)}</p></div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Total OT Hours</p>
+              <p className="text-xl font-bold">{totalOtHours.toFixed(1)} <span className="text-xs font-normal">h</span></p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm bg-red-50/50 dark:bg-red-950/10">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"><ClipboardCheck className="w-5 h-5" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Total Absents</p>
+              <p className="text-xl font-bold">{totalAbsentCount}</p>
+            </div>
           </CardContent>
         </Card>
       </div>
 
+      {/* Tabs & Filter Bar */}
       <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-3 border-b">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px] max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+        <CardHeader className="pb-3 border-b space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {/* Tab switchers */}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={activeTab === 'timesheets' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveTab('timesheets')}
+                className="gap-2 text-xs"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                Daily Timesheets ({filteredTimesheets.length})
+              </Button>
+              <Button
+                type="button"
+                variant={activeTab === 'adjustments' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveTab('adjustments')}
+                className="gap-2 text-xs"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+                Attendance Adjustments ({filtered.length})
+              </Button>
             </div>
-            <Input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-[180px] h-9" />
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[200px] max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input placeholder="Search employee or project..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9 text-sm" />
+              </div>
+              <Input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-[180px] h-9 text-sm" />
+            </div>
           </div>
         </CardHeader>
+
         <CardContent className="p-0">
-          {filtered.length === 0 ? (
+          {activeTab === 'timesheets' ? (
+            timesheetsLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : filteredTimesheets.length === 0 ? (
+              <div className="text-center py-16 px-4 text-muted-foreground space-y-3">
+                <Clock className="w-12 h-12 mx-auto text-muted-foreground/30" />
+                <p className="font-semibold text-foreground">
+                  No timesheet entries found for {new Date(selectedMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </p>
+                <p className="text-sm max-w-md mx-auto">
+                  Daily timesheets submitted by site supervisors, foremen, or via the public timesheet link will appear here.
+                </p>
+                <div className="pt-2">
+                  <Link href="/dashboard/timesheets">
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <span>Open Timesheets Dashboard</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Date</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Day Type</TableHead>
+                      <TableHead className="text-right">Regular</TableHead>
+                      <TableHead className="text-right">OT</TableHead>
+                      <TableHead>Submitted By</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTimesheets.map((ts) => (
+                      <TableRow key={ts.id}>
+                        <TableCell className="font-mono text-sm whitespace-nowrap">{ts.date}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm">{ts.employees?.name_en || 'Unknown'}</span>
+                            <span className="text-xs text-muted-foreground">{ts.employees?.emp_code}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">{ts.projects?.name || '-'}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={`${dayTypeColors[ts.day_type] || 'bg-slate-100 text-slate-700'} border-0 text-xs font-medium`}
+                          >
+                            {dayTypeLabels[ts.day_type] || ts.day_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">{ts.hours_worked} hrs</TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {Number(ts.overtime_hours || 0) > 0 ? (
+                            <span className="text-amber-700 font-semibold">{ts.overtime_hours} hrs</span>
+                          ) : (
+                            <span className="text-muted-foreground/50">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {ts.submitted_by_name ? (
+                            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                              <User className="w-3 h-3 text-muted-foreground" />
+                              {ts.submitted_by_name}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/60 italic">Direct / Link</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
+                          {ts.reason || '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/dashboard/timesheets?employeeId=${ts.employee_id}`}>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
+                              <span>Manage</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )
+          ) : filtered.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
               <ClipboardCheck className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium">No records for {new Date(selectedMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>

@@ -65,7 +65,7 @@ export async function getTimesheets(companyId: string, params: {
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, basic_salary),
+      employees!employee_id(name_en, emp_code, basic_salary),
       projects(name)
     `, { count: 'exact' })
     .eq('company_id', companyId)
@@ -112,7 +112,7 @@ export async function getTimesheet(id: string, companyId: string) {
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, basic_salary),
+      employees!employee_id(name_en, emp_code, basic_salary),
       projects(name)
     `)
     .eq('id', id)
@@ -887,7 +887,7 @@ async function getTimesheetReportFallback(companyId: string, startDate: string, 
     .from('timesheets')
     .select(`
       *,
-      employees(name_en, emp_code, basic_salary, gross_salary),
+      employees!employee_id(name_en, emp_code, basic_salary, gross_salary),
       projects(name)
     `)
     .eq('company_id', companyId)
@@ -992,7 +992,7 @@ export async function exportTimesheetsCSV(companyId: string, params: {
       overtime_hours,
       reason,
       submitted_by_name,
-      employees(name_en, emp_code),
+      employees!employee_id(name_en, emp_code),
       projects(name)
     `)
     .eq('company_id', companyId);
@@ -1020,7 +1020,7 @@ export async function exportTimesheetsCSV(companyId: string, params: {
         hours_worked,
         overtime_hours,
         reason,
-        employees(name_en, emp_code),
+        employees!employee_id(name_en, emp_code),
         projects(name)
       `)
       .eq('company_id', companyId);

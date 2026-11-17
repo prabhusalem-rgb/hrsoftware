@@ -24,12 +24,16 @@ export function useTimesheets(params: {
   return useQuery<Timesheet[]>({
     queryKey: ['timesheets', companyId, { ...filters }],
     queryFn: async () => {
-      const buildQuery = () => {
+      const buildQuery = (disambiguate: boolean = true) => {
+        const empEmbed = disambiguate
+          ? 'employees!employee_id(name_en, emp_code, gross_salary)'
+          : 'employees(name_en, emp_code, gross_salary)';
+
         let q = supabase
           .from('timesheets')
           .select(`
             *,
-            employees(name_en, emp_code, gross_salary),
+            ${empEmbed},
             projects(name)
           `)
           .eq('company_id', companyId)
@@ -64,7 +68,12 @@ export function useTimesheets(params: {
 
       const targetLimit = filters.limit || 100000;
       if (targetLimit <= 1000) {
-        const { data, error } = await buildQuery().limit(targetLimit);
+        let { data, error } = await buildQuery(true).limit(targetLimit);
+        if (error && (error.message?.includes('relationship') || (error as any).code === 'PGRST200')) {
+          const fallback = await buildQuery(false).limit(targetLimit);
+          data = fallback.data;
+          error = fallback.error;
+        }
         if (error) throw new Error(error.message);
         return (data || []) as Timesheet[];
       } else {
@@ -76,7 +85,12 @@ export function useTimesheets(params: {
 
         while (hasMore && allData.length < targetLimit) {
           const to = from + pageSize - 1;
-          const { data, error } = await buildQuery().range(from, to);
+          let { data, error } = await buildQuery(true).range(from, to);
+          if (error && (error.message?.includes('relationship') || (error as any).code === 'PGRST200')) {
+            const fallback = await buildQuery(false).range(from, to);
+            data = fallback.data;
+            error = fallback.error;
+          }
           if (error) throw new Error(error.message);
 
           if (data && data.length > 0) {
@@ -106,16 +120,31 @@ export function useTimesheet(id: string, companyId: string) {
     queryFn: async () => {
       if (!id || !companyId || !supabase) throw new Error('Missing parameters');
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('timesheets')
         .select(`
           *,
-          employees(name_en, emp_code, gross_salary),
+          employees!employee_id(name_en, emp_code, gross_salary),
           projects(name)
         `)
         .eq('id', id)
         .eq('company_id', companyId)
         .single();
+
+      if (error && (error.message?.includes('relationship') || (error as any).code === 'PGRST200')) {
+        const fallback = await supabase
+          .from('timesheets')
+          .select(`
+            *,
+            employees(name_en, emp_code, gross_salary),
+            projects(name)
+          `)
+          .eq('id', id)
+          .eq('company_id', companyId)
+          .single();
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) throw new Error(error.message);
       if (!data) throw new Error('Timesheet not found');
