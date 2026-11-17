@@ -5,9 +5,10 @@
 --    - For SUPPLY_LABOUR: Overtime rate = gross_salary / 240 (no 1.25 multiplier)
 --    - For standard employees: Overtime rate = (basic_salary / 240) * 1.25
 
--- 1. Ensure supplier_name exists on employees
+-- 1. Ensure supplier_name and contact_phone exist on employees
 ALTER TABLE public.employees 
-  ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT '';
+  ADD COLUMN IF NOT EXISTS supplier_name TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS contact_phone TEXT DEFAULT '';
 
 -- 2. Drop and update category check constraint on employees
 DO $$
