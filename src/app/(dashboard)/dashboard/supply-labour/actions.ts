@@ -9,107 +9,123 @@ import { Employee } from '@/types';
  * Fetch all supply labour workers for a company.
  */
 export async function getSupplyLabourWorkers(targetCompanyId?: string, supplierFilter?: string) {
-  const { profile, supabase } = await requireModulePermission('attendance', 'read', targetCompanyId);
-  const companyId = targetCompanyId || profile.company_id;
+  try {
+    const { profile, supabase } = await requireModulePermission('attendance', 'read', targetCompanyId);
+    const companyId = targetCompanyId || profile.company_id;
 
-  if (!companyId) {
-    throw new Error('Company ID is required to fetch supply labour workers.');
-  }
-
-  let query = supabase
-    .from('employees')
-    .select(`
-      id,
-      company_id,
-      emp_code,
-      name_en,
-      civil_id,
-      id_type,
-      contact_phone,
-      emergency_contact_phone,
-      supplier_name,
-      category,
-      basic_salary,
-      gross_salary,
-      bank_name,
-      bank_iban,
-      status,
-      department,
-      designation,
-      join_date,
-      created_at,
-      updated_at
-    `)
-    .eq('company_id', companyId)
-    .eq('category', 'SUPPLY_LABOUR')
-    .order('name_en');
-
-  if (supplierFilter && supplierFilter !== 'all') {
-    query = query.eq('supplier_name', supplierFilter);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    if (error.message?.includes('supplier_name') || (error as any).code === '42703') {
-      const fb = await supabase
-        .from('employees')
-        .select(`
-          id,
-          company_id,
-          emp_code,
-          name_en,
-          civil_id,
-          id_type,
-          contact_phone,
-          emergency_contact_phone,
-          category,
-          basic_salary,
-          gross_salary,
-          bank_name,
-          bank_iban,
-          status,
-          department,
-          designation,
-          join_date,
-          created_at,
-          updated_at
-        `)
-        .eq('company_id', companyId)
-        .eq('category', 'SUPPLY_LABOUR')
-        .order('name_en');
-      return ((fb.data || []).map((e: any) => ({ ...e, supplier_name: '' }))) as unknown as Employee[];
+    if (!companyId) {
+      return [];
     }
-    console.error('[getSupplyLabourWorkers] Database error:', error);
-    throw new Error(error.message);
-  }
 
-  return (data || []) as unknown as Employee[];
+    let query = supabase
+      .from('employees')
+      .select(`
+        id,
+        company_id,
+        emp_code,
+        name_en,
+        civil_id,
+        id_type,
+        emergency_contact_phone,
+        supplier_name,
+        category,
+        basic_salary,
+        gross_salary,
+        bank_name,
+        bank_iban,
+        status,
+        department,
+        designation,
+        join_date,
+        created_at,
+        updated_at
+      `)
+      .eq('company_id', companyId)
+      .eq('category', 'SUPPLY_LABOUR')
+      .order('name_en');
+
+    if (supplierFilter && supplierFilter !== 'all') {
+      query = query.eq('supplier_name', supplierFilter);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      if (error.message?.includes('supplier_name') || (error as any).code === '42703') {
+        const fb = await supabase
+          .from('employees')
+          .select(`
+            id,
+            company_id,
+            emp_code,
+            name_en,
+            civil_id,
+            id_type,
+            emergency_contact_phone,
+            category,
+            basic_salary,
+            gross_salary,
+            bank_name,
+            bank_iban,
+            status,
+            department,
+            designation,
+            join_date,
+            created_at,
+            updated_at
+          `)
+          .eq('company_id', companyId)
+          .eq('category', 'SUPPLY_LABOUR')
+          .order('name_en');
+        return ((fb.data || []).map((e: any) => ({
+          ...e,
+          supplier_name: '',
+          contact_phone: e.emergency_contact_phone || '',
+        }))) as unknown as Employee[];
+      }
+      console.error('[getSupplyLabourWorkers] Database error:', error);
+      return [];
+    }
+
+    return ((data || []).map((e: any) => ({
+      ...e,
+      contact_phone: e.emergency_contact_phone || '',
+      supplier_name: e.supplier_name || '',
+    }))) as unknown as Employee[];
+  } catch (err: any) {
+    console.error('[getSupplyLabourWorkers] Caught error:', err);
+    return [];
+  }
 }
 
 /**
  * Get distinct list of active suppliers for filtering.
  */
 export async function getSuppliersList(targetCompanyId?: string) {
-  const { profile, supabase } = await requireModulePermission('attendance', 'read', targetCompanyId);
-  const companyId = targetCompanyId || profile.company_id;
+  try {
+    const { profile, supabase } = await requireModulePermission('attendance', 'read', targetCompanyId);
+    const companyId = targetCompanyId || profile.company_id;
 
-  if (!companyId) return [];
+    if (!companyId) return [];
 
-  const { data, error } = await supabase
-    .from('employees')
-    .select('supplier_name')
-    .eq('company_id', companyId)
-    .eq('category', 'SUPPLY_LABOUR')
-    .not('supplier_name', 'is', null)
-    .neq('supplier_name', '');
+    const { data, error } = await supabase
+      .from('employees')
+      .select('supplier_name')
+      .eq('company_id', companyId)
+      .eq('category', 'SUPPLY_LABOUR')
+      .not('supplier_name', 'is', null)
+      .neq('supplier_name', '');
 
-  if (error) {
-    console.error('[getSuppliersList] Error:', error);
+    if (error) {
+      console.warn('[getSuppliersList] Warning:', error.message);
+      return [];
+    }
+
+    const suppliers = Array.from(new Set((data || []).map((row: any) => row.supplier_name?.trim()).filter(Boolean)));
+    return suppliers.sort();
+  } catch (err: any) {
+    console.warn('[getSuppliersList] Caught error:', err);
     return [];
   }
-
-  const suppliers = Array.from(new Set((data || []).map((row: any) => row.supplier_name?.trim()).filter(Boolean)));
-  return suppliers.sort();
 }
 
 /**
@@ -160,18 +176,15 @@ export async function createSupplyLabourWorker(formData: SupplyLabourInput) {
   }
 
   // Insert payload
-  const insertPayload = {
+  const insertPayload: Record<string, any> = {
     company_id: validated.company_id,
     emp_code: empCode,
     name_en: validated.name_en.trim(),
     id_type: 'civil_id',
     civil_id: validated.civil_id.trim(),
-    contact_phone: validated.contact_phone.trim(),
     emergency_contact_phone: validated.contact_phone.trim(),
-    supplier_name: validated.supplier_name?.trim() || '',
     category: 'SUPPLY_LABOUR',
     basic_salary: Number(validated.gross_salary),
-    gross_salary: Number(validated.gross_salary),
     housing_allowance: 0,
     transport_allowance: 0,
     food_allowance: 0,
@@ -187,11 +200,26 @@ export async function createSupplyLabourWorker(formData: SupplyLabourInput) {
     nationality: 'INDIAN', // Default nationality placeholder for non-Omani supply labour
   };
 
-  const { data, error } = await supabase
+  if (validated.supplier_name?.trim()) {
+    insertPayload.supplier_name = validated.supplier_name.trim();
+  }
+
+  let { data, error } = await supabase
     .from('employees')
     .insert(insertPayload)
     .select()
     .single();
+
+  if (error && (error.message?.includes('supplier_name') || (error as any).code === '42703')) {
+    delete insertPayload.supplier_name;
+    const retry = await supabase
+      .from('employees')
+      .insert(insertPayload)
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     console.error('[createSupplyLabourWorker] Insert error:', error);
@@ -230,7 +258,6 @@ export async function updateSupplyLabourWorker(
   if (formData.name_en !== undefined) updatePayload.name_en = formData.name_en.trim();
   if (formData.civil_id !== undefined) updatePayload.civil_id = formData.civil_id.trim();
   if (formData.contact_phone !== undefined) {
-    updatePayload.contact_phone = formData.contact_phone.trim();
     updatePayload.emergency_contact_phone = formData.contact_phone.trim();
   }
   if (formData.supplier_name !== undefined) updatePayload.supplier_name = formData.supplier_name.trim();
@@ -238,18 +265,28 @@ export async function updateSupplyLabourWorker(
   if (formData.bank_iban !== undefined) updatePayload.bank_iban = formData.bank_iban.trim();
   if (formData.status !== undefined) updatePayload.status = formData.status;
   if (formData.gross_salary !== undefined) {
-    const salary = Number(formData.gross_salary);
-    updatePayload.basic_salary = salary;
-    updatePayload.gross_salary = salary;
+    updatePayload.basic_salary = Number(formData.gross_salary);
   }
   if (formData.designation !== undefined) updatePayload.designation = formData.designation.trim();
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('employees')
     .update(updatePayload)
     .eq('id', id)
     .select()
     .single();
+
+  if (error && (error.message?.includes('supplier_name') || (error as any).code === '42703')) {
+    delete updatePayload.supplier_name;
+    const retry = await supabase
+      .from('employees')
+      .update(updatePayload)
+      .eq('id', id)
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     console.error('[updateSupplyLabourWorker] Update error:', error);
