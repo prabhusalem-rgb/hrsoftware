@@ -482,6 +482,14 @@ export interface Project {
   updated_at: string;
 }
 
+export interface TimesheetSubmitter {
+  id: string;
+  name_en: string;
+  emp_code: string;
+  civil_id?: string;
+  designation?: string;
+}
+
 export interface Timesheet {
   id: string;
   company_id: string;
@@ -492,6 +500,8 @@ export interface Timesheet {
   hours_worked: number;
   overtime_hours: number;
   reason: string;
+  submitted_by_id?: string | null;
+  submitted_by_name?: string | null;
   created_at: string;
   updated_at: string;
   employees?: Pick<Employee, 'id' | 'name_en' | 'emp_code' | 'gross_salary' | 'basic_salary'>;

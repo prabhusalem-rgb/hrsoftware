@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useForm, UseFormReturn, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { submitTimesheet, type SubmitTimesheetResponse } from './actions';
+import { submitTimesheet, logoutSubmitter, type SubmitTimesheetResponse } from './actions';
 import { timesheetSubmitSchema, type DayType } from '@/lib/validations/schemas';
 import { isFriday } from '@/lib/attendance-calculations';
-import { type Timesheet, type Company } from '@/types';
+import { type Timesheet, type Company, type TimesheetSubmitter } from '@/types';
 import { downloadTimesheetConfirmationPDF } from '@/lib/pdf-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, AlertCircle, Clock, Building2, User, Calendar as CalendarIcon, FileText, Search, X, Download } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, Building2, User, Calendar as CalendarIcon, FileText, Search, X, Download, ShieldCheck, LogOut } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -52,10 +52,12 @@ interface TimesheetFormProps {
   employees: Array<{ id: string; name_en: string; emp_code: string; category?: string; supplier_name?: string }>;
   projects: Array<{ id: string; name: string }>;
   defaultDate?: string;
+  submitter?: TimesheetSubmitter | null;
 }
 
-export function TimesheetForm({ token, employees, projects, defaultDate }: TimesheetFormProps) {
+export function TimesheetForm({ token, employees, projects, defaultDate, submitter }: TimesheetFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingData, setPendingData] = useState<FormDataWithToken | null>(null);
   const [submittedTimesheet, setSubmittedTimesheet] = useState<Timesheet & {
@@ -237,10 +239,63 @@ export function TimesheetForm({ token, employees, projects, defaultDate }: Times
     setEmployeeSearchQuery('');
   };
 
+  const handleSwitchSubmitter = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logoutSubmitter(token);
+      toast.info('Signed out of submitter session');
+      window.location.reload();
+    } catch (err) {
+      console.error('[TimesheetForm] Sign out error:', err);
+      window.location.reload();
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" noValidate>
       {/* Hidden token field */}
       <input type="hidden" {...register('token')} />
+
+      {/* Submitter Info Banner */}
+      {submitter && (
+        <div className="flex items-center justify-between p-3 bg-emerald-50/90 border border-emerald-200 rounded-lg text-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-emerald-100 rounded-full text-emerald-700">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-200/60 px-1.5 py-0.5 rounded">
+                  Submitter
+                </span>
+                <span className="font-semibold text-emerald-950 text-sm">
+                  {submitter.name_en}
+                </span>
+              </div>
+              <p className="text-xs text-emerald-700 font-mono">
+                Code: {submitter.emp_code}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleSwitchSubmitter}
+            disabled={isLoggingOut}
+            className="text-xs text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 h-8 px-2"
+          >
+            {isLoggingOut ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <>
+                <LogOut className="h-3.5 w-3.5 mr-1" />
+                Switch
+              </>
+            )}
+          </Button>
+        </div>
+      )}
 
       {/* Employee Selection */}
       <div className="space-y-2">
@@ -567,6 +622,16 @@ export function TimesheetForm({ token, employees, projects, defaultDate }: Times
             <div className="space-y-4">
               <Card>
                 <CardContent className="pt-4 space-y-3">
+                  {submitter && (
+                    <div className="flex items-center gap-2 text-sm pb-2 border-b">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                      <span className="font-medium">Submitted By:</span>
+                      <span className="text-muted-foreground font-medium">
+                        {submitter.name_en} ({submitter.emp_code})
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 text-sm">
                     <User className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">Employee:</span>
@@ -646,6 +711,14 @@ export function TimesheetForm({ token, employees, projects, defaultDate }: Times
             <div className="space-y-4">
               <Card>
                 <CardContent className="pt-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm pb-2 border-b">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    <span className="font-medium">Submitted By:</span>
+                    <span className="text-muted-foreground font-medium">
+                      {submittedTimesheet.submitted_by_name || (submitter ? `${submitter.name_en} (${submitter.emp_code})` : 'Public Link')}
+                    </span>
+                  </div>
+
                   <div className="flex items-center gap-2 text-sm">
                     <User className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">Employee:</span>

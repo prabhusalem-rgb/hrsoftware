@@ -8,6 +8,7 @@ import { ReactNode } from 'react';
 // Mock the server action
 vi.mock('@/app/timesheet/[token]/actions', () => ({
   submitTimesheet: vi.fn(),
+  logoutSubmitter: vi.fn(),
 }));
 
 vi.mock('@/lib/pdf-utils', () => ({

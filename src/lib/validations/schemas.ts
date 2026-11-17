@@ -169,6 +169,8 @@ export const timesheetBaseSchema = z.object({
   reason: z.string()
     .max(500, 'Reason too long (max 500 characters)')
     .default(''),
+  submitted_by_id: z.string().uuid().nullable().optional(),
+  submitted_by_name: z.string().optional().default(''),
 });
 
 // Full schema with cross-field validation

@@ -1,5 +1,6 @@
 import { getTimesheetFormData } from './actions';
 import { TimesheetForm } from './timesheet-form';
+import { SubmitterLoginCard } from './submitter-login-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export const metadata = {
@@ -38,6 +39,19 @@ export default async function TimesheetPage({ params }: { params: Promise<{ toke
       );
     }
 
+    // Require Submitter Identification
+    if (!data.submitter) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+          <SubmitterLoginCard
+            token={token}
+            companyName={data.companyName}
+            companyLogo={data.companyLogo}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <Card className="w-full max-w-xl">
@@ -52,6 +66,7 @@ export default async function TimesheetPage({ params }: { params: Promise<{ toke
               token={token}
               employees={data.employees}
               projects={data.projects}
+              submitter={data.submitter}
             />
           </CardContent>
         </Card>

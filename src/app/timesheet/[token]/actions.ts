@@ -1,12 +1,14 @@
 'use server';
 
 import { getAdminClient } from '@/lib/supabase/admin';
+import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { timesheetSubmitSchema } from '@/lib/validations/schemas';
 import { isFriday } from '@/lib/attendance-calculations';
 import { logAudit } from '@/lib/audit/audit-logger.server';
-import type { Timesheet, Company } from '@/types';
+import type { Timesheet, Company, TimesheetSubmitter } from '@/types';
 
+const SUBMITTER_COOKIE_PREFIX = 'ts_submitter_';
 
 // Response types
 export interface SubmitTimesheetResult {
@@ -21,9 +23,160 @@ export interface SubmitTimesheetSuccess {
     projects: { name: string } | null;
   };
   company: Company;
+  submitter?: TimesheetSubmitter | null;
 }
 
 export type SubmitTimesheetResponse = SubmitTimesheetResult | SubmitTimesheetSuccess;
+
+/**
+ * Read the active submitter session for a timesheet token from cookies.
+ */
+export async function getSubmitterSession(token: string): Promise<TimesheetSubmitter | null> {
+  try {
+    if (!token) return null;
+    const cookieStore = await cookies();
+    const cookieName = `${SUBMITTER_COOKIE_PREFIX}${token}`;
+    const cookieVal = cookieStore.get(cookieName)?.value;
+    if (!cookieVal) return null;
+
+    const parsed = JSON.parse(cookieVal);
+    if (!parsed?.id || !parsed?.company_id) return null;
+
+    const supabase = getAdminClient();
+    if (!supabase) return null;
+
+    const { data: emp, error } = await supabase
+      .from('employees')
+      .select('id, name_en, emp_code, civil_id, designation, status, company_id')
+      .eq('id', parsed.id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (error || !emp || emp.company_id !== parsed.company_id) {
+      return null;
+    }
+
+    return {
+      id: emp.id,
+      name_en: emp.name_en,
+      emp_code: emp.emp_code,
+      civil_id: emp.civil_id,
+      designation: emp.designation,
+    };
+  } catch (err) {
+    console.warn('[getSubmitterSession] Error reading cookie:', err);
+    return null;
+  }
+}
+
+/**
+ * Authenticate a submitter using Employee ID as user ID and Civil ID as password.
+ */
+export async function loginSubmitter(
+  token: string,
+  identifier: string,
+  civilIdPassword: string
+): Promise<{ success: boolean; submitter?: TimesheetSubmitter; error?: string }> {
+  try {
+    if (!token || !identifier?.trim() || !civilIdPassword?.trim()) {
+      return { success: false, error: 'Employee ID and Civil ID are required.' };
+    }
+
+    const supabase = getAdminClient();
+    if (!supabase) {
+      return { success: false, error: 'Server configuration error.' };
+    }
+
+    // 1. Validate timesheet link token
+    const { data: link, error: linkErr } = await supabase
+      .from('timesheet_links')
+      .select('company_id, is_active')
+      .eq('token', token)
+      .maybeSingle();
+
+    if (linkErr || !link || !link.is_active) {
+      return { success: false, error: 'Invalid or inactive timesheet link.' };
+    }
+
+    const companyId = link.company_id;
+    const idInput = identifier.trim().toLowerCase();
+    const passInput = civilIdPassword.trim().toLowerCase();
+
+    // 2. Query active employees in the company
+    const { data: employees, error: empErr } = await supabase
+      .from('employees')
+      .select('id, name_en, emp_code, civil_id, designation, status, company_id')
+      .eq('company_id', companyId)
+      .eq('status', 'active');
+
+    if (empErr || !employees || employees.length === 0) {
+      return { success: false, error: 'No active employees found for this company.' };
+    }
+
+    // Match by emp_code or civil_id
+    const matched = employees.find(e => {
+      const matchEmpCode = e.emp_code && e.emp_code.trim().toLowerCase() === idInput;
+      const matchCivilId = e.civil_id && e.civil_id.trim().toLowerCase() === idInput;
+      return matchEmpCode || matchCivilId;
+    });
+
+    if (!matched) {
+      return { success: false, error: 'Employee not found. Please verify your Employee ID or Code.' };
+    }
+
+    // 3. Verify Password: Must match Civil ID
+    const empCivilId = (matched.civil_id || '').trim().toLowerCase();
+    if (!empCivilId || passInput !== empCivilId) {
+      return { success: false, error: 'Incorrect password. Default password is your Civil ID number.' };
+    }
+
+    // 4. Save session in HTTP-only cookie
+    const submitterData: TimesheetSubmitter & { company_id: string } = {
+      id: matched.id,
+      name_en: matched.name_en,
+      emp_code: matched.emp_code,
+      civil_id: matched.civil_id,
+      designation: matched.designation,
+      company_id: matched.company_id,
+    };
+
+    const cookieStore = await cookies();
+    cookieStore.set(`${SUBMITTER_COOKIE_PREFIX}${token}`, JSON.stringify(submitterData), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+
+    return {
+      success: true,
+      submitter: {
+        id: matched.id,
+        name_en: matched.name_en,
+        emp_code: matched.emp_code,
+        civil_id: matched.civil_id,
+        designation: matched.designation,
+      },
+    };
+  } catch (err: any) {
+    console.error('[loginSubmitter] Error:', err);
+    return { success: false, error: err?.message || 'Authentication failed.' };
+  }
+}
+
+/**
+ * Sign out submitter for this timesheet token.
+ */
+export async function logoutSubmitter(token: string): Promise<{ success: boolean }> {
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete(`${SUBMITTER_COOKIE_PREFIX}${token}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false };
+  }
+}
 
 export async function getTimesheetFormData(token: string) {
   try {
@@ -32,10 +185,6 @@ export async function getTimesheetFormData(token: string) {
       return { error: 'ERR_CONFIG: Server configuration error: Admin client not available' };
     }
 
-    console.log('[DEBUG] getTimesheetFormData called');
-    console.log('[DEBUG] received token:', JSON.stringify(token));
-    console.log('[DEBUG] token length:', token?.length);
-
     // First: simple existence check
     const { data: simple, error: simpleErr } = await supabase
       .from('timesheet_links')
@@ -43,10 +192,7 @@ export async function getTimesheetFormData(token: string) {
       .eq('token', token)
       .maybeSingle();
 
-    console.log('[DEBUG] simple query result:', JSON.stringify({ found: !!simple, error: simpleErr?.message, data: simple }));
-
     if (simpleErr || !simple) {
-      console.log('[DEBUG] Returning ERR_SIMPLE - simpleErr:', simpleErr, 'hasSimple:', !!simple);
       return { error: 'ERR_SIMPLE: Invalid or inactive timesheet link.' };
     }
 
@@ -67,7 +213,7 @@ export async function getTimesheetFormData(token: string) {
 
     const companyId = linkData.company_id;
 
-    // Fetch company info for PDF
+    // Fetch company info for PDF and branding
     const { data: companyData, error: companyErr } = await supabase
       .from('companies')
       .select('id, name_en, name_ar, cr_number, address, contact_email, contact_phone, bank_name, bank_account, iban, wps_mol_id, logo_url, created_at, updated_at')
@@ -116,13 +262,18 @@ export async function getTimesheetFormData(token: string) {
       return { error: `ERR_PROJECTS: Failed to fetch projects: ${projError.message}` };
     }
 
+    // Check submitter session
+    const submitter = await getSubmitterSession(token);
+
     return {
       companyName: Array.isArray(linkData.companies)
         ? linkData.companies[0]?.name_en
         : (linkData.companies as any)?.name_en || 'Company',
+      companyLogo: (companyData as any)?.logo_url || null,
       companyId,
       employees: employees || [],
       projects: projects || [],
+      submitter,
     };
   } catch (error: any) {
     console.error('[getTimesheetFormData] Unexpected error:', error);
@@ -153,6 +304,15 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
   if (hoursWorkedRaw === null) return { success: false, error: 'ERR_NO_HOURS: Hours worked is required' };
   if (overtimeHoursRaw === null) return { success: false, error: 'ERR_NO_OT: Overtime hours is required' };
 
+  // Submitter Verification: must be logged in as verified submitter
+  const submitter = await getSubmitterSession(token);
+  if (!submitter) {
+    return {
+      success: false,
+      error: 'ERR_SUBMITTER_REQUIRED: Submitter identification required. Please sign in with your Employee ID and Civil ID before submitting.'
+    };
+  }
+
   // Normalize empty project_id to null
   if (projectId === '') projectId = null;
 
@@ -181,21 +341,17 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
       hours_worked: hoursWorked,
       overtime_hours: overtimeHours,
       reason,
+      submitted_by_id: submitter.id,
+      submitted_by_name: `${submitter.name_en} (${submitter.emp_code})`,
     });
   } catch (e: any) {
     console.error('[submitTimesheet] Validation error:', e);
-    // Return detailed error messages to client
     if (e.errors && Array.isArray(e.errors)) {
       const messages = e.errors.map((err: any) => err.message).join('; ');
       return { success: false, error: `ERR_VALIDATION: ${messages}` };
     }
     return { success: false, error: `ERR_VALIDATION: ${e?.message || 'Invalid form data'}` };
   }
-
-  // hours_worked <= 8 is enforced by schema (max: 8)
-  // overtime_hours >= 0 enforced by schema
-  // reason requirement for OT enforced by schema refinement
-
 
   const { data: linkData, error: linkError } = await supabase
     .from('timesheet_links')
@@ -204,7 +360,6 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     .single();
 
   if (linkError || !linkData || !linkData.is_active) {
-    console.log('[DEBUG] submitTimesheet link check failed:', { linkError, hasData: !!linkData, isActive: linkData?.is_active });
     return { success: false, error: `ERR_LINK_SUBMIT: Invalid or inactive timesheet link.` };
   }
 
@@ -229,12 +384,10 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
     .single();
 
   if (targetEmpErr || !targetEmployee) {
-    console.log('[DEBUG] submitTimesheet employee check failed:', { targetEmpErr, hasTargetEmployee: !!targetEmployee });
     return { success: false, error: 'ERR_EMP_NOT_FOUND: Employee not found.' };
   }
 
   if (targetEmployee.company_id !== companyId) {
-    console.log('[DEBUG] submitTimesheet company mismatch:', { empCompanyId: targetEmployee.company_id, expectedCompanyId: companyId });
     return { success: false, error: 'ERR_EMP_WRONG_COMPANY: Employee does not belong to this company.' };
   }
 
@@ -248,28 +401,49 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
   if (dupError) {
     console.error('[submitTimesheet] Duplicate check error:', dupError);
   } else if (duplicate) {
-    console.log('[DEBUG] submitTimesheet duplicate found for date:', date);
     return { success: false, error: 'ERR_DUPLICATE: This employee already has a timesheet entry for this date.' };
   }
 
-  const { data: newTimesheet, error: insertError } = await supabase
+  const submitterNameFormatted = `${submitter.name_en} (${submitter.emp_code})`;
+  const insertPayload: Record<string, any> = {
+    company_id: companyId,
+    employee_id: employeeId,
+    project_id: projectId || null,
+    date,
+    day_type: dayType,
+    hours_worked: hoursWorked,
+    overtime_hours: overtimeHours,
+    reason,
+    submitted_by_id: submitter.id,
+    submitted_by_name: submitterNameFormatted,
+  };
+
+  let { data: newTimesheet, error: insertError } = await supabase
     .from('timesheets')
-    .insert({
-      company_id: companyId,
-      employee_id: employeeId,
-      project_id: projectId || null,
-      date,
-      day_type: dayType,
-      hours_worked: hoursWorked,
-      overtime_hours: overtimeHours,
-      reason,
-    })
+    .insert(insertPayload)
     .select(`
       *,
       employees(name_en, emp_code, basic_salary, gross_salary),
       projects(name)
     `)
     .single();
+
+  // Backward-compatibility: If submitted_by columns are not yet applied via migration 130
+  if (insertError && (insertError.message?.includes('submitted_by') || (insertError as any).code === '42703')) {
+    delete insertPayload.submitted_by_id;
+    delete insertPayload.submitted_by_name;
+    const retry = await supabase
+      .from('timesheets')
+      .insert(insertPayload)
+      .select(`
+        *,
+        employees(name_en, emp_code, basic_salary, gross_salary),
+        projects(name)
+      `)
+      .single();
+    newTimesheet = retry.data ? { ...retry.data, submitted_by_id: submitter.id, submitted_by_name: submitterNameFormatted } : null;
+    insertError = retry.error;
+  }
 
   if (insertError) {
     console.error('[submitTimesheet] Insert error:', insertError);
@@ -279,16 +453,22 @@ export async function submitTimesheet(formData: FormData): Promise<SubmitTimeshe
   try {
     await logAudit({
       company_id: companyId,
-      user_id: null,  // Public link submission — no specific user
+      user_id: null,
       entity_type: 'timesheet',
       entity_id: newTimesheet.id,
       action: 'create',
       new_values: newTimesheet,
-      details: { submission_method: 'public_link', token: token.slice(0, 8) + '...' },
+      details: {
+        submission_method: 'public_link',
+        token: token.slice(0, 8) + '...',
+        submitter_id: submitter.id,
+        submitter_name: submitterNameFormatted,
+        submitter_code: submitter.emp_code,
+      },
     });
   } catch (auditErr) {
     console.error('[submitTimesheet] Audit log failed:', auditErr);
   }
 
-  return { success: true, timesheet: newTimesheet, company: companyData };
+  return { success: true, timesheet: newTimesheet, company: companyData, submitter };
 }

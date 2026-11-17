@@ -67,6 +67,10 @@ export function TimesheetConfirmationPDF({
               <Text style={styles.value}>{submittedAt}</Text>
             </View>
             <View style={styles.infoCol}>
+              <Text style={styles.label}>Submitted By</Text>
+              <Text style={styles.value}>{timesheet.submitted_by_name || 'Public Link'}</Text>
+            </View>
+            <View style={styles.infoCol}>
               <Text style={styles.label}>Submission Token</Text>
               <Text style={styles.valueSmall}>{submissionToken.substring(0, 12)}...</Text>
             </View>

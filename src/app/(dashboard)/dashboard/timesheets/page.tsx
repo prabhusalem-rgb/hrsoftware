@@ -726,6 +726,7 @@ export default function TimesheetsDashboard() {
                         <TableHead>Day Type</TableHead>
                         <TableHead className="text-right">Regular</TableHead>
                         <TableHead className="text-right">OT</TableHead>
+                        <TableHead>Submitted By</TableHead>
                         <TableHead>Reason</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -752,6 +753,16 @@ export default function TimesheetsDashboard() {
                           <TableCell className="text-right font-mono">{ts.hours_worked}</TableCell>
                           <TableCell className="text-right font-mono text-muted-foreground">
                             {Number(ts.overtime_hours || 0) > 0 ? ts.overtime_hours : '-'}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {ts.submitted_by_name ? (
+                              <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                                <User className="w-3 h-3 text-muted-foreground" />
+                                {ts.submitted_by_name}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/60 italic">Direct / System</span>
+                            )}
                           </TableCell>
                           <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
                             {ts.reason || '-'}

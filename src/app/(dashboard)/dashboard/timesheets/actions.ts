@@ -163,24 +163,44 @@ export async function createTimesheet(formData: z.infer<typeof timesheetAdminSch
   }
 
   // Insert
-  const { data, error } = await supabase
+  const submitterName = profile.full_name || profile.email || 'Dashboard User';
+  const insertPayload: Record<string, any> = {
+    company_id: targetCompanyId,
+    employee_id: validated.employee_id,
+    project_id: validated.project_id || null,
+    date: validated.date,
+    day_type: validated.day_type,
+    hours_worked: validated.hours_worked,
+    overtime_hours: validated.overtime_hours,
+    reason: validated.reason?.trim() || '',
+    submitted_by_name: submitterName,
+  };
+
+  let { data, error } = await supabase
     .from('timesheets')
-    .insert({
-      company_id: targetCompanyId,
-      employee_id: validated.employee_id,
-      project_id: validated.project_id || null,
-      date: validated.date,
-      day_type: validated.day_type,
-      hours_worked: validated.hours_worked,
-      overtime_hours: validated.overtime_hours,
-      reason: validated.reason?.trim() || '',
-    })
+    .insert(insertPayload)
     .select(`
       *,
       employees(name_en, emp_code),
       projects(name)
     `)
     .single();
+
+  // Defensive fallback if migration 130 (submitted_by_name) is not yet applied
+  if (error && (error.code === '42703' || error.message?.includes('submitted_by'))) {
+    delete insertPayload.submitted_by_name;
+    const retry = await supabase
+      .from('timesheets')
+      .insert(insertPayload)
+      .select(`
+        *,
+        employees(name_en, emp_code),
+        projects(name)
+      `)
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     if (error.code === '23505') {
@@ -954,6 +974,7 @@ export async function exportTimesheetsCSV(companyId: string, params: {
       hours_worked,
       overtime_hours,
       reason,
+      submitted_by_name,
       employees(name_en, emp_code),
       projects(name)
     `)
@@ -965,12 +986,43 @@ export async function exportTimesheetsCSV(companyId: string, params: {
   if (params.dateFrom) query = query.gte('date', params.dateFrom);
   if (params.dateTo) query = query.lte('date', params.dateTo);
 
-  const { data, error } = await query.order('date', { ascending: false });
+  let data: any[] | null = null;
+  let error: any = null;
+
+  const initialRes = await query.order('date', { ascending: false });
+  data = initialRes.data;
+  error = initialRes.error;
+
+  // Defensive fallback if submitted_by_name column does not exist yet
+  if (error && (error.code === '42703' || error.message?.includes('submitted_by_name'))) {
+    let fallbackQuery = supabase
+      .from('timesheets')
+      .select(`
+        date,
+        day_type,
+        hours_worked,
+        overtime_hours,
+        reason,
+        employees(name_en, emp_code),
+        projects(name)
+      `)
+      .eq('company_id', companyId);
+
+    if (params.employeeId) fallbackQuery = fallbackQuery.eq('employee_id', params.employeeId);
+    if (params.projectId) fallbackQuery = fallbackQuery.eq('project_id', params.projectId);
+    if (params.dayType) fallbackQuery = fallbackQuery.eq('day_type', params.dayType);
+    if (params.dateFrom) fallbackQuery = fallbackQuery.gte('date', params.dateFrom);
+    if (params.dateTo) fallbackQuery = fallbackQuery.lte('date', params.dateTo);
+
+    const fallbackRes = await fallbackQuery.order('date', { ascending: false });
+    data = fallbackRes.data;
+    error = fallbackRes.error;
+  }
 
   if (error) throw new Error(error.message);
 
   // Build CSV
-  const headers = ['Date', 'Employee Code', 'Employee Name', 'Project', 'Day Type', 'Regular Hours', 'Overtime Hours', 'Reason'];
+  const headers = ['Date', 'Employee Code', 'Employee Name', 'Project', 'Day Type', 'Regular Hours', 'Overtime Hours', 'Submitted By', 'Reason'];
   const rows = (data || []).map((ts: any) => [
     ts.date,
     ts.employees?.emp_code || '',
@@ -979,6 +1031,7 @@ export async function exportTimesheetsCSV(companyId: string, params: {
     DAY_TYPE_LABELS[ts.day_type] || ts.day_type,
     ts.hours_worked,
     ts.overtime_hours || 0,
+    ts.submitted_by_name || 'N/A',
     (ts.reason || '').replace(/[\r\n]+/g, ' '),
   ]);
 
