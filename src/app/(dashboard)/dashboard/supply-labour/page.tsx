@@ -231,7 +231,7 @@ export default function SupplyLabourPage() {
       `"${w.civil_id || ''}"`,
       `"${w.contact_phone || w.emergency_contact_phone || ''}"`,
       `"${w.supplier_name || 'Direct / None'}"`,
-      (w.gross_salary || 0).toFixed(3),
+      Number(w.gross_salary || 0).toFixed(3),
       `"${w.bank_iban || ''}"`,
       `"${w.status || ''}"`
     ]);

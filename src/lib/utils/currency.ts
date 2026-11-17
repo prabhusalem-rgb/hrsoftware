@@ -87,9 +87,10 @@ export function toOmaniWordsArabic(amount: number): string {
  * @param decimals - Number of decimal places (default: 3)
  * @returns Formatted string like "1,234.567 OMR"
  */
-export function formatOMR(value: number, decimals: number = 3): string {
+export function formatOMR(value: number | string | null | undefined, decimals: number = 3): string {
+  const num = typeof value === 'number' ? (isNaN(value) ? 0 : value) : Number(value || 0);
   // Ensure we have exactly the specified decimal places
-  const fixed = value.toFixed(decimals);
+  const fixed = (isNaN(num) ? 0 : num).toFixed(decimals);
   // Add thousand separators
   const parts = fixed.split('.');
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -100,8 +101,9 @@ export function formatOMR(value: number, decimals: number = 3): string {
  * Format a number as plain OMR without thousands separator.
  * Useful for compact displays (e.g., "1234.567 OMR").
  */
-export function formatOMRCompact(value: number, decimals: number = 3): string {
-  return `${value.toFixed(decimals)} OMR`;
+export function formatOMRCompact(value: number | string | null | undefined, decimals: number = 3): string {
+  const num = typeof value === 'number' ? (isNaN(value) ? 0 : value) : Number(value || 0);
+  return `${(isNaN(num) ? 0 : num).toFixed(decimals)} OMR`;
 }
 
 /**
