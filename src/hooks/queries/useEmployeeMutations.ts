@@ -25,11 +25,19 @@ export function useEmployeeMutations(companyId: string) {
         }
       }
 
-      const payload = {
+      const payload: any = {
         ...newEmployee,
         company_id: companyId,
         email: typeof normalizedEmail === 'string' ? normalizedEmail : null,
       };
+
+      // Ensure non-existent columns are not sent to Postgres
+      if ('contact_phone' in payload) {
+        if (!payload.emergency_contact_phone && payload.contact_phone) {
+          payload.emergency_contact_phone = payload.contact_phone;
+        }
+        delete payload.contact_phone;
+      }
 
       const { data, error } = await supabase
         .from('employees')
@@ -80,6 +88,14 @@ export function useEmployeeMutations(companyId: string) {
       const updatePayload: any = { ...updates };
       if (updates.email !== undefined) {
         updatePayload.email = normalizedEmail ?? null;
+      }
+
+      // Ensure non-existent columns are not sent to Postgres
+      if ('contact_phone' in updatePayload) {
+        if (!updatePayload.emergency_contact_phone && updatePayload.contact_phone) {
+          updatePayload.emergency_contact_phone = updatePayload.contact_phone;
+        }
+        delete updatePayload.contact_phone;
       }
 
       const { data, error } = await supabase
@@ -133,10 +149,19 @@ export function useEmployeeMutations(companyId: string) {
     mutationFn: async (employeesData: EmployeeFormData[]) => {
       if (!supabase) throw new Error('Supabase is not configured');
 
-      const normalizedData = employeesData.map(emp => ({
-        ...emp,
-        email: emp.email === '' ? null : (typeof emp.email === 'string' ? emp.email : null),
-      }));
+      const normalizedData = employeesData.map(emp => {
+        const item: any = {
+          ...emp,
+          email: emp.email === '' ? null : (typeof emp.email === 'string' ? emp.email : null),
+        };
+        if ('contact_phone' in item) {
+          if (!item.emergency_contact_phone && item.contact_phone) {
+            item.emergency_contact_phone = item.contact_phone;
+          }
+          delete item.contact_phone;
+        }
+        return item;
+      });
 
       const emailCounts = new Map<string, number>();
       for (const emp of normalizedData) {

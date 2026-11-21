@@ -50,7 +50,6 @@ export const employeeSchema = z.object({
   family_status: z.enum(['single', 'family', '']).optional().default(''),
   category: z.enum(['OMANI_DIRECT_STAFF', 'OMANI_INDIRECT_STAFF', 'DIRECT_STAFF', 'INDIRECT_STAFF', 'SUPPLY_LABOUR']),
   supplier_name: z.string().optional().default(''),
-  contact_phone: z.string().optional().default(''),
   department: z.string().optional().default(''),
   designation: z.string().optional().default(''),
   join_date: z.string().min(1, 'Join date is required'),
