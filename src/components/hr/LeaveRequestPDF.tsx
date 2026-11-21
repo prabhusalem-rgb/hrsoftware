@@ -19,13 +19,13 @@ export function LeaveRequestPDF({
 
   // Company detection for BRIGHT FLOWERS TRADING LLC
   const companyNameUpper = (company?.name_en || '').trim().toUpperCase();
-  const isBrightFlowers = companyNameUpper.includes('BRIGHT FLOWERS');
+  const isBrightFlowers = companyNameUpper.includes('BRIGHT FLOWERS') || companyNameUpper.includes('BRIGHT FLOWER');
   const dgmSigUrl = leaveRequest.dgm_signature_url;
   const dgmId = leaveRequest.dgm_id;
   const dgmApprovedAt = leaveRequest.dgm_approved_at;
   const dgmRemarks = leaveRequest.dgm_remarks;
   const dgmName = leaveRequest.dgm_name || 'Deputy General Manager';
-  const showDgm = isBrightFlowers || Boolean(dgmSigUrl || dgmId);
+  const showDgm = isBrightFlowers;
   const isDgmApproved = Boolean(dgmSigUrl || dgmId || dgmApprovedAt);
 
   // UTC day calculation

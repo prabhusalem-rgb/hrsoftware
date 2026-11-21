@@ -29,10 +29,16 @@ interface ContractRenewalPDFProps {
     supervisor_comments?: string;
     hr_signature_url?: string;
     hr_signed_at?: string;
+    dgm_signature_url?: string;
+    dgm_signed_at?: string;
+    dgm_approved_at?: string;
   };
 }
 
 export function ContractRenewalPDF({ company, employee, renewalData }: ContractRenewalPDFProps) {
+  const companyNameUpper = (company?.name_en || '').trim().toUpperCase();
+  const isBrightFlowers = companyNameUpper.includes('BRIGHT FLOWERS') || companyNameUpper.includes('BRIGHT FLOWER');
+
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '';
     try {
@@ -137,26 +143,64 @@ export function ContractRenewalPDF({ company, employee, renewalData }: ContractR
           </View>
         </View>
 
-        <View style={styles.signatureGrid}>
-          <View style={styles.signatureBox}>
-            <Text style={styles.signatureLabel}>GM/CEO Signature :</Text>
-            {renewalData.manager_signature_url ? (
-              <Image src={renewalData.manager_signature_url} style={styles.signatureImage} />
-            ) : (
-              <View style={styles.signaturePlaceholder} />
-            )}
-            <Text style={styles.signatureDate}>Date: {formatDate(renewalData.manager_approved_at)}</Text>
-          </View>
+        <View style={isBrightFlowers ? styles.signatureGridBf : styles.signatureGrid}>
+          {isBrightFlowers ? (
+            <>
+              <View style={styles.signatureBox}>
+                <Text style={styles.signatureLabel}>HR Department Signature:</Text>
+                {renewalData.hr_signature_url ? (
+                  <Image src={renewalData.hr_signature_url} style={styles.signatureImage} />
+                ) : (
+                  <View style={styles.signaturePlaceholder} />
+                )}
+                <Text style={styles.signatureDate}>Date: {formatDate(renewalData.hr_signed_at)}</Text>
+              </View>
 
-          <View style={styles.signatureBox}>
-            <Text style={styles.signatureLabel}>HR Department Signature:</Text>
-            {renewalData.hr_signature_url ? (
-              <Image src={renewalData.hr_signature_url} style={styles.signatureImage} />
-            ) : (
-              <View style={styles.signaturePlaceholder} />
-            )}
-            <Text style={styles.signatureDate}>Date: {formatDate(renewalData.hr_signed_at)}</Text>
-          </View>
+              <View style={styles.signatureBox}>
+                <Text style={styles.signatureLabel}>DGM Signature:</Text>
+                {renewalData.dgm_signature_url ? (
+                  <Image src={renewalData.dgm_signature_url} style={styles.signatureImage} />
+                ) : (
+                  <View style={styles.signaturePlaceholder} />
+                )}
+                <Text style={styles.signatureDate}>
+                  Date: {formatDate(renewalData.dgm_approved_at || renewalData.dgm_signed_at)}
+                </Text>
+              </View>
+
+              <View style={styles.signatureBox}>
+                <Text style={styles.signatureLabel}>GM/CEO Signature :</Text>
+                {renewalData.manager_signature_url ? (
+                  <Image src={renewalData.manager_signature_url} style={styles.signatureImage} />
+                ) : (
+                  <View style={styles.signaturePlaceholder} />
+                )}
+                <Text style={styles.signatureDate}>Date: {formatDate(renewalData.manager_approved_at)}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.signatureBox}>
+                <Text style={styles.signatureLabel}>GM/CEO Signature :</Text>
+                {renewalData.manager_signature_url ? (
+                  <Image src={renewalData.manager_signature_url} style={styles.signatureImage} />
+                ) : (
+                  <View style={styles.signaturePlaceholder} />
+                )}
+                <Text style={styles.signatureDate}>Date: {formatDate(renewalData.manager_approved_at)}</Text>
+              </View>
+
+              <View style={styles.signatureBox}>
+                <Text style={styles.signatureLabel}>HR Department Signature:</Text>
+                {renewalData.hr_signature_url ? (
+                  <Image src={renewalData.hr_signature_url} style={styles.signatureImage} />
+                ) : (
+                  <View style={styles.signaturePlaceholder} />
+                )}
+                <Text style={styles.signatureDate}>Date: {formatDate(renewalData.hr_signed_at)}</Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Footer */}
@@ -286,6 +330,11 @@ function getStyles() {
     signatureGrid: {
       flexDirection: 'row',
       gap: 20,
+      marginBottom: 20,
+    },
+    signatureGridBf: {
+      flexDirection: 'row',
+      gap: 12,
       marginBottom: 20,
     },
     signatureBox: {

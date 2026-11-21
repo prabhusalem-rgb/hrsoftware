@@ -25,6 +25,8 @@ export function SettlementStatementPDF({
   showWatermark = false,
 }: SettlementStatementPDFProps) {
   const { company, employee, settlement } = data;
+  const companyNameUpper = (company?.name_en || '').trim().toUpperCase();
+  const isBrightFlowers = companyNameUpper.includes('BRIGHT FLOWERS') || companyNameUpper.includes('BRIGHT FLOWER');
 
   const hasIndividualAllowances =
     (settlement.basic_salary && settlement.basic_salary > 0) ||
@@ -296,11 +298,11 @@ export function SettlementStatementPDF({
           </View>
 
           {/* ══════════════════════════════════════════════════════
-              SIGNATURE BLOCKS — two columns
+              SIGNATURE BLOCKS
               Height: space20 + line + label + sub + mb5 ≈ 48pt
           ══════════════════════════════════════════════════════ */}
           <View style={s.sigRow}>
-            <View style={s.sigBlock}>
+            <View style={isBrightFlowers ? s.sigBlock3 : s.sigBlock}>
               <View style={s.sigSpace}>
                 {settlement.hr_signature_url ? (
                   <Image src={settlement.hr_signature_url} style={s.sigImage} />
@@ -310,7 +312,19 @@ export function SettlementStatementPDF({
               <Text style={s.sigLabel}>HR Representative</Text>
               <Text style={s.sigSub}>Digitally Signed</Text>
             </View>
-            <View style={s.sigBlock}>
+            {isBrightFlowers && (
+              <View style={s.sigBlock3}>
+                <View style={s.sigSpace}>
+                  {(settlement as any).dgm_signature_url ? (
+                    <Image src={(settlement as any).dgm_signature_url} style={s.sigImage} />
+                  ) : null}
+                </View>
+                <View style={s.sigLine} />
+                <Text style={s.sigLabel}>DGM Approval</Text>
+                <Text style={s.sigSub}>Deputy General Manager</Text>
+              </View>
+            )}
+            <View style={isBrightFlowers ? s.sigBlock3 : s.sigBlock}>
               <View style={s.sigSpace}>
                 {settlement.gm_signature_url ? (
                   <Image src={settlement.gm_signature_url} style={s.sigImage} />
@@ -706,6 +720,11 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  sigBlock3: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 10,
   },
   sigSpace: {
     height: 35,

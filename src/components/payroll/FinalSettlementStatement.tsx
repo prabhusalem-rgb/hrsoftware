@@ -16,6 +16,8 @@ interface FinalSettlementStatementProps {
 
 export function FinalSettlementStatement({ company, employee, item, notes, otherAdditions, otherDeductions }: FinalSettlementStatementProps) {
   const settlementDate = item.settlement_date ? new Date(item.settlement_date) : new Date();
+  const companyNameUpper = (company?.name_en || '').trim().toUpperCase();
+  const isBrightFlowers = companyNameUpper.includes('BRIGHT FLOWERS') || companyNameUpper.includes('BRIGHT FLOWER');
 
   // Earnings & Deductions breakdown (estimated from the item)
   const earnings = [
@@ -159,7 +161,7 @@ export function FinalSettlementStatement({ company, employee, item, notes, other
       )}
 
       {/* Signatures */}
-      <div className="grid grid-cols-2 gap-24 mt-24 text-center">
+      <div className={`grid ${isBrightFlowers ? 'grid-cols-3 gap-12' : 'grid-cols-2 gap-24'} mt-24 text-center`}>
         <div className="space-y-4">
           <div className="border-b-2 border-slate-900 h-16 w-full opacity-10"></div>
           <div>
@@ -167,6 +169,15 @@ export function FinalSettlementStatement({ company, employee, item, notes, other
             <p className="text-[9px] text-slate-400 font-bold mt-1 tracking-tighter italic">Accepted and satisfied with the final settlement</p>
           </div>
         </div>
+        {isBrightFlowers && (
+          <div className="space-y-4">
+            <div className="border-b-2 border-slate-900 h-16 w-full opacity-10"></div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest leading-none">DGM Approval</p>
+              <p className="text-[9px] text-slate-400 font-bold mt-1 tracking-tighter italic">Deputy General Manager</p>
+            </div>
+          </div>
+        )}
         <div className="space-y-4">
           <div className="border-b-2 border-slate-900 h-16 w-full opacity-10"></div>
           <div>

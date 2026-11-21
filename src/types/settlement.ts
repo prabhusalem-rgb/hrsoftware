@@ -216,6 +216,8 @@ export interface SettlementStatementData {
     leave_request_id?: string;
     hr_signature_url?: string;
     gm_signature_url?: string;
+    dgm_signature_url?: string;
+    dgm_approved_at?: string;
   };
 }
 

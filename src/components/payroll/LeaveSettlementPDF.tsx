@@ -24,6 +24,9 @@ interface LeaveSettlementPDFProps {
     notes?: string;
     hr_signature_url?: string;
     gm_signature_url?: string;
+    dgm_signature_url?: string;
+    dgm_name?: string;
+    dgm_approved_at?: string;
   };
   showLogo?: boolean;
   primaryColor?: string;
@@ -36,6 +39,9 @@ export function LeaveSettlementPDF({
   showLogo = true,
   primaryColor = '#1a1a1a'
 }: LeaveSettlementPDFProps) {
+  const companyNameUpper = (company?.name_en || '').trim().toUpperCase();
+  const isBrightFlowers = companyNameUpper.includes('BRIGHT FLOWERS') || companyNameUpper.includes('BRIGHT FLOWER');
+
   const { leave_from, leave_to, days_in_month, leave_days, working_days, last_salary_month, earnings, deductions, other_deductions, other_additions, net_pay, notes } = settlementData;
 
   const formatOMR = (val: number) => Number(val || 0).toFixed(3);
@@ -251,7 +257,7 @@ export function LeaveSettlementPDF({
         {/* ===== SIGNATURES ===== */}
         <View style={styles.signatureSection}>
           <View style={styles.sigRow}>
-            <View style={styles.sigCol}>
+            <View style={isBrightFlowers ? styles.sigCol4 : styles.sigCol}>
               <View style={styles.sigSpace}>
                 {settlementData.hr_signature_url ? (
                   <Image src={settlementData.hr_signature_url} style={styles.sigImage} />
@@ -261,7 +267,19 @@ export function LeaveSettlementPDF({
               <Text style={styles.sigLabel}>HR Representative</Text>
               <Text style={styles.sigRole}>Digitally Signed</Text>
             </View>
-            <View style={styles.sigCol}>
+            {isBrightFlowers && (
+              <View style={styles.sigCol4}>
+                <View style={styles.sigSpace}>
+                  {settlementData.dgm_signature_url ? (
+                    <Image src={settlementData.dgm_signature_url} style={styles.sigImage} />
+                  ) : null}
+                </View>
+                <View style={styles.sigLine} />
+                <Text style={styles.sigLabel}>DGM Approval</Text>
+                <Text style={styles.sigRole}>Deputy General Manager</Text>
+              </View>
+            )}
+            <View style={isBrightFlowers ? styles.sigCol4 : styles.sigCol}>
               <View style={styles.sigSpace}>
                 {settlementData.gm_signature_url ? (
                   <Image src={settlementData.gm_signature_url} style={styles.sigImage} />
@@ -271,7 +289,7 @@ export function LeaveSettlementPDF({
               <Text style={styles.sigLabel}>GM / CEO Approval</Text>
               <Text style={styles.sigRole}>Management Authorization</Text>
             </View>
-            <View style={styles.sigCol}>
+            <View style={isBrightFlowers ? styles.sigCol4 : styles.sigCol}>
               <View style={styles.sigSpace} />
               <View style={styles.sigLine} />
               <Text style={styles.sigLabel}>Employee Acknowledgement</Text>
@@ -590,6 +608,10 @@ const getStyles = (primaryColor: string) =>
     },
     sigCol: {
       width: '30%',
+      alignItems: 'center',
+    },
+    sigCol4: {
+      width: '22%',
       alignItems: 'center',
     },
     sigSpace: {
